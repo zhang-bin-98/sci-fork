@@ -153,8 +153,9 @@ baseline, the security model, the dependency strategy, the license, the release
 model, or an existing acceptance/test requirement.
 
 Read-only diagnosis and review do not authorize edits. A requested implementation
-authorizes changes within the agreed spec, but integration into `main`, remote
-operations, and destructive history operations remain separate decisions.
+authorizes changes within the agreed spec. The agent may autonomously decide when
+a completed work branch qualifies for integration under the gates below. Remote
+operations and destructive history operations remain separate decisions.
 
 ## Git workflows
 
@@ -174,7 +175,8 @@ or `chore/*`; the existing `design` branch keeps its name until first integratio
 Make clear, reviewable Conventional Commits. Do not create WIP, `fixup!`, or
 meaningless checkpoint commits, and do not mix unrelated changes. Stage explicit
 paths only; never use `git add .`. A user request to "commit" means commit to the
-current work branch, not merge into `main`.
+current work branch; it is not itself a merge instruction. The later integration
+decision is independent and follows the readiness gates below.
 
 Before integration:
 
@@ -184,8 +186,14 @@ Before integration:
 - ensure the worktree is clean and no conflicts remain;
 - if `main` advanced, merge it into the work branch, resolve and retest there;
   do not rebase shared history;
-- report the spec, source branch and HEAD, commit list, diff summary, and checks;
-- obtain explicit user confirmation to merge into `main`.
+- inspect the spec, source branch and HEAD, commit list, diff, and check results;
+- confirm there is no unresolved user decision, known defect, failed check,
+  conflict, or unrelated change; and
+- judge the branch to be one coherent, completed outcome rather than partial work.
+
+When every gate passes, the agent may decide and execute integration without a
+separate confirmation. Do not merge when the user explicitly forbids it or when
+any gate is uncertain; leave the branch intact and report what remains.
 
 Integrate with `git merge --no-ff <work-branch>`. Do not squash. The first-parent
 history of `main` should contain only reviewed outcome merge commits, while the
