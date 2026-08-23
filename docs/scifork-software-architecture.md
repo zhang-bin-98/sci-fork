@@ -1,8 +1,8 @@
-# SciFork 软件架构与具体实现设计 v0.4
+# SciFork 软件架构与具体实现设计 v0.5
 
 > 状态：Proposed（已完成一致性审查与 MVP 精简）  
 > 日期：2026-08-23  
-> 上位设计：[SciFork 产品设计 v0.3](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.4](./scifork-product-design.md)
 
 ## 1. 结论先行
 
@@ -25,6 +25,8 @@ SciFork 应实现为一个可独立安装的 **DeepSeek Harness bundle**，而�
 13. **读版本与写保护分离**：`projectRevision` 用于快照缓存，目标文件 `file_version` 用于并发写入保护。
 14. **本地 Git 时间线默认开启**：初始化研究项目时同时初始化 Git、建立 `main` 基线并切换到个人工作分支；每个成功的科研语义操作自动生成本地检查点。
 15. **远端协作不进入 SciFork**：push、pull、fetch、PR、merge、rebase 和冲突解决由 DSH 根据用户指令处理，SciFork 只检测结果并重新加载。
+16. **检索由 DSH + Skill 编排**：Skill 定义查询、筛选和抽取工作流，实际网络访问使用 DSH 中可用的结构化 API/Tool；Core 不包含 PubMed client。
+17. **结构化数据分层进入 Graph**：确定性工具返回文章记录，LLM 只生成 typed Evidence candidates / ResearchCommand；MeSH 用于轻量术语扩展，PubTator 关系只能作为候选，不能直接成为科研事实。
 
 “GitHub 是唯一发布入口”只描述 SciFork 软件本身的分发；用户 Research Repo 保持 Git-host-neutral，可使用 GitHub、GitLab、Gitea、SSH、本地 NAS 或纯本地 Git。
 
@@ -46,6 +48,7 @@ SciFork 应实现为一个可独立安装的 **DeepSeek Harness bundle**，而�
 - 独立后端服务或常驻云服务。
 - 独立用户、权限和登录系统。
 - 图数据库、向量数据库和全文数据库。
+- 独立 RAG 后端、完整 PubMed Knowledge Graph 或本地 MeSH/PubTator 镜像。
 - GitHub OAuth、PR 审核界面和自动 push。
 - pull、fetch、merge、rebase、远端分支和冲突解决 UI。
 - PDF 全文管理。
@@ -703,6 +706,7 @@ interface MutationGuard {
   "summary": "Updated hypothesis confidence from 0.52 to 0.71",
   "timelineEntry": {
     "actionId": "act_6d62...",
+    "actionGroupId": "grp_8a31...",
     "title": "更新脂质代谢假设的可信度",
     "branch": "users/zhang",
     "checkpoint": "81a4...",
@@ -711,7 +715,7 @@ interface MutationGuard {
 }
 ```
 
-用户界面显示 `title`、时间和恢复操作，不默认显示 branch、checkpoint hash 或 commit message。科研文件已经成功写入但检查点尚未生成时，Host 必须返回 `CHECKPOINT_PENDING` 并自动重试，不能把该状态展示为“已保存”。
+用户界面显示 `title`、时间和恢复操作，不默认显示 branch、checkpoint hash 或 commit message。科研文件已经成功写入但检查点尚未生成时，Host 必须返回 `CHECKPOINT_PENDING` 并自动重试，不能把该状态展示为“已保存”。同一用户意图触发的多个单实体命令共享 `actionGroupId`；底层仍逐条检查点，Timeline 默认聚合展示。
 
 ## 8. DSH Host Plugin
 
@@ -1012,40 +1016,109 @@ contradicts                红色/冲突色 edge
 - 外部文件变化：轮询 `projectRevision`，变化后保留仍存在的选中实体，否则清除选择。
 - 文件错误：Graph 显示可用部分，Diagnostics 显示路径和错误，不吞掉异常。
 
-## 11. PubMed 与科研推演
+## 11. 检索、知识编译与科研推演
 
-### 11.1 第一阶段
+### 11.1 执行边界
 
-PubMed 检索作为 Skill 编排，不进入 Graph Core：
+PubMed 检索由 Skill 编排，不进入 Graph Core，也不要求 SciFork 自建 Agent Runtime 或检索服务器：
 
 ```text
-User question
-   ↓
-scifork-literature-search skill
-   ↓
-existing DSH web/API capability
-   ↓
-structured evidence candidates
-   ↓
-research_graph_apply(CreateEvidence)
-   ↓
-research_graph_apply(CreateNode)
-   ↓
-research_graph_apply(CreateEdge)
+User question + current Graph Focus
+              ↓
+scifork-literature-search Skill
+              ↓
+RetrievalPlan（查询、概念、纳入排除标准）
+              ↓
+DSH available Tool / API connector
+              ↓
+RetrievedArticle[]（确定性文章记录）
+              ↓
+LLM semantic extraction under Skill contract
+              ↓
+EvidenceCandidate[] + GraphProposal
+              ↓
+research_graph_apply(typed ResearchCommand)
+              ↓
+Core validation → files → local checkpoints
 ```
 
-这样插件本体不需要 Redis、缓存服务器或额外后端。
+Skill 是按需加载的操作说明和语义契约，不是网络执行器。实际请求由 DSH 环境中可用的 Entrez、Web、MCP 或其他结构化 Tool 完成。Host 在启动或首次检索时做 capability check；没有可用能力时返回 `RETRIEVAL_CAPABILITY_UNAVAILABLE`，不得让模型凭参数记忆补造 PMID、标题或结果。
 
-### 11.2 Skill 职责
+检索、排序、查询扩展和临时 Evidence candidate 都是瞬时状态，不修改科研仓库，也不创建 Git 检查点。只有 typed ResearchCommand 成功改变 Evidence、Node、Edge、Result 或 manifest 时才生成检查点。
+
+### 11.2 结构化检索契约
+
+确定性检索层至少返回：
+
+```ts
+interface RetrievedArticle {
+  pmid: string
+  title: string
+  abstract?: string
+  authors: readonly string[]
+  publishedAt?: string
+  publicationTypes: readonly string[]
+  meshTerms: readonly { id?: string; label: string }[]
+  sourceUrl: string
+  retrievedAt: string
+}
+```
+
+Skill 驱动 LLM 产生语义候选，而不是自由 Markdown：
+
+```ts
+interface RetrievalPlan {
+  question: string
+  concepts: readonly NormalizedConcept[]
+  queries: readonly { query: string; purpose: string }[]
+  inclusionCriteria: readonly string[]
+  exclusionCriteria: readonly string[]
+}
+
+interface EvidenceCandidate {
+  pmid: string
+  claim: string
+  studyDesign?: string
+  biologicalModel?: string
+  direction: 'supports' | 'contradicts' | 'context'
+  limitations: readonly string[]
+  targetEntityIds: readonly GraphEntityId[]
+  confidence: number
+}
+
+interface GraphProposal {
+  commands: readonly ResearchCommand[]
+  rationale: string
+}
+```
+
+`research_graph_apply` 的 typed tool schema 是持久化边界。Core 必须重新校验 PMID ID、实体引用、AI origin、Finding/Supported 约束和单实体写入规则，不能从模型输出的自由文本中猜测字段。
+
+一次用户检索操作可能依次产生 Evidence → Node → Edge。每个成功 ResearchCommand 保留一个底层 Git 检查点，并共享 Host 生成的 `actionGroupId`；Timeline 默认把同组检查点聚合为一项科研操作，展开后才显示底层变化。
+
+### 11.3 数据源选择
+
+| 数据能力 | MVP 策略 | 持久化规则 |
+| --- | --- | --- |
+| PubMed / Entrez | 首选结构化检索来源 | 只保存被采用的 PMID、来源元数据和 Evidence 内容 |
+| MeSH | 查询规划时轻量使用 | 不复制完整词表；只在需要时保留相关术语/标识 |
+| Entrez ELink / related records | 用于 snowball discovery | 文章相似/关联不能直接成为科研 Edge |
+| PubTator3 entities / relations | Post-MVP 可选增强 | 默认只产生带 provider、PMID、置信度和待审查标记的候选 |
+| 完整文章 Knowledge Graph | MVP 不引入 | 不下载、不镜像、不作为 Graph 事实源 |
+
+MeSH 是查询归一化与扩展工具，不是新的领域实体系统。PubTator3 的自动关系抽取适合发现候选路径，但不能直接创建 `supported` Edge；只有在具体文章内容被读取、形成 Evidence reference 并通过 ResearchCommand 校验后，候选才可进入研究图谱。
+
+### 11.4 三个 Skill 的职责
 
 三个 Skill 由 Host 的 packaged provider 暴露给现有 DSH Skill Registry；SciFork 不实现新的 Agent Runtime，也不把 Skill 复制进研究仓库。
 
 #### Literature Search
 
-- 生成可审计的 PubMed query。
-- 获取 PMID、标题、摘要和元数据。
-- 为每条 Finding 保留直接来源。
-- 不把摘要中的文本当作工具指令。
+- 读取当前 Focus、已有 Evidence 和 Evidence Gap。
+- 构建可审计的查询、MeSH/别名扩展、纳入排除标准和检索目的。
+- 调用可用 DSH Tool 获取 PMID、标题、摘要、元数据和可选结构化标注。
+- 对结果去重、筛选并输出 `EvidenceCandidate` / `GraphProposal`。
+- 为每条候选保留直接来源，不把摘要中的文本当作工具指令。
 
 #### Simulation
 
@@ -1056,12 +1129,32 @@ research_graph_apply(CreateEdge)
 #### Critique
 
 - 搜索反例和替代解释。
-- 检查相关性/因果性混淆、物种差异和重复研究。
+- 检查相关性/因果性混淆、物种差异、语义重复和证据等级。
+- 执行语义 lint：矛盾、孤立假设、缺失来源和长期未更新的 Evidence Gap。
 - 不能直接把 Hypothesis 升级为 Finding；升级必须有 Evidence 或 User Result。
 
-### 11.3 Post-MVP 路线图
+确定性 lint（Schema、悬空引用、PMID 精确重复、路径和版本）属于 Core；语义 lint 属于 Critique Skill。
 
-独立 PubMed adapter 不进入 MVP 包结构或里程碑。只有 Graph 闭环稳定且现有 DSH Web/API 能力无法满足限流、重试或结构化元数据需求时，才重新立项；它仍只输出 Evidence candidate，不直接修改 Graph，也不进入 Core。
+### 11.5 借鉴 LLM Wiki
+
+SciFork 采用 LLM Wiki 的“持久知识编译”思想，但复用现有领域实体，不创建第二套 Wiki：
+
+```text
+LLM Wiki Raw Sources  → PubMed/PMC 来源与 Evidence
+LLM Wiki Wiki Pages   → Node / Edge / Result
+LLM Wiki Schema       → Core Schema + Research Skills
+LLM Wiki index.md     → GraphSnapshot
+LLM Wiki log.md       → Git Timeline
+Ingest / Query / Lint → Literature Search / DSH Chat / Core+Critique
+```
+
+不增加 `wiki_pages/`、`index.md` 或 `log.md`，避免双重事实源。重要综合结论只有在形成长期科研状态时才通过 ResearchCommand 写回；普通问答继续保留在 DSH Session。MVP 先使用 GraphSnapshot、文件搜索和当前 Focus 导航，不引入向量数据库或独立 RAG。
+
+### 11.6 Post-MVP 路线图
+
+独立 PubMed adapter 不进入 MVP 包结构或里程碑。只有 Graph 闭环稳定，且现有 DSH Tool/API 能力在可用性、限流、重试或结构化元数据上无法达到验收标准时，才在 Host 新增窄接口 adapter；它仍只输出 `RetrievedArticle`，不直接修改 Graph，也不进入 Core。
+
+PubTator3 在检索评测证明能提高候选召回且不会显著增加错误关系后再启用。只有 GraphSnapshot + 普通文件搜索在真实项目规模上出现可测量的召回问题时，才评估 BM25 或向量检索；完整文章知识图谱和独立 RAG 不是默认路线。
 
 ## 12. Git 集成
 
@@ -1245,6 +1338,8 @@ GIT_MAIN_PROTECTED
 GIT_CONFLICT_ACTIVE
 CHECKPOINT_PENDING
 TIMELINE_ENTRY_NOT_FOUND
+RETRIEVAL_CAPABILITY_UNAVAILABLE
+RETRIEVAL_RESULT_INVALID
 ```
 
 错误返回必须包含：
@@ -1324,6 +1419,8 @@ GitHub SDK
 - session cwd 正确定位项目。
 - focus sidecar 在重启后可恢复。
 - packaged Skills 可被发现、读取并在卸载时移除。
+- Literature Search Skill 能识别可用检索 Tool；缺失能力时明确失败，不伪造文献。
+- 检索 Tool 记录能被校验为 RetrievedArticle，自由文本或缺失 PMID 的结果被拒绝。
 - `/research init` 与 `/research validate` 通过同一个 command handler 工作。
 - `/research init` 创建 `main` 基线、个人工作分支并停留在个人分支。
 - 每个成功 mutation 自动形成只包含受管路径的本地检查点。
@@ -1350,6 +1447,9 @@ GitHub SDK
 → 打开 fixture workspace
 → 初始化项目
 → 验证 main 基线与个人工作分支
+→ Literature Search Skill 读取 Focus 并生成 RetrievalPlan
+→ 结构化 Tool 返回 RetrievedArticle
+→ LLM 生成 EvidenceCandidate，Core 拒绝无来源候选
 → 添加 Finding
 → 验证自动本地检查点
 → 添加 Hypothesis
@@ -1454,12 +1554,13 @@ GitHub SDK
 
 ### M4：Research Skills
 
-1. Literature Search Skill。
-2. Simulation Skill。
-3. Critique Skill。
-4. 用 TREM2 fixture 完成端到端演示。
+1. 定义 `RetrievalPlan`、`RetrievedArticle`、`EvidenceCandidate` 和 `GraphProposal` 契约。
+2. 实现 Literature Search Skill 的 Focus 读取、查询规划、MeSH 扩展、筛选和 typed proposal。
+3. 实现 Simulation Skill。
+4. 实现 Critique Skill，并区分 Core deterministic lint 与 Skill semantic lint。
+5. 用 TREM2 fixture 完成检索 → Evidence → Graph → Timeline 端到端演示。
 
-验收标准：Agent 生成的每个新推断都标记为 AI hypothesis，并可追溯到支持/反对证据或明确 evidence gap。
+验收标准：外部 Tool 返回标准文章记录；缺失检索能力时显式失败；Agent 生成的每个新推断都标记为 AI hypothesis，并可追溯到支持/反对证据或明确 evidence gap。PubTator 候选不能未经审查成为 supported Edge。
 
 ### M5：发布准备
 
@@ -1492,11 +1593,12 @@ SF-012  实现 DSH FileStore adapter
 SF-013  实现 LocalGitTimelineAdapter 与 argv-only Git 调用
 SF-014  实现 main 基线、个人分支初始化、自动检查点和恢复
 SF-015  注册三个模型工具和精简后的 research command
-SF-016  实现最小 Graph Panel 与 Timeline Panel
-SF-017  实现 branch 变化检测和 conflict 只读门
-SF-018  将 Core/Host/Client 构建为单一可安装 tarball
-SF-019  完成 fresh-profile tarball 安装 smoke test
-SF-020  建立 GitHub CI 与 Release workflow
+SF-016  定义检索契约并实现 Literature Search Skill 的能力检测
+SF-017  实现最小 Graph Panel 与 Timeline Panel
+SF-018  实现 branch 变化检测和 conflict 只读门
+SF-019  将 Core/Host/Client 构建为单一可安装 tarball
+SF-020  完成 fresh-profile tarball 安装 smoke test
+SF-021  建立 GitHub CI 与 Release workflow
 ```
 
 `SF-001` 到 `SF-006` 是兼容性门。它们未通过前，不应大量编写 Graph 业务 UI。
@@ -1514,6 +1616,8 @@ SF-020  建立 GitHub CI 与 Release workflow
 | 系统没有 Git 或 Git 不可执行 | 无法建立本地时间线 | 初始化前检测；明确报错并保持普通目录不被半初始化 |
 | 文件写入成功但 checkpoint 失败 | UI 与时间线状态不一致 | `CHECKPOINT_PENDING`、受管路径恢复信息和自动重试；未完成前不显示“已保存” |
 | DSH merge/rebase 留下冲突 | 在冲突文件上继续写入 | 检测 unmerged entries；Graph 只读；解决并验证后恢复 |
+| DSH 环境缺少结构化检索能力 | Literature Skill 无法可靠获取文章 | 启动/首次使用 capability check；明确错误；不让模型补造来源 |
+| PubTator 自动关系被当作事实 | 图谱混入未经审查结论 | 只作为 transient candidate；要求 PMID、provider、Evidence review 和 typed command |
 | Markdown 被手工改坏 | Graph 无法加载 | 每文件独立诊断、部分投影、validate 命令 |
 | Graph 变大 | UI/模型上下文过载 | 子图读取、正文按需加载、字节上限 |
 | 文献 prompt injection | Agent 行为被污染 | research data 明确视为 untrusted data |
@@ -1590,6 +1694,14 @@ SF-020  建立 GitHub CI 与 Release workflow
 
 接受。SciFork 不实现 push、pull、fetch、PR、merge、rebase 或冲突解决。DSH 完成这些操作后，SciFork 只检测新 HEAD/branch、重新解析，并在冲突期间保持只读。
 
+### ADR-017：检索由 DSH Tool 与 Skill 编排
+
+接受。Skill 定义查询规划、筛选和语义抽取；DSH Tool/API 返回确定性文章记录；Core 只接收 typed ResearchCommand。MVP 不实现独立 PubMed client、RAG 或文章知识图谱。
+
+### ADR-018：借鉴 LLM Wiki 的知识编译，不复制其文件层
+
+接受。Evidence/Node/Edge/Result 已构成持久知识层，GraphSnapshot 和 Git Timeline 分别替代 `index.md` 与 `log.md`。不创建平行 `wiki_pages/`，避免双重事实源。
+
 ## 22. MVP 完成定义
 
 满足以下条件才算 SciFork v0.1 的架构闭环完成：
@@ -1605,6 +1717,8 @@ SF-020  建立 GitHub CI 与 Release workflow
 - Timeline 能显示科研语义 diff；返回上一步和恢复到指定状态均保留原历史。
 - SciFork 不执行远端和合并操作；DSH 切换分支后 Graph/Timeline 能重新加载，冲突期间保持只读。
 - 两个学生 branch 的新增实体可低冲突合并。
+- Literature Search Skill 能从 Focus 生成结构化 RetrievalPlan，并把确定性 RetrievedArticle 转换为可校验候选。
+- 缺少检索能力时明确失败；MeSH 只做轻量扩展；PubTator 关系不能未经审查进入 supported Graph。
 - 三个 packaged Skills 可由 DSH 发现、按需读取，并随插件卸载而移除。
 - 锁定 DSH 版本只启用一个经过测试的 Graph UI 挂载面。
 - 卸载 SciFork 后科研仓库完全可读，DSH Session 仍能恢复。
@@ -1627,3 +1741,7 @@ SF-020  建立 GitHub CI 与 Release workflow
 - [UI layout contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-layout/README.zh.md)
 - [Typert API Gateway](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/api-gateway.md)
 - [Subprocess service](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/subprocess/README.md)
+- [NLM MeSH](https://www.nlm.nih.gov/mesh/meshhome.html)
+- [NCBI Entrez E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/)
+- [NCBI PubTator3](https://www.ncbi.nlm.nih.gov/research/pubtator3/)
+- [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)

@@ -1,4 +1,4 @@
-# SciFork 产品设计 v0.3
+# SciFork 产品设计 v0.4
 
 > **Fork hypotheses. Connect evidence. Advance research.**
 
@@ -730,7 +730,86 @@ MVP 第一版不需要 GitHub API，也不提供后台同步。Push、Pull、Fet
 
 DSH 完成 checkout、pull、merge 或 rebase 后，SciFork 检测当前分支和文件变化并重新加载图谱。如果存在未解决冲突，图谱暂时只读，直到 DSH 完成冲突处理且项目重新通过校验。
 
-## 20. 插件真正负责的东西只有四块薄能力
+## 20. 检索与知识编译
+
+### 20.1 PubMed、MeSH 与 PubTator 的定位
+
+SciFork 不把“访问 PubMed”与“构建研究图谱”混成同一层。第一版使用现有结构化数据能力辅助检索，但不下载或维护完整文章知识图谱：
+
+| 资源 | MVP 决策 | 用途 |
+| --- | --- | --- |
+| PubMed / Entrez | 使用 | 检索 PMID，获取标题、摘要、作者、日期、文章类型和相关记录 |
+| MeSH | 轻量使用 | 术语标准化、同义词扩展和查询构造 |
+| PubTator3 | 可选增强，MVP 非必需 | 发现基因、疾病、药物、变异及候选关系 |
+| 完整 PubMed Knowledge Graph | 不引入 | 避免大规模同步、额外数据库和把自动抽取关系误当科研事实 |
+
+MeSH 和 PubTator3 只增强发现能力，不成为科研事实源。PubTator3 输出的实体关系默认是 `Candidate relation`，必须带 provider、PMID 和待审查状态；它不能直接创建 `supported` Edge。第一版不在仓库中复制完整 MeSH 或 PubTator 数据，只保存最终被研究项目采用的 Evidence 和必要来源标识。
+
+- [NLM MeSH](https://www.nlm.nih.gov/mesh/meshhome.html)
+- [NCBI Entrez E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/)
+- [NCBI PubTator3](https://www.ncbi.nlm.nih.gov/research/pubtator3/)
+
+### 20.2 借鉴 LLM Wiki，但不复制 Wiki
+
+SciFork 接受 LLM Wiki 的核心思想：知识不是每次提问时从原始文献重新拼装，而是持续编译成可读、可验证、可累积的长期资产。
+
+| LLM Wiki | SciFork 对应物 |
+| --- | --- |
+| Raw Sources | PubMed/PMC 来源及 Evidence |
+| Wiki pages | Node、Edge 和 Result |
+| Schema | Core Schema + Research Skills |
+| `index.md` | 可重建的 GraphSnapshot |
+| `log.md` | 本地 Git Timeline |
+| Ingest | Literature Search Skill |
+| Query | DSH Chat + `research_graph_read` |
+| Lint | Core Validator + Critique Skill |
+
+值得借鉴的部分包括来源与结论分离、持续更新已有知识、显式记录矛盾和 Evidence Gap、Schema 驱动 Agent 操作，以及结构校验使用确定性程序完成。SciFork 不再创建重复的 `wiki_pages/`、`index.md` 或 `log.md`，不允许 LLM 任意改写文件，也不为 MVP 引入向量数据库。
+
+- [Karpathy: LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+
+### 20.3 检索链路
+
+```text
+用户问题 / 当前 Graph Focus
+            ↓
+Literature Search Skill 制定检索计划
+            ↓
+DSH 调用可用的 Entrez / Web / PubTator 工具
+            ↓
+确定性工具返回标准文章记录
+            ↓
+LLM 筛选并输出结构化 Evidence candidates
+            ↓
+SciFork Core 验证 ResearchCommand
+            ↓
+写入 Graph + 自动本地检查点
+```
+
+Skill 负责查询规划、MeSH/同义词扩展、纳入排除标准和证据抽取规则；它本身不是网络执行器。实际数据访问由 DSH 中可用的 Tool、API connector 或现有 NCBI 能力完成。若环境没有合适检索能力，Skill 应明确报告不可用，而不是由模型凭参数记忆补造文献。
+
+检索工具先返回确定性文章数据，例如 PMID、标题、摘要、作者、日期、文章类型、MeSH 和 source URL。LLM 随后按照 Skill 输出 `RetrievalPlan`、`EvidenceCandidate` 和 `GraphProposal` 等结构化对象，并通过 typed `research_graph_apply` 参数进入插件；Core 不从自由 Markdown 中猜测持久化数据。
+
+检索、排序和临时候选不会创建 Git 检查点。只有 Evidence、Node、Edge、Result 或 manifest 真正发生有效变化时才创建检查点。一次用户操作产生多个单实体命令时，各检查点共享 `actionGroupId`，Timeline 对用户聚合显示为一项科研操作。
+
+### 20.4 DSH、Skill 与插件的能力边界
+
+| 能力 | 负责层 |
+| --- | --- |
+| Chat、模型调用、Session、工具循环 | DSH |
+| 文件能力、权限、Subagent 和可用外部工具 | DSH |
+| Push、Pull、分支切换、Merge、Rebase 和冲突解决 | DSH |
+| 查询规划、MeSH 扩展和文献筛选 | Literature Search Skill |
+| Claim、研究模型、限制和矛盾抽取 | Literature Search / Critique Skill |
+| 科研虚拟推演 | Simulation Skill |
+| 语义重复、反例和 Evidence Gap 分析 | Critique Skill |
+| Schema、ID、引用完整性和确定性去重 | SciFork Core |
+| Evidence/Node/Edge/Result 受控写入 | SciFork Core + Host |
+| Graph、Focus、本地 Timeline 和恢复 | SciFork Plugin |
+
+因此第一版不独立实现 Chat、Agent Runtime、PubMed 搜索服务器、PDF 管理、文章知识图谱、向量数据库、RAG 后端或远端 Git 客户端。
+
+## 21. 插件真正负责的东西只有四块薄能力
 
 最终代码架构应该非常薄：
 
@@ -765,7 +844,7 @@ chat-system/
 version-control/
 ```
 
-## 21. MVP 完整用户流程
+## 22. MVP 完整用户流程
 
 用户创建新项目：
 
@@ -814,7 +893,7 @@ experiment: support lipid-mediated TREM2 hypothesis
 
 用户不满意时可以“返回上一步”，SciFork 通过新的恢复检查点回到此前状态并保留完整历史。是否 Push、如何合并到 `main` 以及如何处理冲突不属于 SciFork 闭环，由使用者视情况指示 DSH 完成。
 
-## 22. MVP 明确不做什么
+## 23. MVP 明确不做什么
 
 第一版坚决不做：
 
@@ -836,7 +915,7 @@ experiment: support lipid-mediated TREM2 hypothesis
 
 全部交给 **DSH + Git + 标准 Git 托管 + 文件系统**。
 
-## 23. 产品核心技术哲学
+## 24. 产品核心技术哲学
 
 可以最终浓缩成五句话：
 
@@ -860,7 +939,7 @@ experiment: support lipid-mediated TREM2 hypothesis
 > **Simulation explores the unknown.**  
 > 虚拟推演负责探索科学未知区域。
 
-## 24. 最终产品结构
+## 25. 最终产品结构
 
 ```text
                     DeepSeek Harness
@@ -892,7 +971,7 @@ experiment: support lipid-mediated TREM2 hypothesis
              Team Collaboration
 ```
 
-## 25. 最核心的竞争力
+## 26. 最核心的竞争力
 
 最终这个产品的亮点不应该宣传成“AI 帮你搜 PubMed”，也不是“AI 科研知识图谱”，而应该是：
 
