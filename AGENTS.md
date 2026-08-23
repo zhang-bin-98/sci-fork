@@ -76,6 +76,31 @@ step must be observed but must not be committed alone; every committed code
 change should pass its relevant tests. Documentation, metadata, and executable-
 free scaffolding use appropriate static checks instead of artificial tests.
 
+## Simplicity and proportionality
+
+Choose the smallest design that fully satisfies the approved specification.
+Prefer direct data flow, existing project primitives, and one clear source of
+truth. Do not introduce a framework, abstraction layer, compatibility shim,
+configuration surface, fallback path, migration mechanism, or extension point
+for a hypothetical future requirement. Add such structure only when the current
+specification or demonstrated duplication requires it.
+
+Keep functions and modules focused, interfaces narrow, and state minimal. Avoid
+parallel representations, premature generalization, clever indirection, and
+comments that merely narrate the code. Remove dead code and superseded paths
+instead of preserving them "just in case." If a change becomes difficult to
+explain or substantially larger than its acceptance criteria, stop and simplify
+the design or revisit the specification with the user.
+
+Testing must be proportional to behavior and risk. Test changed public behavior,
+domain invariants, meaningful boundaries, and realistic failure modes. Do not
+chase an arbitrary coverage number, duplicate the same assertion across layers,
+test static declarations or third-party behavior, enumerate combinations without
+a concrete risk, or build elaborate mocks and fixtures for trivial code. Prefer
+the lowest test layer that proves the behavior, add integration or E2E coverage
+only for a real boundary, and stop when the acceptance criteria and material
+regression risks are covered.
+
 ## Non-negotiable product and architecture constraints
 
 - Do not depend on `dsh-better-sidebar` or any other third-party DSH plugin.
