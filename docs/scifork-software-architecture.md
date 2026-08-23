@@ -1,8 +1,8 @@
-# SciFork 软件架构与具体实现设计 v0.8
+# SciFork 软件架构与具体实现设计 v0.9
 
 > 状态：Proposed（已完成一致性审查与 MVP 精简）  
 > 日期：2026-08-23  
-> 上位设计：[SciFork 产品设计 v0.7](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.8](./scifork-product-design.md)
 
 ## 1. 结论先行
 
@@ -84,13 +84,22 @@ CI：只测试兼容矩阵中的版本
 
 当前 `master` 中可见的 `@deepseek-ai/dsh-base` 版本为 `0.1.1-rc.2`。这只是架构调研基线，不代表 SciFork 未经验证即可声明兼容。
 
+SciFork 还需要一个**第三方运行依赖**：社区侧边栏宿主 **DSH better-sidebar**（`omdsh-dev/DSH-better-sidebar`）。它是 SciFork 图谱的承载宿主：在 **client half 提供 `ctx.betterSidebar` 服务**，并开放 `registerTab` 注册 API，SciFork 作为其「薄消费者」把 Research Graph 注册成一个 Tab。重要：better-sidebar **不占用 DSH 的 `sidebar` 槽**，而是自托管一个固定的侧边栏面板宿主（通过 CSS 变量把中间列推开），对三方开放可叠加的 Tab/FileViewer 注册，因此不发生 slot 遮蔽。因此 v0.1 的兼容矩阵必须同时包含：
+
+- 锁定的 DSH 预览版版本；
+- 经过测试的 better-sidebar 版本，及其对锁定 DSH 版本的兼容性。
+
+版本兼容性已有较好依据：better-sidebar 官方声明支持 DSH `0.1.0-rc.8 · 0.1.1-rc.1 · 0.1.1-rc.2`，且其 CI 冒烟基线就钉在 `@deepseek-ai/dsh@0.1.1-rc.2`——与 SciFork 拟锁定的版本一致。但值得注意的是它按**拆分 `@deepseek-ai/dsh-*` 包**构建（peer 下限 `^0.1.0-rc.8`，发布版 0.15.2 的 peer 即这些分体包），需确认目标 profile 兼容该拆分形态；建议在 M0 用其 `pnpm test:mount` 冒烟对本项目 profile 跑一遍。
+
+better-sidebar 的 Tab 注册契约在 M0 用真实代码锁定并记录：`ctx.betterSidebar.registerTab(...)`、`inject = ['betterSidebar']`、用 `ctx.effect(...)` 包裹注册与卸载、`import type {} from 'dsh-better-sidebar/client/service'`（只做类型合并，禁止 value-import；`client/service` 子路径零 Node 依赖，适合浏览器侧）、以及把 `dsh-better-sidebar` 声明为可选 peerDependency。发布版本需钉定（当前发布为 `0.15.2`），因其内置 Tab/viewer 与 `features` 能力随版本演进，文档外挂 `external-plugin-guide.md` 标注 v0.12.0、与发布版存在漂移，应以 `AGENTS.md` 与锁定的发布版本为准。
+
 ## 4. 系统上下文
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │                  DeepSeek Harness Web                        │
 │                                                              │
-│  Native Chat        SciFork Graph Panel       DSH Sessions   │
+│  Native Chat        SciFork Graph Tab (better-sidebar)  Sessions │
 │       │                     │                       │          │
 └───────┼─────────────────────┼───────────────────────┼──────────┘
         │                     │ Typed Remote          │
@@ -287,6 +296,7 @@ private source packages
 - 用户安装时不需要克隆 monorepo，也不需要理解四包结构。
 - DSH 和它提供的浏览器运行时保持 external，不能在包内复制第二份 DSH/React runtime。
 - SciFork 自身的 Core 代码和必要 UI 依赖进入构建产物。
+- **better-sidebar 作为外部运行依赖声明**：它不进入构建产物，由用户在目标 DSH profile 中另行安装；tarball 只声明对它的依赖要求（版本需与锁定的 DSH 版本匹配），并在 fresh-profile smoke test 中与 better-sidebar 同装验证。
 - `cordis.patch.yml`、Client bundle、Skills、README 和 LICENSE 都包含在 tarball 中。
 - `pnpm pack` 后必须在一个全新的 DSH profile 中完成安装和启动测试。
 
@@ -596,6 +606,8 @@ interface ResearchFileStore {
 }
 ```
 
+端口刻意使用 Core 自己的命名，而不是直接照抄 DSH。DSH 适配器在实现时做如下映射：`list` → `FileSystem.listDir`（注意 `listDir` 只返回目录一层直接子项，正好匹配逐实体目录扫描，无需递归）；`exists` → `FileSystem.stat`（目标不存在时返回 `undefined`，DSH 没有独立 `exists` 原语）；`readText`/`writeText` 与 DSH 同名，其中 `writeText` 的 `guard` 映射到 `FsWriteIntent`。
+
 `@scifork/core` 不允许 import：
 
 ```text
@@ -698,6 +710,7 @@ interface MutationGuard {
 - Update 命令必须携带目标文件的 `file_version`，只在目标实体确实被别人修改时返回 `STALE_TARGET`。
 - CreateEdge 等依赖多个实体的命令额外携带 `expectedProjectRevision`，在写前重新确认 endpoint 和 Evidence 仍有效。
 - SciFork 自身写操作在 Host 内串行化；外部编辑仍通过 file version、重新加载和写后诊断检测。
+- `file_version` 是一个不透明的 DSH `FsVersion` token，由 `ctx.fs.readText` / `stat` / `writeText` 的返回值携带；adapter 在写入时把它映射为 `FsWriteIntent.replaceIfVersion`。Core 只把它当作可往返的版本标记，不解析其内部结构。
 
 返回值示例：
 
@@ -732,13 +745,13 @@ export const inject = [
   'subprocess',
   'systemPrompt',
   'storageDomain',
-  'typertGateway',
+  'typert',        // Typert 注册表（@deepseek-ai/dsh-typert-registry）；具体服务名以 spike 锁定版本的声明为准
   'commands',
   'skills'
 ]
 ```
 
-实际名称以 compatibility spike 中锁定版本的类型声明为准。
+> 注：真实 DSH 中 Host 侧注册 Remote namespace 的是 Typert registry（其 client-inject 为 `'remote'`，Host 侧通过 `ctx.inject(['typert'], ...)` 获取）。`typertGateway` 是早期命名，实际以锁定版本的类型声明为准。
 
 ### 8.2 Project Locator
 
@@ -935,21 +948,37 @@ Graph 更新通知第一版不新增自定义流协议。Panel 可见且浏览�
 package manifest 中的 `dsh.client.inject` 只在确实存在跨客户端包依赖时填写包名；浏览器插件实际使用的服务通过代码导出声明：
 
 ```ts
-export const inject = ['slots', 'layout', 'sessions', 'remote']
+export const inject = ['betterSidebar', 'remote', 'sessions']
 ```
+
+- `betterSidebar`：注册 Research Tab（client half 服务）。
+- `remote` + `sessions`：SciFork 自己的 Host↔Client 一元调用与当前会话上下文。**这两个不是 better-sidebar 提供的**——它的 Tab 组件只拿到 `scope.sessionId`/`cwd`，不注入 Remote namespace；SciFork 需自行注入 `remote`/`sessions` 建立 `ctx.remote.scifork`，图表格组件用 Tab 传入的 `scope.sessionId` 作会话转发。
+- SciFork 不再直接使用 `slots`/`layout`（图谱不再注册 DSH 内部 slot，而是经 better-sidebar 的 portal 渲染）。
 
 Client 输出必须是 DSH Client Module Registry 可加载的 lazy-CJS factory，而不是普通浏览器 ESM。SciFork 不是启动基础设施，不设置 `immediately: true`。具体 bundler 配置和 external 列表由 M0 在锁定 DSH 版本上验证。
 
-### 10.2 右侧面板策略
+### 10.2 侧边栏挂载策略
 
-当前 DSH `details` 是 `single` slot，并已被 `ui-conversation` 的 Tool Details 占用；第三方注册会替换整个右栏，而不是在其中追加内容。同时当前官方实现注明 Tool Details 尚没有可达入口。
+v0.1 不占用 DSH 的右栏 (`details`)：它是 `single` slot，已被 `ui-conversation` 的 Tool Details 占用。Tool Details 当前是可达的能力（通过点击消息流中的工具行打开），第三方注册会遮蔽整个右栏并连同工具详情一并消失，违背「不破坏已有能力」的目标。
 
-MVP 不提供 `panelMode` 配置，也不长期维护两套挂载代码。M0 compatibility spike 只负责作出一次选择：
+SciFork 改为依赖社区侧边栏宿主 **DSH better-sidebar**，把 Research Graph 注册成工作台中的一个 Tab（与文件 / 终端 / Git / 子代理等 Tab 并列），聊天保持居中常驻。better-sidebar 并不占用 DSH 的 `sidebar` 槽：它在 client half 自托管一个固定侧边栏面板宿主（通过 CSS 变量把中间列推开），对三方开放可叠加的 Tab/FileViewer 注册，所有扩展（含 SciFork）都是可叠加的，不发生 slot 遮蔽，也不修改 DSH 源码。
 
-1. 首选验证 `details`：如果锁定 DSH 版本上替换 occupant 不破坏任何可达能力，则 SciFork 使用右侧 Research Graph，并在 conversation header action 中提供打开按钮。
-2. 如果 `details` 合约不安全，则该版本只发布 `conversation.view` tab。
+注册方式（client half）：注册 Tab 至少需要 `inject = ['betterSidebar']`（SciFork 完整 client inject 见 §10.1：`['betterSidebar','remote','sessions']`），用 `ctx.effect(() => ctx.betterSidebar.registerTab({ id, title, order, single, component }))` 注册并让 disposer 在卸载时生效；标签 `id` 需用包名前缀且不与内置 Tab（`editor|git|subagent|sidechat|terminal|browser|diff`）冲突。类型通过 `import type {} from 'dsh-better-sidebar'` 合并，禁止 value-import。
 
-选择结果写入兼容矩阵并由一个 UI contract test 固定；未选方案不进入 v0.1 生产代码。未来 DSH 提供 additive details slot 时，再迁移到官方追加面。
+**Host↔Client 通信的边界**：better-sidebar 的 Tab 组件只拿到 `scope.sessionId` / `scope.cwd`，**不会向里注入 Typert Remote namespace**。SciFork 的本地时间线 / 工具代理的一元调用仍走 SciFork 自己的 Client 插件建立的 `ctx.remote.scifork`（需要在 SciFork client 侧注入 `remote` / `sessions`），图谱组件用 Tab 传入的 `scope.sessionId` 作为会话上下文转发给该 Remote；better-sidebar 的 `/sidebar/api/*` HTTP / `/sidebar/ws/*` WS 是**它自己**的状态通道，不是 SciFork 的默认数据通道。M0 需用真实代码确认这条 Remote 路径可行（这是本次选型中唯一未文档化、需 spike 验证的点）。
+
+MVP 不提供 `panelMode` 配置，也不长期维护两套挂载代码。v0.1 只实现「better-sidebar Tab」这一种挂载面。
+
+better-sidebar 的 Tab 注册契约必须像 FilePreview provider 一样在 M0 用真实代码锁定；注册函数、注入的服务名、Tab 作用域（注册类型全局、打开实例 per-session，图谱 Tab 用 `scope.sessionId` 取会话）以及它在锁定的 DSH 版本上的兼容性都写入兼容矩阵。若 better-sidebar 不兼容锁定的 DSH 版本，则 M0 阻塞，v0.1 只能回退到 `conversation.view` tab——这是正式运行的替代挂载面，而不是在发布内维护双模式。
+
+**SciFork 侧的适配要点**：
+- **`visible` 暂停**：图谱 Tab 组件接收 `visible`（是否为激活 tab 且面板打开）。`projectRevision` 轮询与布局仅在 `visible` 为真时进行，`false` 时暂停并保留上次投影，避免后台空转（对应设计里「Panel 可见且前台时才 5s 轮询」）。
+- **能力门**：使用 `openFile` / `settings` 等前先查 `ctx.betterSidebar.features.includes(<feat>)`（如 `'openFile'` / `'pluginSettings'`），按能力降级。
+- **内置 Tab id 保留**：SciFork 的 Tab `id` 用 `scifork:graph` 形式，避免与内置 `editor|git|subagent|sidechat|terminal|browser|diff` 冲突。
+- **Portal 限制**：外部 Tab 只能渲染在 better-sidebar 自己的面板宿主内，无法全屏替换；SciFork 图谱随侧边栏开关与面板几何变化，不与 DSH 右栏或浮层争抢。
+- **家族侧栏互斥**：better-sidebar 读取 aionui-panel 命名空间的 `rightPanel`，解析为 `'aionui-panel'` 时整个侧边栏不挂载（图谱随之不可见）。此行为写入风险表，M0 需确认不会在目标环境触发。
+
+未来 DSH 若提供 additive details slot 再评估迁移到官方追加面；v0.1 不为此维护两套挂载代码。
 
 ### 10.3 UI 组件
 
@@ -999,16 +1028,16 @@ export const UI_TEXT = {
 
 按钮文本、tooltip、ARIA label、状态、空状态以及 SciFork 生成的错误说明均使用英语。节点标题、Claim 和文件正文属于研究内容，保持原始语言。v0.1 不实现语言切换，但集中式文案保留未来接入本地化表的替换点。
 
-`Details` 通过一个薄的 Client-side `FilePreviewPort` 交给 DSH 或兼容文件预览插件：
+`Details` 通过一个薄的 Client-side `FilePreviewPort` 打开所选 Node / Result 的受管 Markdown。SciFork 不自建 Markdown 渲染器，也不做详情 Drawer：
 
 ```ts
 interface FilePreviewPort {
   isAvailable(): boolean
-  open(request: { workspaceId: string; path: string }): Promise<void>
+  open(request: { sessionId: string; cwd?: string; path: string }): Promise<void>
 }
 ```
 
-M0 必须在锁定的 DSH 组合中确认真实 provider、注入名和路径 contract。当前官方主线尚无稳定、文档化的内置文件预览 service，因此 SciFork 不猜测私有接口，也不提供 Drawer 回退；发布工件必须声明并测试所需的文件预览组合。
+由于 v0.1 图谱经 better-sidebar 挂载，M0 **首选**的 `FilePreviewPort` 实现是 better-sidebar 自身的文件打开能力：`ctx.betterSidebar.openFile({ sessionId, cwd }, relativePath)`，让受管 Markdown 在侧边栏内置 markdown / code viewer 中预览（better-sidebar 已内置 markdown viewer，SciFork 不再需要额外的第三方预览 provider 即可满足 `Details`）。调用前用 `ctx.betterSidebar.features.includes('openFile')` 做能力门。仅当目标组合不提供 `openFile` 时，才回退到 M0 验证通过的第三方 FilePreview provider；v0.1 不猜测私有接口，也不提供 Drawer 回退。
 
 建议继续使用 `@xyflow/react` 渲染局部卡片和边，使用 `@dagrejs/dagre` 提供确定性有向布局，并复用 DSH React 与主题 token。布局坐标仅存在浏览器内存，不写入科研仓库。
 
@@ -1020,8 +1049,8 @@ M0 必须在锁定的 DSH 组合中确认真实 provider、注入名和路径 co
 
 - **Back**：调用 `timelineBack()`，以 `actionGroupId` 为单位恢复上一个科研状态并创建恢复检查点；这不是 Focus 历史。
 - **Forward**：调用 `timelineForward()`，重新应用撤回栈中的下一个 Git 状态并创建恢复检查点。没有可前进状态时禁用；撤回后出现新 mutation 时清空 forward stack。
-- **Simulate**：将基于当前 Focus 的结构化提示写入 DSH composer draft，由用户确认发送。
-- **Details**：将所选 Node 或 Result 的受管 Markdown 路径交给 `FilePreviewPort`。Edge 详情及任意复杂查询通过 Chat 读取。
+- **Simulate**：通过会话输入服务的 `inputActions.setDraft(text)` 将基于当前 Focus 的结构化提示写入 composer draft，由用户确认发送。⚠️ 由于 v0.1 的图谱位于 better-sidebar 自托管的面板宿主内（不在会话 fiber 中），该 Tab 是否持有对应当前会话的 `inputActions` 尚属 M0 需验证的未决点：若 better-sidebar 的 Tab 作用域拿不到输入服务，则改用 SciFork 自己的 Host 服务经 `ctx.remote.scifork` 把草稿写回 composer，或在 `conversation.view` 回退方案中直接调用。
+- **Details**：将所选 Node 或 Result 的受管 Markdown 路径交给 `FilePreviewPort`（M0 首选实现为 better-sidebar 的 `ctx.betterSidebar.openFile`；`features.includes('openFile')` 能力门）。Edge 详情及任意复杂查询通过 Chat 读取。
 
 查找证据、寻找反证、添加实验结果、检索候选筛选、查看 Timeline、恢复任意历史点和错误诊断都通过 Chat / Tool 完成。Graph 页面不增加 `Find Evidence`、`Find Counterevidence`、`Add Result` 等按钮或专用面板。
 
@@ -1483,7 +1512,7 @@ GitHub SDK
 - Finding/Hypothesis/Inference 样式不混淆。
 - projectRevision 未变化时不重复布局。
 - diagnostics 不导致整个面板崩溃，冲突状态进入只读。
-- M0 选定的唯一 Graph 挂载面和文件预览 provider 均可加载、卸载和重新挂载。
+- M0 选定的唯一 Graph 挂载面（better-sidebar Tab）和文件预览 provider 均可加载、卸载和重新挂载。
 - 普通模式不暴露 commit、hash 和 Git 命令。
 - 按钮、tooltip、ARIA label、状态、空状态和错误提示均为英语；测试不把节点标题或 Claim 等研究内容误判为 UI 文案。
 
@@ -1537,9 +1566,9 @@ GitHub SDK
 
 1. `pnpm pack` 生成唯一的 `dsh-scifork-<version>.tgz`。
 2. 检查 tarball 不含 `workspace:*`、测试 fixture、开发配置或密钥。
-3. 在空临时目录和全新 DSH Web profile 中安装 tarball。
+3. 在空临时目录和全新 DSH Web profile 中安装 tarball，并同时安装锁定版本的 better-sidebar。
 4. 执行 `dsh --profile <test-profile> --dump-config`，确认 `scifork` 只出现一次。
-5. 启动 DSH，验证 Host tool、Remote、Client bundle 和 Graph Panel。
+5. 启动 DSH，验证 Host tool、Remote、Client bundle、better-sidebar 工作台中的 SciFork Research Tab 均渲染正常。
 6. 卸载后重启 DSH，确认 profile 与原有 Session 可恢复。
 7. Windows、Linux 至少各完成一次 smoke test。
 8. 计算 SHA-256，并验证 Git tag、package version、tarball 文件名一致。
@@ -1555,15 +1584,17 @@ GitHub SDK
 1. 安装本地 bundle。
 2. 注册一个只读 dummy tool。
 3. 建立一个 Typert echo Remote。
-4. 通过 package-owned lazy Client bundle 分别探测 `details` 和 `conversation.view`，并选择一个生产挂载面。
-5. 验证一个公开或明确声明兼容的 FilePreview provider 能打开受管 Markdown 路径；不可用时 M0 阻塞。
-6. 打开 storage domain，按 sessionId 写入/读取 focus 与 Timeline navigation state。
-7. 注册并读取一个 package-owned dummy Skill。
-8. 注册一个 `/research validate` dummy command。
-9. 通过 `ctx.subprocess` 以 argv-only 方式调用固定的 `git --version`。
-10. 重启 DSH，确认原 Session、Focus 与 Git 前进/后退状态可恢复。
+4. 通过 package-owned lazy Client bundle 以 thin-consumer 模式注册一个 DSH better-sidebar Tab（Research Graph 占位）：`inject = ['betterSidebar']`、`ctx.effect(() => ctx.betterSidebar.registerTab({ id, title, order, single, component }))`、`import type {} from 'dsh-better-sidebar/client/service'`；并验证 Tab 能在锁定的 DSH 版本上渲染、卸载时由 disposer 正确清理。不可用则 M0 阻塞。
+5. 验证 SciFork 自有的 Host↔Client Remote 路径可行：better-sidebar Tab 组件虽只拿到 `scope.sessionId`/`cwd`，但 SciFork client 通过注入 `remote`/`sessions` 建立 `ctx.remote.scifork` 后，图谱组件能用 `scope.sessionId` 调通 Host 的 echo Remote / 数据 Remote（这是本次选型唯一未文档化、必须 spike 的点）。
+6. 验证 Simulate 到 composer 草稿的路径：确认 better-sidebar 面板作用域能否取到当前会话的 `inputActions.setDraft`；若不能，则确认改走 `ctx.remote.scifork` 交由 Host 写回 composer 的替代方案。
+7. 验证 `Details` 的受管 Markdown 打开路径：首选用 better-sidebar 的 `ctx.betterSidebar.openFile`（`features.includes('openFile')`）在侧边栏内置 markdown viewer 中预览；不可用时才回退到第三方 FilePreview provider。
+8. 打开 storage domain，按 sessionId 写入/读取 focus 与 Timeline navigation state。
+9. 注册并读取一个 package-owned dummy Skill。
+10. 注册一个 `/research validate` dummy command。
+11. 通过 `ctx.subprocess` 以 argv-only 方式调用固定的 `git --version`。
+12. 重启 DSH，确认原 Session、Focus 与 Git 前进/后退状态可恢复。
 
-验收标准：所有接口均来自公开/文档化扩展面；没有修改 DSH 源码；版本和实际 slot contract 被记录。
+验收标准：所有接口均来自公开/文档化扩展面；没有修改 DSH 源码；better-sidebar Tab 契约、SciFork 自有 Remote 路径、Simulate→composer 路径、锁定的 DSH 版本与实际 slot contract 被记录。
 
 ### M1：Research Core
 
@@ -1595,8 +1626,8 @@ GitHub SDK
 1. 实现 Focus-centered Local Graph Canvas 和信息卡片。
 2. 实现仅含 `Back`、`Forward`、`Simulate`、`Details` 的英语 GraphActionBar。
 3. 实现 Timeline back/forward Remote、英语 tooltip 与按钮状态机。
-4. 接入 M0 验证通过的 FilePreviewPort，不实现 details drawer。
-5. 只实现 M0 选定的 Graph UI 挂载面。
+4. 接入 `Details` 文件打开路径：首选 better-sidebar 的 `ctx.betterSidebar.openFile`（内置 markdown viewer），不实现 details drawer，也不自建 Markdown 渲染器。
+5. 只实现 M0 选定的 Graph UI 挂载面（better-sidebar Tab）。
 6. 实现只读冲突和被动错误状态，不实现 GraphToolbar、TimelinePanel、搜索、候选、结果表单或反证按钮。
 
 验收标准：文件、Graph、Git 导航、焦点和 Chat context 一致；Graph 页面只有四个英语操作，并且所有 SciFork 自有状态与错误文案均为英语。
@@ -1631,7 +1662,7 @@ GitHub SDK
 SF-001  创建 GitHub monorepo、三内部包与根部 dsh-scifork bundle 骨架
 SF-002  完成 DSH bundle load/unload spike
 SF-003  完成 Host/Client Remote echo spike
-SF-004  验证 Graph 挂载面与兼容 FilePreview provider，并固定生产组合
+SF-004  验证 better-sidebar Tab 挂载与兼容 FilePreview provider，并固定生产组合
 SF-005  验证 storage-domain focus sidecar
 SF-006  验证 packaged Skill provider 与 commands contract
 SF-007  定义 research.json / Node / Edge / Evidence / Result schema
@@ -1658,8 +1689,12 @@ SF-021  建立 GitHub CI 与 Release workflow
 | 风险 | 影响 | 应对 |
 | --- | --- | --- |
 | DSH 预览版 API 破坏性变化 | 插件无法加载 | 精确版本、薄适配层、compatibility spike |
-| `details` 是 single slot | 可能替换内置 Tool Details | M0 只选择一个安全挂载面，不在 MVP 维护双模式 |
-| 官方主线缺少稳定 FilePreview service | `Details` 无法打开 Markdown | M0 验证并锁定兼容 provider；作为发布依赖；不回退到自建 Drawer |
+| `details` 是 single slot | 若占用会遮蔽内置 Tool Details | v0.1 不占用 `details`；图谱经 better-sidebar Tab 挂载 |
+| better-sidebar 依赖 | 图谱必须在其宿主上才可见；社区插件 API 随版本变动 | 声明为正式运行依赖（可选 peerDep）；官方支持 DSH `0.1.1-rc.2`，但仍需 M0 以 thin-consumer 模式锁定 Tab 注册契约；不引入其非文档化的内部 channel |
+| better-sidebar Tab 无 Remote namespace | 图谱难以直接调 Host 数据 | SciFork 自行注入 `remote`/`sessions` 建立 `ctx.remote.scifork`，图表格组件用 `scope.sessionId` 转发；M0 用 echo Remote 验证 |
+| better-sidebar 面板作用域取不到输入服务 | `Simulate` 无法写 composer 草稿 | M0 验证；若不可用则改走 `ctx.remote.scifork` 由 Host 写回，或回退 `conversation.view` |
+| 家族侧栏互斥（aionui-panel `rightPanel`） | 整个侧边栏不挂载，图谱不可见 | 确认目标环境不会触发；作为已知限制写入文档；必要时回退 `conversation.view` |
+| `Details` 文件预览 | 需要可靠的 Markdown 打开能力 | 首选 better-sidebar 的 `ctx.betterSidebar.openFile`（内置 markdown viewer，`features.includes('openFile')` 门）；不可用才回退第三方 FilePreview provider；不自建 Drawer/渲染器 |
 | `Back` 后产生新 mutation | `Forward` 目标不再线性 | 清空 forward stack；旧状态仍保留在 Git，可由 Chat 指定恢复 |
 | 第三方 SessionEvent 持久化不稳定 | 会话无法恢复 | MVP 完全不写自定义 SessionEvent |
 | `ctx.fs` 暂无 mkdir 原语 | 初始化受限于本地文件系统 | 显式 local-only 初始化器；固定目录；后续全部走 ctx.fs |
@@ -1710,9 +1745,9 @@ SF-021  建立 GitHub CI 与 Release workflow
 
 接受。它不是科研事实，也不写入当前不稳定的第三方 SessionEvent。
 
-### ADR-008：MVP 只发布一个 Graph 挂载面
+### ADR-008：MVP 只发布一个 Graph 挂载面（better-sidebar Tab）
 
-接受。M0 优先验证 details；若不安全则选择 conversation view tab。v0.1 不提供双模式配置。
+接受。v0.1 把 Research Graph 作为 DSH better-sidebar 的一个 Tab 发布；不占用 `details` 右栏，也不提供双挂载面配置。better-sidebar 是可叠加的自托管侧边栏宿主（不遮蔽 DSH 的 `sidebar` 槽），它只在 client half 提供 `ctx.betterSidebar.registerTab` 给 SciFork 注册图谱 Tab。若 better-sidebar 对锁定 DSH 版本不可用，M0 阻塞并回退到 `conversation.view` tab——那是一个正式运行的替代挂载面，而不是在发布内并行维护双模式。
 
 ### ADR-009：GitHub 单仓库、单工件发布
 
@@ -1756,7 +1791,7 @@ SF-021  建立 GitHub CI 与 Release workflow
 
 ### ADR-019：Graph 默认使用 Focus 局部信息卡片
 
-接受。Client 默认只渲染 Focus、当前路径和一层邻居；节点摘要显示为信息卡片，完整内容交给文件预览能力。MVP 不把完整项目图谱塞入右栏，也不实现详情 Drawer。
+接受。Client 默认只渲染 Focus、当前路径和一层邻居；节点摘要显示为信息卡片，完整内容交给文件预览能力。MVP 不把完整项目图谱塞进单一面板，也不实现详情 Drawer。
 
 ### ADR-020：节点定位和检索候选复用 DSH Chat
 
@@ -1793,7 +1828,7 @@ SF-021  建立 GitHub CI 与 Release workflow
 - 用户可在 Chat 提供实验描述或图表路径，由 LLM 生成可确认的 ResultDraft；保存后直接投影为 User Result。
 - 缺少检索能力时明确失败；MeSH 只做轻量扩展；PubTator 关系不能未经审查进入 supported Graph。
 - 三个 packaged Skills 可由 DSH 发现、按需读取，并随插件卸载而移除。
-- 锁定 DSH 版本只启用一个经过测试的 Graph UI 挂载面。
+- 锁定 DSH 版本只启用一个经过测试的 Graph UI 挂载面（better-sidebar Tab）。
 - 卸载 SciFork 后科研仓库完全可读，DSH Session 仍能恢复。
 - GitHub tag 可自动生成唯一的预构建 `dsh-scifork-<version>.tgz` 和 SHA-256 校验文件。
 - 该 tarball 可在全新 DSH Web profile 中安装、启动和卸载，且不依赖任何 `@scifork/*` workspace 包。

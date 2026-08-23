@@ -3,6 +3,9 @@ dist/
 coverage/
 *.tgz
 
+# Local research snapshot of third-party plugin sources (not part of the repo)
+.dsh-research/
+
 .env
 .env.*
 !.env.example
