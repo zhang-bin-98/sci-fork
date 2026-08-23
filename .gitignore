@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+
+.env
+.env.*
+!.env.example
+
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
