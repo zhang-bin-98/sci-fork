@@ -1,4 +1,4 @@
-# SciFork 产品设计 v0.4
+# SciFork 产品设计 v0.7
 
 > **Fork hypotheses. Connect evidence. Advance research.**
 
@@ -22,7 +22,7 @@ SciFork 不重新实现 Chat，不建立复杂科研平台，也不维护独立�
 
 ## 2. 核心产品理念
 
-整个系统只坚持五个原则。
+整个系统只坚持六个原则。
 
 ### 2.1 Chat 不重做
 
@@ -93,7 +93,7 @@ git push
 
 因此一个科研项目天然具备：**版本控制 + 审计 + 协作 + 分享 + 迁移。**
 
-用户界面只呈现“已保存”“返回上一步”“恢复到这里”和“查看变化”。其中恢复会创建新的历史记录，而不是删除或重写旧历史。Push、Pull、远端分支、PR、Merge、Rebase 和冲突解决不由 SciFork 设计，统一交给 DSH 在用户要求下处理。
+普通界面只呈现 `Saved` 状态，以及 `Back`、`Forward`、`Simulate`、`Details` 四个操作。`Back` 与 `Forward` 都从 Git 检查点恢复科研状态并创建新的恢复记录，不删除或重写旧历史；查看更早变化或恢复任意检查点通过 Chat 完成。Push、Pull、远端分支、PR、Merge、Rebase 和冲突解决不由 SciFork 设计，统一交给 DSH 在用户要求下处理。
 
 ### 2.4 Graph 是科研状态的视图
 
@@ -107,7 +107,7 @@ Graph parser
 Research Graph
 ```
 
-文件变了，打开的 Graph 会在下一次刷新周期自动更新，也允许用户手动 Refresh；图上进行了科研语义操作，文件随之改变。
+文件变了，打开的 Graph 会在下一次刷新周期自动更新；刷新和视图适配由插件自动完成，不增加手动按钮。图上进行了科研语义操作，文件随之改变。
 
 ### 2.5 AI 推演必须与真实证据分离
 
@@ -141,6 +141,12 @@ D
 
 假设逐渐转变为证据。这是整个产品最核心的科研逻辑。
 
+### 2.6 SciFork UI 统一使用英语
+
+SciFork 自有界面中的按钮、状态、空状态、提示和错误信息统一使用英语。固定的主要操作为 `Back`、`Forward`、`Simulate` 和 `Details`；常用状态包括 `Saved`、`Working…`、`Read-only` 和 `Git conflict`。第一版不提供语言切换，也不在 Client 中硬编码中文界面文案。
+
+这一约束只适用于 SciFork 自有 UI。DSH Chat 可以继续按照用户的会话语言响应，科研 Markdown 文件也不限制语言。
+
 ## 3. 产品一句话定位
 
 > **一个运行在 DeepSeek Harness 中、以 Git 仓库保存科研状态、基于文献证据进行交互式科研虚拟推演的轻量级生物医学 Research Graph 插件。**
@@ -151,45 +157,47 @@ D
 
 ## 4. 用户界面
 
-不设计新的完整 Web App。产品目标布局使用 DSH 的原生 Chat 加一个 Research Graph 视图；下图是右栏扩展契约可用时的首选布局：
+不设计新的完整 Web App。产品目标布局使用 DSH 的原生 Chat 加一个局部 Research Graph 视图；下图是右栏扩展契约可用时的首选布局：
 
 ```text
 ┌────────────┬────────────────────────────┬────────────────────────┐
+│ Sessions   │      Native DSH Chat       │    Local Graph         │
 │            │                            │                        │
-│ Sessions   │      Native DSH Chat       │    Research Graph      │
+│            │ User / Assistant / Tools   │ [Finding] A            │
+│            │                            │      ↓                 │
+│            │                            │ [Hypothesis] B         │
 │            │                            │                        │
-│            │ User: ...                  │        A               │
-│            │                            │        │               │
-│            │ Assistant: ...             │        B               │
-│            │                            │       / \              │
-│            │ Tool call ...              │      C   D?            │
-│            │                            │                        │
-│            │                            │ Explore  Simulate       │
-│            │                            │ Challenge Add Result    │
-│            │                            │                        │
+│            │                            │ Back Forward Simulate  │
+│            │                            │ Details                │
 └────────────┴────────────────────────────┴────────────────────────┘
 ```
 
-Research Graph 视图尽可能简单，只承担三个功能：
+Research Graph 视图只承担三个功能：
 
 ### 看
 
-查看当前 Research Graph。
+查看以当前 Focus 为中心的局部 Research Graph。默认展示当前实体、当前研究路径和一层直接邻居；右侧视图不铺开完整项目。
+
+每个节点使用紧凑信息卡片，固定显示类型、标题或一行 Claim、状态/置信度/来源，以及支持、反对和 Evidence Gap 计数。
 
 ### 选
 
-选择某个 Node、User Result 或 Edge 作为当前科研焦点。
+点击 Node 或 User Result 卡片即可改变当前科研焦点；Focus 变化只改变局部视图和 Chat 上下文，不修改科研文件。
 
 ### 做
 
-针对当前实体显示适用操作：
+Graph 页面只显示四个操作；`Simulate` 和 `Details` 作用于当前 Focus：
 
-- Explore
-- Simulate
-- Challenge
-- Add Result
+- **Back**：撤回上一个完整科研操作组，从 Git 恢复此前状态并创建新的恢复检查点。
+- **Forward**：重新应用刚刚撤回的科研状态；发生新的科研写入后禁用该操作，但原状态仍保留在 Git 历史中。
+- **Simulate**：把基于当前 Focus 的结构化推演提示写入 Chat 草稿，由用户确认发送。
+- **Details**：用 DSH 提供的侧边栏文件预览打开实体对应的 Markdown 源文件。
 
-其余所有复杂交互仍然通过 Chat 完成。
+`Back` 和 `Forward` 是科研状态的 Git 导航，不是 Focus 浏览历史。Focus 导航直接通过点击卡片或在 Chat 中指定节点完成。
+
+SciFork 不实现 details drawer、Graph 搜索框、`Find Evidence`、`Find Counterevidence`、`Add Result` 按钮或 Timeline 面板。查找证据、筛选文献、寻找反证、添加实验结果、查看完整历史和恢复指定状态都通过 Chat 完成。
+
+`Details` 依赖运行环境提供可发现的文件预览能力；SciFork 只提交受管文件路径，不再实现第二套 Markdown 渲染器。如果锁定版本的 DSH 没有兼容能力，M0 必须将相应文件预览插件列为运行依赖，而不是把 Drawer 加回 SciFork。
 
 ## 5. Research Graph 的基本模型
 
@@ -367,7 +375,7 @@ Paper C
 
 ## 9. 用户研究结果
 
-团队成员产生的实验结果直接保存：
+团队成员通过 Chat 提供实验描述、分析结果、图表路径或运行环境支持的附件；DSH 读取内容后，由 LLM 生成结构化 Result 草稿并在用户确认后保存：
 
 ```text
 results/
@@ -405,6 +413,12 @@ Supports the lipid-mediated TREM2 hypothesis.
 ```
 
 这个 Result 文件本身直接显示为 Graph 中的 User Result。若它支持某个 Hypothesis，创建一条 `ResultId → HypothesisId` 的 `supports` Edge；不再额外生成内容重复的 User Result Node。
+
+第一版不提供 `Add Result` 按钮或专用表单。例如用户可以在 Chat 中要求：
+
+> 读取 `results/figure-1.png`，总结主要观察，区分观察事实与解释，并把它加入当前假设。
+
+LLM 负责提取 Method、Result 和 Interpretation，保留可用的源文件路径或附件引用，并明确标记自动生成的总结；用户确认后调用 `research_graph_apply(CreateResult)`。保存的 Result 直接投影为 Graph 中的 User Result 卡片，即用户所看到的结果节点。SciFork 不复制生成第二个 Node，也不把无法读取或无法追溯的图表总结声明为直接证据。
 
 Agent 随后可以：
 
@@ -529,6 +543,12 @@ A → B → H001
 
 于是知道用户问的是 H001。
 
+用户也可以完全从 Chat 改变焦点：
+
+> 找到“乳酸影响 CD8 exhaustion”的假设并聚焦它。
+
+DSH 先在 Research Graph 中解析候选实体；若只有一个明确匹配，直接设置 Focus，若存在多个近似匹配，则在 Chat 中列出简短候选供用户选择。Graph 本身不实现第二套搜索体验。
+
 点击 `Simulate` 后，插件调用 DSH Agent。Agent 完成推演之后：
 
 ```text
@@ -637,8 +657,8 @@ research_graph_apply
 research_focus
 ```
 
-- `research_graph_read`：读取项目摘要、焦点、实体、邻域或诊断。
-- `research_graph_apply`：通过一个语义命令新增或修改 node、edge、evidence 或 result。
+- `research_graph_read`：读取项目摘要、焦点、实体、邻域、诊断或 Git 科研时间线。
+- `research_graph_apply`：新增或修改科研实体，也承载用户明确要求的 Git `Back`、`Forward` 和指定状态恢复。
 - `research_focus`：设置当前研究焦点。
 
 PubMed 检索本身可以作为独立 Skill / Tool；Git 直接使用已有 Git 能力。
@@ -781,6 +801,10 @@ DSH 调用可用的 Entrez / Web / PubTator 工具
             ↓
 LLM 筛选并输出结构化 Evidence candidates
             ↓
+Chat 展示候选、解释纳入排除理由并辅助用户筛选
+            ↓
+用户确认需要采纳的候选
+            ↓
 SciFork Core 验证 ResearchCommand
             ↓
 写入 Graph + 自动本地检查点
@@ -788,9 +812,9 @@ SciFork Core 验证 ResearchCommand
 
 Skill 负责查询规划、MeSH/同义词扩展、纳入排除标准和证据抽取规则；它本身不是网络执行器。实际数据访问由 DSH 中可用的 Tool、API connector 或现有 NCBI 能力完成。若环境没有合适检索能力，Skill 应明确报告不可用，而不是由模型凭参数记忆补造文献。
 
-检索工具先返回确定性文章数据，例如 PMID、标题、摘要、作者、日期、文章类型、MeSH 和 source URL。LLM 随后按照 Skill 输出 `RetrievalPlan`、`EvidenceCandidate` 和 `GraphProposal` 等结构化对象，并通过 typed `research_graph_apply` 参数进入插件；Core 不从自由 Markdown 中猜测持久化数据。
+检索工具先返回确定性文章数据，例如 PMID、标题、摘要、作者、日期、文章类型、MeSH 和 source URL。LLM 随后按照 Skill 输出 `RetrievalPlan`、`EvidenceCandidate` 和 `GraphProposal` 等结构化对象，在 Chat 中完成去重、排序、纳入排除解释和候选筛选；只有用户决定采纳的对象才通过 typed `research_graph_apply` 参数进入插件。Core 不从自由 Markdown 中猜测持久化数据。
 
-检索、排序和临时候选不会创建 Git 检查点。只有 Evidence、Node、Edge、Result 或 manifest 真正发生有效变化时才创建检查点。一次用户操作产生多个单实体命令时，各检查点共享 `actionGroupId`，Timeline 对用户聚合显示为一项科研操作。
+检索、排序和临时候选只存在于 DSH Chat / Tool 结果中，不进入 Graph，不增加候选面板，也不会创建 Git 检查点。只有 Evidence、Node、Edge、Result 或 manifest 真正发生有效变化时才创建检查点。一次用户操作产生多个单实体命令时，各检查点共享 `actionGroupId`；`research_graph_read(timeline)` 在 Chat 中将其聚合为一项科研操作。
 
 ### 20.4 DSH、Skill 与插件的能力边界
 
@@ -807,7 +831,7 @@ Skill 负责查询规划、MeSH/同义词扩展、纳入排除标准和证据抽
 | Evidence/Node/Edge/Result 受控写入 | SciFork Core + Host |
 | Graph、Focus、本地 Timeline 和恢复 | SciFork Plugin |
 
-因此第一版不独立实现 Chat、Agent Runtime、PubMed 搜索服务器、PDF 管理、文章知识图谱、向量数据库、RAG 后端或远端 Git 客户端。
+因此第一版不独立实现 Chat、Agent Runtime、Graph 搜索框、检索候选面板、PubMed 搜索服务器、PDF 管理、文章知识图谱、向量数据库、RAG 后端或远端 Git 客户端。
 
 ## 21. 插件真正负责的东西只有四块薄能力
 
@@ -824,7 +848,6 @@ research-plugin/
 │   └── local-git-timeline
 ├── client/
 │   ├── ResearchGraphView
-│   └── TimelineView
 └── skills/
     ├── literature-search
     ├── scientific-simulation
@@ -879,7 +902,7 @@ TAM phenotype
 sim/lipid-metabolism
 ```
 
-系统检索 PubMed 并继续推演。学生完成实验后添加：
+系统检索 PubMed 并继续推演。学生完成实验后在 Chat 中提供实验描述或图表，LLM 总结并在用户确认后生成：
 
 ```text
 results/res_512d7a02-a293-41fa-964f-b4a27c37d03d.md
@@ -891,7 +914,7 @@ Result 文件直接显示为 User Result，并通过 `supports` Edge 连接 Hypo
 experiment: support lipid-mediated TREM2 hypothesis
 ```
 
-用户不满意时可以“返回上一步”，SciFork 通过新的恢复检查点回到此前状态并保留完整历史。是否 Push、如何合并到 `main` 以及如何处理冲突不属于 SciFork 闭环，由使用者视情况指示 DSH 完成。
+用户不满意时点击 `Back`，SciFork 从 Git 恢复上一个科研操作组并创建新的恢复检查点；随后可以点击 `Forward` 重新应用该状态。若撤回后产生新的科研写入，`Forward` 失效，但旧状态仍保留在 Git 历史中，并可通过 Chat 恢复。是否 Push、如何合并到 `main` 以及如何处理冲突不属于 SciFork 闭环，由使用者视情况指示 DSH 完成。
 
 ## 23. MVP 明确不做什么
 
