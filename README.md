@@ -3,29 +3,34 @@
 > Fork hypotheses. Connect evidence. Advance research.
 
 SciFork is a Git-native biomedical Research Graph that works alongside DeepSeek
-Harness (DSH). DSH remains the conversation surface; SciFork opens its graph as
-a same-origin standalone browser Companion that can float beside DSH or use the
-operating system's side-by-side window layout.
+Harness (DSH). DSH remains the conversation surface; SciFork opens a same-origin
+standalone Companion that can float beside DSH or use the operating system's
+side-by-side layout.
 
 ## Current status
 
-This repository is still a design-stage, minimal installable DSH bundle
-scaffold. The entry point intentionally registers no capabilities until the
-compatibility spike pins and verifies the DSH preview contracts.
+This repository is a design-stage, minimal installable DSH bundle scaffold. The
+implementation remains intentionally empty until the compatibility spike pins
+the exact DSH preview contracts.
 
-The current target design has these boundaries:
+The lean MVP design has these boundaries:
 
-- One first-party bundle serves the Host, a tiny DSH Bridge, and the standalone
-  Graph Companion; it does not require third-party DSH plugins.
-- The Companion uses the existing DSH Web origin under `/scifork/*`; v0.1 is
-  loopback-only and opens no extra port.
-- The DSH Bridge only adds an Open action and composer-draft handoff. It does
-  not replace the sidebar, conversation, or details areas.
-- `DSH-better-sidebar v0.15.2` is a fixed reference for lifecycle, session/cwd
-  scoping, visibility pause, and draft handoff patterns—not a runtime
-  dependency.
-- The research repository remains the source of truth. Source, Evidence
-  Assertion, Result, Finding, Hypothesis, and Prediction have separate roles.
+- One package and one first-party bundle contain Core, Host, DSH Bridge,
+  Companion assets, and one `SciFork Research` Skill.
+- The Companion uses `/scifork/*` on the existing DSH Web origin, is
+  loopback-only, and opens no extra port.
+- The page has one responsive layout; there are no Compact/Workspace modes.
+- Clicking `Simulate` automatically submits to the corresponding DSH Chat.
+  An idle Chat starts immediately; a running Chat queues the request.
+- A lightweight PubMed tool supports keyword search and PMID/DOI lookup only.
+  It does not implement MeSH, PubTator, full text, caching, or RAG.
+- Other Skills may supply a `Research Import Draft` containing literature
+  Evidence Candidates. SciFork requires a PMID or DOI before persistence;
+  research-team data remains a Result.
+- Git uses the current branch, managed-path checkpoints, and one-step
+  Back/Forward. Branches and remotes remain the user's or DSH's responsibility.
+- `DSH-better-sidebar v0.15.2` is a fixed implementation reference, never a
+  dependency, peer dependency, profile entry, or runtime provider.
 
 Read the [product design](docs/scifork-product-design.md), [software
 architecture](docs/scifork-software-architecture.md), and [domain
@@ -49,18 +54,17 @@ The dumped configuration should contain exactly one `scifork` loader entry.
 
 ## Release requirements
 
-- Pin the exact tested DSH preview version and record the verified WebServer,
-  additive overlay, and composer-draft contracts.
+- Pin and smoke-test the exact DSH WebServer, additive overlay, scoped
+  `SessionInput.setDraft + submit`, Skills, filesystem, and subprocess
+  contracts.
 - Distribute one prebuilt, auditable `.tgz` from GitHub Releases.
-- Verify a fresh DSH Web profile can install, open, and uninstall SciFork
-  without `dsh-better-sidebar` or any other third-party plugin.
-- Document the loopback-only security boundary, Git sharing responsibility,
-  sensitive-data handling, compatibility range, and upgrade procedure.
-- Keep the plugin in its own repository and add the `dsh-plugin` GitHub topic
-  when the remote repository is created.
+- Verify a fresh DSH Web profile can install, open, run Simulate, and uninstall
+  SciFork without any third-party plugin.
+- Document loopback security, Git sharing, sensitive-data handling,
+  compatibility, and upgrade behavior.
 
 ## License
 
 No license has been selected yet. The package is marked `UNLICENSED` until the
-project owner makes that choice explicitly. Any future copied code must also
-preserve the corresponding upstream license notice.
+project owner makes that choice explicitly. Any future copied code must preserve
+the corresponding upstream license notice.
