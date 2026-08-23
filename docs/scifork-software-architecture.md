@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v1.1
+# SciFork 软件架构与实现设计 v0.12
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-24
-> 上位设计：[SciFork 产品设计 v0.10](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.11](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -17,9 +17,9 @@ MVP 采用以下决策：
 7. 页面只有一套响应式布局。
 8. Page Key 直接绑定 session/project，不再做两阶段 token exchange。
 9. Git 使用当前分支，每次 mutation 创建受管路径检查点，只支持一步 Back/Forward。
-10. MVP 只发布一个 `SciFork Research` Skill。
-11. 内置 PubMed 工具只支持关键词搜索和 PMID/DOI lookup。
-12. 文献 Evidence 直接保存 PMID/DOI，不建立 Source 实体；外部 Skill 只能输出 `Research Import Draft`。
+10. MVP 发布一个 SciFork 专用的 `SciFork Research` Skill，以及一个通用的 `pubmed-search` 检索 Skill。
+11. 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
+12. 文献 Evidence 直接保存 PMID/DOI，不建立 Source 实体；任何检索结果都必须经过 Draft 格式化与 SciFork 校验。
 13. `better-sidebar` 固定参考 v0.15.2，但不是运行依赖。
 14. v0.1 只支持 loopback DSH Web，不开放独立端口、CORS、登录或远程访问。
 
@@ -32,7 +32,7 @@ MVP 采用以下决策：
 - `ctx.storageDomain`：保存 Focus、Page Key binding 和一步恢复状态。
 - `ctx.webServer.register()`：注册 `/scifork/*` 同源 exact/prefix 路由。
 - `ctx.subprocess`：用 argv 数组调用本地 Git。
-- `ctx.skills`：只注册一个 package-owned `SciFork Research` Skill。
+- `ctx.skills`：贡献 package-owned `SciFork Research` 和 `pubmed-search` 两个 Skill，由大模型按步骤加载。
 - `shell.overlay`：注册 additive `Open Research Graph` 操作。
 - `conversation.input.for(scope).setDraft()`：写入对应 Session composer。
 - `conversation.input.for(scope).submit()`：按 DSH 标准 Queue 模式提交并开始运行。
@@ -55,7 +55,7 @@ DSH 仍是快速变化的预览接口。发布必须锁定精确 DSH commit 或 
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ SciFork Host                                                    │
-│ Project Locator | Tools | Web routes | PubMed | Focus | Git     │
+│ Project Locator | Tools | Web routes | Focus | Git              │
 └───────────────────────────────┬─────────────────────────────────┘
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -65,7 +65,7 @@ DSH 仍是快速变化的预览接口。发布必须锁定精确 DSH commit 或 
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Research Project                                                │
-│ research.json + nodes/edges/evidence/results + Git      │
+│ research.json + nodes/edges/evidence/results + Git              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -90,7 +90,6 @@ SciFork/
 │   │   ├── index.ts
 │   │   ├── project-locator.ts
 │   │   ├── tools.ts
-│   │   ├── pubmed.ts
 │   │   ├── web-routes.ts
 │   │   ├── ui-state.ts
 │   │   └── git-checkpoints.ts
@@ -104,6 +103,10 @@ SciFork/
 │       ├── details.tsx
 │       └── styles.css
 ├── skills/
+│   ├── pubmed-search/
+│   │   ├── SKILL.md
+│   │   └── scripts/
+│   │       └── pubmed.mjs
 │   └── scifork-research/
 │       └── SKILL.md
 ├── tests/
@@ -115,7 +118,7 @@ SciFork/
 
 这些目录是源码边界，不是独立 package。根 `package.json` 是唯一依赖图、构建入口和发布单元。
 
-Release 只交付一个预构建 `dsh-scifork-<version>.tgz`。tarball 包含 Host、Bridge、Companion assets、一个 Skill、README 和许可证，不包含 `workspace:*` 或第三方 DSH 插件依赖。
+Release 只交付一个预构建 `dsh-scifork-<version>.tgz`。tarball 包含 Host、Bridge、Companion assets、`SciFork Research` 与 `pubmed-search` 两个 Skill、README 和许可证，不包含 `workspace:*` 或第三方 DSH 插件依赖。
 
 ## 5. Research Project 格式
 
@@ -245,7 +248,8 @@ interface EvidenceCandidate {
 interface ResearchImportDraft {
   schemaVersion: 1
   producer: {
-    skill: string
+    retrievalSkill: string
+    formatterSkill: 'scifork-research'
     generatedAt: string
   }
   evidenceCandidates: EvidenceCandidate[]
@@ -255,6 +259,7 @@ interface ResearchImportDraft {
 
 验证规则：
 
+- `retrievalSkill` 记录实际使用的检索 Skill，`formatterSkill` 必须是 `scifork-research`。
 - Draft 有固定总字节和 Evidence Candidate 数上限。
 - Draft schema 允许尚未补齐 Publication Reference 的候选，但该候选不可被接受或持久化。
 - 可持久化 Evidence Candidate 必须至少有有效 PMID 或规范化 DOI；两者都有时必须解析为同一篇文献。
@@ -284,13 +289,12 @@ Research Import Draft 是瞬时交互对象，不写入 Research Project 或 Git
 
 ### 7.2 工具
 
-MVP 注册四个工具：
+MVP 注册三个工具：
 
 ```text
 research_graph_read
 research_graph_apply
 research_graph_focus
-scifork_pubmed
 ```
 
 `research_graph_read` 支持 summary、focus、entity、neighborhood、find 和简短 checkpoint 状态。
@@ -298,8 +302,6 @@ scifork_pubmed
 `research_graph_apply` 只接受 discriminated typed command；模型不能提供任意路径、文件正文或 Git argv。
 
 `research_graph_focus` 只更新 sidecar Focus，不写科研文件或 Git。
-
-`scifork_pubmed` 见第 10 节。
 
 ### 7.3 人类命令
 
@@ -422,49 +424,67 @@ Companion user click
 - Companion 未收到 Bridge ack 时显示 `Retry` 和 `Copy`。
 - 不再使用 DraftRequest、bridge secret、Host claim 或把科研正文存入 Host 临时队列。
 
-## 10. SciFork Research Skill 与 PubMed
+## 10. 大模型编排的 Skills
 
-### 10.1 一个 Skill
+### 10.1 编排原则
 
-Host 通过 `ctx.skills` 只注册 package-owned `scifork-research`：
+大模型是唯一编排者：
+
+```text
+load selected retrieval Skill
+→ run search / lookup / PDF parsing
+→ keep retrieval results in current Chat context
+→ load scifork-research
+→ format Research Import Draft
+→ SciFork validates
+→ user reviews
+→ persist selected Evidence Assertions
+```
+
+Skill 不直接调用另一个 Skill，也不共享 provider 生命周期或私有中间协议。检索结果不是 Draft；只有大模型加载 `scifork-research` 后生成的结构才是 Research Import Draft。
+
+### 10.2 SciFork Research Skill
+
+Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`：
 
 - Retrieval guidance。
+- Research Import Draft formatting。
 - Simulation。
 - Critique。
-- Research Import Draft 使用说明。
 - SciFork typed tools 调用规则。
 
-Skill 不直接写文件，不拥有网络客户端，也不绕过用户确认。
+它读取当前 Chat context 中已有的检索结果，负责格式化、推理和提案；不拥有网络客户端，不直接写文件，也不绕过用户确认。
 
-### 10.2 轻量 PubMed 工具
+### 10.3 PubMed Search Skill
+
+Bundle 同时贡献通用 `pubmed-search` Skill。其 `SKILL.md` 指导大模型使用随 Skill 打包的轻量辅助脚本：
 
 ```ts
-type PubMedRequest =
-  | { operation: 'search'; query: string; limit?: number }
+type PubMedSkillRequest =
+  | { operation: 'search'; query: string; retstart?: number; retmax?: number }
   | { operation: 'lookup'; identifier: { pmid?: string; doi?: string } }
 ```
 
 Search：
 
-- 默认 10 条，最大 20 条。
-- 返回 PMID、DOI、title、journal、year、简化 authors、publication type。
-- 不返回无限摘要列表。
+- `query` 原样使用 PubMed/Entrez 查询语法。
+- 默认 `retmax=20`，单批最大 300；返回总数和下一页位置，不限制可分页检索的总数。
+- 返回 PMID、DOI、title、journal、year、简化 authors 和 publication type。
 
 Lookup：
 
-- 返回一篇确定性记录。
-- 可返回该文章的 abstract。
+- 返回一篇确定性记录，可包含可用 abstract。
 - 保留 canonical URL 和 retrieval time。
 
-实现直接调用 NCBI Entrez E-utilities，设置超时、User-Agent 和有界重试，并验证响应。
+辅助脚本直接调用 NCBI Entrez E-utilities，设置 `tool`、`email`、超时、User-Agent 和有界重试。无 API Key 时最多 3 requests/second，有用户配置的 API Key 时最多 10 requests/second；超过约 200 个 PMID 的批量元数据请求使用 POST 或 Entrez History。
 
-不实现 MeSH 扩展、PubTator、全文下载、缓存、批量同步、RAG 或文章知识图谱。
+脚本输出有界 JSON 到当前 Chat context，不生成 Draft，也不调用 SciFork tools。它不自动扩展 MeSH，不实现 PubTator、全文下载、缓存、RAG 或文章知识图谱。检索失败作为 Skill 执行结果显示，不进入 SciForkError。
 
-### 10.3 外部 Skill
+### 10.4 其他检索 Skills
 
-外部 Skill 可以检索文献或解析 PDF，但只交付 Research Import Draft。
+大模型可以改用其他数据库检索或 PDF 解析 Skill。它们只需把结果留在当前 Chat context，不需要理解 SciFork schema。随后大模型加载 `scifork-research` 完成统一格式化，并在 Draft provenance 中记录实际使用的检索 Skill。
 
-SciFork 对 Draft 的 schema、Publication Reference、locator、数量和大小负责；没有 PMID/DOI 的候选不可持久化。用户选择后，SciFork 才逐项写入 Evidence Assertion。外部 Skill 名称和生成时间写入该 Evidence Assertion 的 provenance。
+SciFork Core 只信任最终 Draft：它校验 schema、Publication Reference、locator、数量和大小；没有 PMID/DOI 的候选不可持久化。用户选择后，SciFork 才逐项写入 Evidence Assertion。
 
 ## 11. Git 检查点
 
@@ -537,7 +557,7 @@ A ─ B ─ R(A) ─ R(B)
 
 ### 12.3 Research data
 
-PubMed 文本、PDF 解析结果、外部 Draft 和项目 Markdown 都是不可信数据：
+检索 Skill 输出、PDF 解析结果、Research Import Draft 和项目 Markdown 都是不可信数据：
 
 - 不作为系统指令。
 - 不执行其中命令或脚本。
@@ -562,8 +582,6 @@ CHECKPOINT_FAILED
 PAGE_KEY_INVALID
 SESSION_UNAVAILABLE
 SIMULATE_BRIDGE_UNAVAILABLE
-PUBMED_UNAVAILABLE
-PUBMED_RESULT_INVALID
 ```
 
 错误 payload：
@@ -595,7 +613,7 @@ interface SciForkError {
 | Web API | DSH `ctx.webServer.register` + typed JSON POST |
 | Simulate | scoped BroadcastChannel + public SessionInput |
 | Git | DSH `ctx.subprocess` + system Git |
-| PubMed | NCBI Entrez E-utilities |
+| PubMed | packaged Skill helper + NCBI Entrez E-utilities |
 | Hash | Node crypto SHA-256 |
 
 MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 或 GitHub SDK。
@@ -611,11 +629,12 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - Research Import Draft schema、标识准入、locator 和禁止字段。
 - 单实体命令失败不写文件。
 
-### 15.2 Host / Git / PubMed
+### 15.2 Host / Git / Skills
 
 - Project Locator containment 和 Git root equality。
-- 四个工具注册、卸载与参数上限。
-- PubMed search/lookup 的成功、空结果、超时和无效响应。
+- 三个工具注册、卸载与参数上限。
+- 两个 packaged Skill 的发现、加载与卸载。
+- PubMed helper 的完整查询、300 条分页、lookup、空结果、超时和无效响应 fixture。
 - checkpoint 只提交受管路径且不改变无关 staged files。
 - 当前分支初始化，不创建或切换分支。
 - 一步 Back/Forward、新 mutation 清除 Forward。
@@ -640,13 +659,17 @@ fresh DSH profile
 → install one tarball
 → /research init on current branch
 → open standalone Companion
-→ PubMed keyword search
+→ model loads pubmed-search
+→ full PubMed query with paged metadata
 → PMID/DOI lookup
+→ model loads scifork-research
+→ format Research Import Draft
 → review Evidence Candidate
 → create Hypothesis
 → click Simulate
 → verify corresponding Chat starts or queues
-→ import one external Research Import Draft item
+→ repeat with one alternative retrieval/PDF Skill
+→ load scifork-research and import one formatted Draft item
 → create validated Result and support Edge
 → Back
 → Forward
@@ -665,14 +688,14 @@ fresh DSH profile
 - `ctx.webServer` route/disposer。
 - `shell.overlay` Open action。
 - scoped `SessionInput.setDraft + submit`。
-- 一个 packaged Skill 的发现。
+- 两个 packaged Skill 的发现与顺序加载。
 - argv-only Git 和 fresh-profile smoke。
 
 ### M1：Core 与 Git
 
 - schema、parser、validator、projection。
 - typed commands 与 Research Import Draft validator。
-- Project Locator、四个工具。
+- Project Locator、三个工具。
 - 当前分支 checkpoint 和一步 Back/Forward。
 
 ### M2：Companion
@@ -684,9 +707,9 @@ fresh DSH profile
 
 ### M3：Research
 
-- 一个 SciFork Research Skill。
-- PubMed search/lookup。
-- 外部 Research Import Draft 导入。
+- `SciFork Research` Draft 格式化、推演与批判。
+- `pubmed-search` helper、300 条分页和 PMID/DOI lookup。
+- 其他检索 Skill 结果的统一 Draft 格式化。
 - E2E、release tarball、README/SECURITY。
 
 没有独立 SF 编号清单；实现任务从这四个里程碑拆 issue 即可。
@@ -700,8 +723,8 @@ fresh DSH profile
 | Simulate 发送到错误 Session | Page Key 绑定 scope，Bridge 只监听自己打开的 channel |
 | Bridge 不可用 | ack timeout，保留 Retry/Copy |
 | 两窗口 stale write | project queue + expectedProjectRevision |
-| PubMed 限流或格式变化 | 小结果集、超时、有界重试、schema 校验 |
-| 外部 Skill 输出不可信 | Research Import Draft 边界、PMID/DOI、locator、用户选择 |
+| PubMed 限流或格式变化 | 300 条分页、官方速率、POST/History、超时和响应校验 |
+| 检索 Skill 输出不可信 | 大模型再加载格式化 Skill，Draft 边界、PMID/DOI、locator、用户选择 |
 | Git 外部变化或冲突 | 当前分支检测、清除 Forward、只读模式 |
 | Markdown 注入 | raw HTML off、CSP、路径 containment |
 | 敏感数据进入 Git | README/SECURITY 提示，绝不自动远端同步 |
@@ -715,12 +738,12 @@ fresh DSH profile
 - Simulate 点击后自动提交到对应 Chat；idle 启动、busy 排队。
 - Page Key 无二阶段交换，且不会暴露 cwd 或跨项目访问。
 - Publication Reference/Evidence Assertion/Result/Finding 边界通过 Core 校验。
-- 一个 SciFork Research Skill 可被发现和卸载。
-- PubMed 工具支持关键词搜索与 PMID/DOI lookup。
-- 外部 Skill 只能通过 Research Import Draft 导入。
+- `SciFork Research` 与 `pubmed-search` 两个 Skill 可被发现、顺序加载和卸载。
+- PubMed Skill 支持完整查询、单批 300 条分页与 PMID/DOI lookup。
+- 大模型能先使用任一检索 Skill，再使用 `scifork-research` 格式化 Research Import Draft。
 - 当前分支自动 checkpoint，一步 Back/Forward 保留历史。
-- 不实现自动分支、远端 Git、多级 timeline、MeSH、PubTator、全文、缓存或 RAG。
-- 冲突、stale write、无效 Draft 和 PubMed 失败都有明确英语提示。
+- 不实现自动分支、远端 Git、多级 timeline、自动 MeSH 扩展、PubTator、全文、缓存或 RAG。
+- 冲突、stale write 和无效 Draft 由 SciFork 明确提示；PubMed 失败由检索 Skill 明确显示。
 - 卸载后 Research Project 与 DSH Session 仍可读取。
 
 ## 19. 参考
@@ -736,6 +759,6 @@ fresh DSH profile
 - [Conversation Input contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-conversation/src/client/input/contract.ts)
 - [Conversation InputHub](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-conversation/src/client/input/hub.ts)
 - [Subprocess service](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/subprocess/README.md)
-- [NCBI Entrez E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/)
+- [NCBI E-utilities parameters and limits](https://www.ncbi.nlm.nih.gov/books/NBK25499/)
 - [DSH-better-sidebar v0.15.2](https://github.com/omdsh-dev/DSH-better-sidebar/releases/tag/v0.15.2)
 - [DSH-better-sidebar MIT License](https://github.com/omdsh-dev/DSH-better-sidebar/blob/v0.15.2/LICENSE)

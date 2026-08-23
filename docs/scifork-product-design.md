@@ -1,4 +1,4 @@
-# SciFork 产品设计 v0.10
+# SciFork 产品设计 v0.11
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-24
@@ -24,9 +24,9 @@ MVP 边界：
 - 浏览器不承诺系统级“始终置顶”，悬浮和并列由操作系统窗口管理。
 - SciFork 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件。
 - 点击 `Simulate` 后，提示自动提交到对应 DSH Chat；Chat 空闲时立即开始，运行中则进入 Queue。
-- 只保留一个统一的 `SciFork Research` Skill。
-- 内置轻量 PubMed 工具只做关键词搜索和 PMID/DOI 查找。
-- 其他 Skill 只能提交 `Research Import Draft`，不能直接写 Research Project。
+- SciFork 只保留一个统一的 `SciFork Research` Skill；PubMed 是独立、可替换的通用检索 Skill。
+- PubMed Skill 支持完整查询语法、单批最多 300 条元数据、分页和 PMID/DOI 查找。
+- 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
 - Git 只负责当前分支的本地检查点和一步 Back/Forward，不替用户管理分支或远端。
 
 ## 2. 核心原则
@@ -295,36 +295,41 @@ research_graph_focus
 
 ## 7. SciFork Research Skill
 
-MVP 只发布一个 `SciFork Research` Skill：
+MVP 只发布一个 SciFork 专用的 `SciFork Research` Skill：
 
-- **Retrieval guidance**：根据 Focus 建议查询，调用 PubMed 工具或接受 Research Import Draft。
+- **Retrieval guidance**：根据 Focus 建议检索式和需要补齐的信息。
+- **Import formatting**：把当前 Chat 中的检索或 PDF 解析结果格式化为 Research Import Draft。
 - **Simulation**：生成 Hypothesis、Prediction、机制路径和下一步实验建议。
 - **Critique**：检查矛盾、Evidence Gap、过度推断、重复实体和缺失 locator。
 
-Skill 负责推理和提案，不直接写文件。持久化仍通过 SciFork typed tools 和用户确认。
+Skill 负责推理、格式化和提案，不联网检索，也不直接写文件。持久化仍通过 SciFork typed tools 和用户确认。
 
-不再维护 Literature Search、Simulation、Critique 三套独立 Skill、三套 provider 生命周期或跨 Skill 中间协议。
+检索 Skill 保持独立、可替换，由大模型根据任务先行使用；随后大模型加载 `SciFork Research` 完成格式化。Skill 之间不互相调用，SciFork 不维护检索 provider 生命周期或跨 Skill 私有协议。
 
-## 8. 轻量 PubMed 工具
+## 8. 轻量 PubMed 检索 Skill
 
-一个工具支持：
+默认 `pubmed-search` Skill 支持：
 
 ```text
-search: keyword query
+search: PubMed/Entrez query + retstart + retmax
 lookup: PMID or DOI
 ```
 
-Keyword search 默认返回 10 条、最大 20 条，只返回 PMID、DOI、title、journal、year、简化 authors 和 publication type。结果只用于发现候选。
+Search 原样接受 PubMed/Entrez 查询语法。默认 `retmax=20`，单批最多 300 条元数据，返回总数和下一页位置；用户可以继续分页，不设置 300 条的总结果上限。每条只返回 PMID、DOI、title、journal、year、简化 authors 和 publication type。
 
-PMID/DOI lookup 返回单篇确定性记录，可附带可用 abstract，并保留 canonical URL 和获取时间。搜索或 lookup 本身不创建文献实体；只有用户审核接受的 Evidence Assertion 才持久化。
+PMID/DOI lookup 返回单篇确定性记录，可附带可用 abstract，并保留 canonical URL 和获取时间。检索结果只进入当前 Chat context，不直接创建 Research Import Draft 或科研实体。
 
-明确不做 MeSH 扩展、PubTator、全文下载、缓存、批量同步、向量检索、RAG 或文章知识图谱。
+Skill 遵守 NCBI 请求频率；大于约 200 个 PMID 的批量元数据请求使用 POST 或 Entrez History。它不自动扩展 MeSH，不实现 PubTator、全文下载、缓存、向量检索、RAG 或文章知识图谱。
 
 网络失败、标识不存在或响应结构无效时明确失败，不能让模型补造文献信息。
 
-## 9. 外部 Skill 导入
+## 9. 模型编排与导入
 
-其他 Skill 可以检索文献或解析 PDF，但输出必须符合：
+大模型先加载并使用一个检索 Skill；默认可以选择 `pubmed-search`，也可以选择其他数据库检索或 PDF 解析 Skill。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把当前结果格式化为 Research Import Draft。
+
+Skill 之间没有直接调用关系。检索 Skill 不需要理解 SciFork schema，也不能直接写 Research Project；只有格式化后的 Draft 进入 SciFork 校验。
+
+格式化后的 Draft 必须符合：
 
 ```ts
 interface PublicationReference {
@@ -345,7 +350,8 @@ interface EvidenceCandidate {
 interface ResearchImportDraft {
   schemaVersion: 1
   producer: {
-    skill: string
+    retrievalSkill: string
+    formatterSkill: 'scifork-research'
     generatedAt: string
   }
   evidenceCandidates: EvidenceCandidate[]
@@ -355,6 +361,7 @@ interface ResearchImportDraft {
 
 约束：
 
+- `retrievalSkill` 记录实际使用的检索 Skill，`formatterSkill` 固定为 `scifork-research`。
 - Evidence Candidate 只有在包含有效 PMID 或规范化 DOI 后才能被接受和持久化；两者都有时必须指向同一篇文献。
 - 必须提供 locator；PDF 至少包含页码或章节。
 - 没有 PMID/DOI 的 PDF 内容可以暂留 Chat 或 Draft，补齐标识前不能进入 Research Project。
@@ -408,9 +415,9 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 | 三个模型工具与项目定位 | SciFork Host |
 | 同源独立页面与 Details | SciFork Companion |
 | 自动提交 Simulate | SciFork DSH Bridge |
-| 检索建议、推演和批判 | SciFork Research Skill |
-| 关键词搜索与 PMID/DOI 查找 | SciFork PubMed tool |
-| 外部检索/PDF 解析 | 其他 Skill |
+| 检索建议、Draft 格式化、推演和批判 | SciFork Research Skill |
+| 默认 PubMed 检索与 PMID/DOI 查找 | PubMed Search Skill |
+| 替代数据库检索或 PDF 解析 | 其他检索 Skill |
 | Research Import Draft 校验与持久化 | SciFork Core + Host |
 | 本地检查点与一步恢复 | SciFork Host |
 | 分支、远端、PR、合并和冲突解决 | DSH / 用户 |
@@ -421,8 +428,8 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 - 第三方 DSH 插件运行依赖。
 - 两套页面模式或自定义窗口管理。
 - 多包 monorepo 和内部 npm 包。
-- 三套独立 Research Skills。
-- MeSH、PubTator、全文下载、缓存或 RAG。
+- 把 SciFork Research 拆成多套 Skill，或让 Skill 直接调用另一个 Skill。
+- 自动 MeSH 扩展、PubTator、全文下载、缓存或 RAG。
 - 外部 Skill 直接写 Research Project。
 - 多级 undo/redo、Timeline Panel 或 Graph 搜索框。
 - 独立后端、额外端口、登录系统或云同步。
@@ -433,16 +440,18 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 ```text
 1. 用户在 DSH 打开研究目录并执行 /research init
 2. 点击 Open Research Graph
-3. SciFork Research Skill 读取 Focus
-4. Skill 调用 PubMed 工具，或接收其他 Skill 的 Research Import Draft
-5. SciFork 校验文献标识，用户审核 Evidence Candidate
-6. 用户创建 Hypothesis 或 Finding
-7. Companion 显示 Focus 局部图
-8. 用户点击 Simulate
-9. 对应 DSH Chat 自动开始或进入 Queue
-10. 用户确认新的 Hypothesis、Prediction 或 Result
-11. SciFork 写入文件并创建本地检查点
-12. 用户用 Back/Forward 验证一步恢复
+3. 大模型读取 Focus 并选择检索 Skill
+4. 大模型使用 PubMed Search 或其他检索/PDF Skill
+5. 检索结果进入当前 Chat context
+6. 大模型加载 SciFork Research 并格式化 Research Import Draft
+7. SciFork 校验文献标识，用户审核 Evidence Candidate
+8. 用户创建 Hypothesis 或 Finding
+9. Companion 显示 Focus 局部图
+10. 用户点击 Simulate
+11. 对应 DSH Chat 自动开始或进入 Queue
+12. 用户确认新的 Hypothesis、Prediction 或 Result
+13. SciFork 写入文件并创建本地检查点
+14. 用户用 Back/Forward 验证一步恢复
 ```
 
 ## 15. MVP 完成标准
@@ -452,9 +461,9 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 - Graph、文件、Focus 和 DSH Chat context 一致。
 - 点击 Simulate 后对应 Chat 自动开始；运行中正确进入 Queue。
 - 提交失败时 Retry/Copy 可恢复。
-- 统一 SciFork Research Skill 能完成检索建议、推演和批判。
-- PubMed 工具能关键词搜索并按 PMID/DOI 查找，且不会伪造记录。
-- 外部 Skill 只能交付 Research Import Draft，不能绕过校验写仓库。
+- 统一 SciFork Research Skill 能完成检索建议、Draft 格式化、推演和批判。
+- PubMed Search Skill 能执行完整查询、按 300 条分页并按 PMID/DOI 查找，且不会伪造记录。
+- 大模型能先使用任一检索 Skill，再使用 SciFork Research 格式化 Draft；检索 Skill 不能绕过校验写仓库。
 - 每次有效修改形成受管路径本地检查点。
 - Back/Forward 完成一步恢复且不改写 Git 历史。
 - 冲突或陈旧版本不会覆盖外部修改。
