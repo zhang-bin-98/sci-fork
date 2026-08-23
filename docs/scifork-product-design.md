@@ -1,10 +1,10 @@
-# SciFork 产品设计 v0.7
+# SciFork 产品设计 v0.8
 
 > **Fork hypotheses. Connect evidence. Advance research.**
 
-SciFork 是一个运行在 **DeepSeek Harness（DSH）** 内部、以 Git 仓库保存科研状态、基于文献证据进行交互式科研虚拟推演的轻量级生物医学 Research Graph 插件。
+SciFork 是一个与 **DeepSeek Harness（DSH）** 协同运行、以 Git 仓库保存科研状态、基于文献证据进行交互式科研虚拟推演的轻量级生物医学 Research Graph 插件。DSH 保留原生 Chat，SciFork 通过独立的浏览器 Companion 页面展示图谱。
 
-> **A Git-native research graph for evidence-grounded scientific simulation inside DeepSeek Harness.**
+> **A Git-native research graph for evidence-grounded scientific simulation alongside DeepSeek Harness.**
 
 ## 1. 产品定义
 
@@ -30,9 +30,9 @@ SciFork 不重新实现 Chat，不建立复杂科研平台，也不维护独立�
 
 插件只增加一个主要界面：
 
-> **右侧 Research Graph Sidebar**
+> **独立 Research Graph Companion Window**
 
-如果锁定版本的 DSH 右栏扩展契约不安全，v0.1 会使用原生 Conversation Graph Tab。一次发布只实现其中一种，不让用户承担兼容模式选择。
+DSH 页面内只挂载一个 SciFork 自有的轻量入口和草稿桥接，不占用 `sidebar`、`conversation` 或 `details`，也不修改 DSH 的页面布局。用户点击 `Open Research Graph` 后，在同源的新浏览器窗口打开图谱；窗口可以缩窄后悬放在 Chat 旁边，也可以通过操作系统分屏与 DSH 并列。v0.1 不提供内嵌 Panel/Tab 模式。
 
 因此用户仍然使用熟悉的：
 
@@ -57,6 +57,7 @@ research-project/
 ├── research.json
 ├── nodes/
 ├── edges/
+├── sources/
 ├── evidence/
 └── results/
 ```
@@ -107,7 +108,7 @@ Graph parser
 Research Graph
 ```
 
-文件变了，打开的 Graph 会在下一次刷新周期自动更新；刷新和视图适配由插件自动完成，不增加手动按钮。图上进行了科研语义操作，文件随之改变。
+文件变了，打开的 Graph Companion 会在下一次刷新周期自动更新；页面隐藏时暂停轮询，回到前台后立即重新校验。刷新和视图适配由插件自动完成，不增加手动按钮。图上进行了科研语义操作，文件随之改变。
 
 ### 2.5 AI 推演必须与真实证据分离
 
@@ -139,50 +140,55 @@ C
 D
 ```
 
-假设逐渐转变为证据。这是整个产品最核心的科研逻辑。
+随着 reviewed Evidence Assertion 或 validated Result 累积，达到支持门槛的 Hypothesis 可以经显式审核升级为 Finding；原始证据与科研主张仍是不同实体。这是整个产品最核心的科研逻辑。
 
 ### 2.6 SciFork UI 统一使用英语
 
-SciFork 自有界面中的按钮、状态、空状态、提示和错误信息统一使用英语。固定的主要操作为 `Back`、`Forward`、`Simulate` 和 `Details`；常用状态包括 `Saved`、`Working…`、`Read-only` 和 `Git conflict`。第一版不提供语言切换，也不在 Client 中硬编码中文界面文案。
+SciFork 自有界面中的按钮、状态、空状态、提示和错误信息统一使用英语。固定的主要操作为 `Back`、`Forward`、`Simulate` 和 `Details`；常用状态包括 `Saved`、`Working…`、`Read-only` 和 `Git conflict`。第一版不提供语言切换，也不在 Companion 或 DSH Bridge 中硬编码中文界面文案。
 
 这一约束只适用于 SciFork 自有 UI。DSH Chat 可以继续按照用户的会话语言响应，科研 Markdown 文件也不限制语言。
 
 ## 3. 产品一句话定位
 
-> **一个运行在 DeepSeek Harness 中、以 Git 仓库保存科研状态、基于文献证据进行交互式科研虚拟推演的轻量级生物医学 Research Graph 插件。**
+> **一个与 DeepSeek Harness 协同运行、以 Git 仓库保存科研状态、通过独立 Companion 页面进行交互式科研虚拟推演的轻量级生物医学 Research Graph 插件。**
 
 更简洁的英文描述：
 
-> **A Git-native research graph for evidence-grounded scientific simulation inside DeepSeek Harness.**
+> **A Git-native research graph for evidence-grounded scientific simulation alongside DeepSeek Harness.**
 
 ## 4. 用户界面
 
-不设计新的完整 Web App。产品目标布局使用 DSH 的原生 Chat 加一个局部 Research Graph 视图；下图是右栏扩展契约可用时的首选布局：
+Graph 是一个由 SciFork 自己托管的窄职责 Web App，不复制 Chat、Agent Runtime、用户系统或协作服务。DSH 与 Graph Companion 是同源的两个浏览器窗口，共享同一个 SciFork Host/Core 和 Research Repo：
 
 ```text
-┌────────────┬────────────────────────────┬────────────────────────┐
-│ Sessions   │      Native DSH Chat       │    Local Graph         │
-│            │                            │                        │
-│            │ User / Assistant / Tools   │ [Finding] A            │
-│            │                            │      ↓                 │
-│            │                            │ [Hypothesis] B         │
-│            │                            │                        │
-│            │                            │ Back Forward Simulate  │
-│            │                            │ Details                │
-└────────────┴────────────────────────────┴────────────────────────┘
+┌────────────────────────────────┐  ┌────────────────────────────────┐
+│       Native DSH Web           │  │   SciFork Graph Companion      │
+│ Sessions / Chat / Tools        │  │ [Finding] A → [Hypothesis] B   │
+│                                │  │                                │
+│ [Open Research Graph]          │  │ Back Forward Simulate Details  │
+└────────────────────────────────┘  └────────────────────────────────┘
+              │                                  │
+              └──────── SciFork Host/Core ───────┘
 ```
+
+Graph Companion 提供两种响应式密度，而不是两套产品模式：
+
+- **Compact**：适合窄窗口悬放在 Chat 旁边，默认显示 Focus、当前路径和一层邻居。
+- **Workspace**：适合操作系统分屏、第二显示器或独立标签页，可使用更大的画布和同页 Details 区域。
+
+普通浏览器不能可靠强制窗口“始终置顶”；窗口位置、系统级置顶和分屏由操作系统管理。SciFork 只记忆页面密度、窗口尺寸提示和当前 Focus，不尝试获取桌面级窗口权限。
 
 Research Graph 视图只承担三个功能：
 
 ### 看
 
-查看以当前 Focus 为中心的局部 Research Graph。默认展示当前实体、当前研究路径和一层直接邻居；右侧视图不铺开完整项目。
+查看以当前 Focus 为中心的局部 Research Graph。默认展示当前实体、当前研究路径和一层直接邻居；Workspace 密度允许扩展可视邻域，但不会一次加载整个大型项目。
 
 每个节点使用紧凑信息卡片，固定显示类型、标题或一行 Claim、状态/置信度/来源，以及支持、反对和 Evidence Gap 计数。
 
 ### 选
 
-点击 Node 或 User Result 卡片即可改变当前科研焦点；Focus 变化只改变局部视图和 Chat 上下文，不修改科研文件。
+点击 Node 或 Result 卡片即可改变当前科研焦点；Focus 变化只改变局部视图和 Chat 上下文，不修改科研文件。
 
 ### 做
 
@@ -191,13 +197,13 @@ Graph 页面只显示四个操作；`Simulate` 和 `Details` 作用于当前 Foc
 - **Back**：撤回上一个完整科研操作组，从 Git 恢复此前状态并创建新的恢复检查点。
 - **Forward**：重新应用刚刚撤回的科研状态；发生新的科研写入后禁用该操作，但原状态仍保留在 Git 历史中。
 - **Simulate**：把基于当前 Focus 的结构化推演提示写入 Chat 草稿，由用户确认发送。
-- **Details**：用 DSH 提供的侧边栏文件预览打开实体对应的 Markdown 源文件。
+- **Details**：在 Companion 页面内打开只读、经过安全处理的受管 Markdown，并显示其来源、审核与版本信息。
 
 `Back` 和 `Forward` 是科研状态的 Git 导航，不是 Focus 浏览历史。Focus 导航直接通过点击卡片或在 Chat 中指定节点完成。
 
-SciFork 不实现 details drawer、Graph 搜索框、`Find Evidence`、`Find Counterevidence`、`Add Result` 按钮或 Timeline 面板。查找证据、筛选文献、寻找反证、添加实验结果、查看完整历史和恢复指定状态都通过 Chat 完成。
+SciFork 不实现第二套 Chat、Graph 搜索框、`Find Evidence`、`Find Counterevidence`、`Add Result` 按钮或 Timeline 面板。查找证据、筛选文献、寻找反证、添加实验结果、查看完整历史和恢复指定状态都通过 DSH Chat 完成。
 
-`Details` 依赖运行环境提供可发现的文件预览能力；SciFork 只提交受管文件路径，不再实现第二套 Markdown 渲染器。如果锁定版本的 DSH 没有兼容能力，M0 必须将相应文件预览插件列为运行依赖，而不是把 Drawer 加回 SciFork。
+Graph Companion 自己包含一个最小 Markdown 阅读器，依赖随 SciFork 构建进入发布 tarball，不要求额外文件预览插件。默认禁用原始 HTML、脚本和任意工作区路径访问；链接和附件必须经过项目根路径校验。
 
 ## 5. Research Graph 的基本模型
 
@@ -205,10 +211,10 @@ MVP 不做复杂知识图谱 ontology，只保留少量节点类型。
 
 ### Finding
 
-已有研究结果。
+已经达到项目支持门槛的解释性科研主张。Finding 不是一篇论文，也不是一条未经解释的实验观察；它必须由经过审核的 Evidence Assertion 或已验证 Result 支持。
 
 ```text
-Evidence / Finding
+Finding
 ```
 
 ### Hypothesis
@@ -227,15 +233,15 @@ Hypothesis
 Prediction
 ```
 
-### User Result
+### Result
 
-用户自己的实验结果、生信分析、计算结果或模型结果。
+研究团队自己的实验观察、生信分析、计算输出或模型输出。Result 保存“观察到了什么”，其 Interpretation 与图上的 Finding/Hypothesis 分开。
 
 ```text
-User Result
+Result
 ```
 
-第一版在 Graph 上显示四种节点足够。持久化时，Finding、Hypothesis、Prediction 保存于 `nodes/`；User Result 只保存于 `results/`，由 Graph 直接投影，不再复制为第二个 Node 文件。
+第一版在 Graph 上显示四种实体卡片足够。持久化时，Finding、Hypothesis、Prediction 保存于 `nodes/`；Result 只保存于 `results/`，由 Graph 直接投影，不再复制为第二个 Node 文件。
 
 ## 6. Edge
 
@@ -285,14 +291,14 @@ id: hyp_8d15c5d4-b474-4a35-9918-581169f126d4
 kind: hypothesis
 status: plausible
 title: TREM2 may affect anti-PD-1 response through lipid metabolism
-confidence: 0.64
+confidence: moderate
 origin: ai
 created_at: 2026-08-23T00:00:00.000Z
 updated_at: 2026-08-23T00:00:00.000Z
 evidence_refs:
-  - evidence_id: ev_pmid_12345678
+  - evidence_id: ev_6cbd8f39-65fa-4a9e-9eed-cd0f6cf32b20
     role: supports
-  - evidence_id: ev_pmid_34567890
+  - evidence_id: ev_4c1dc314-adb4-4bf0-a760-c093392a79f8
     role: contradicts
 ---
 
@@ -318,36 +324,61 @@ through altered lipid metabolism.
 ```
 
 UI 可以显示便于交流的短标签，但文件名和实体引用始终使用完整 ID，避免多人分支创建相同编号。普通研究人员即使完全不用插件，也能在 GitHub 上打开 Markdown 并理解这个项目。这是非常重要的产品原则。
+置信度不使用看似精确的 0–1 小数，而使用 `low | moderate | high` 三档 Confidence Band。它表达当前支持强度，不是统计概率：`low` 表示主要是间接或尚未审核的支持，`moderate` 表示有直接但受限的证据或多项独立间接证据，`high` 表示多项独立、直接且限制已评估的证据。每次调整都必须记录理由和对应 Evidence Assertion / Result。
 
-## 8. Evidence
+## 8. Source 与 Evidence Assertion
 
-文献不要直接当 Node 堆进主要 Research Graph。文献属于 Evidence。
+论文、数据集和附件不直接当 Node 堆进主要 Research Graph。SciFork 把“来源是什么”和“来源具体证明了什么”拆成两个实体。
+
+Source 保存可复查的来源身份和生命周期信息：
 
 ```text
-evidence/
-└── ev_pmid_12345678.md
+sources/
+└── src_pmid_12345678.md
 ```
-
-内容：
 
 ```markdown
 ---
 schema_version: "0.1"
-id: ev_pmid_12345678
+id: src_pmid_12345678
 kind: publication
 pmid: "12345678"
+doi: "10.0000/example"
 title: Paper title
+canonical_url: https://pubmed.ncbi.nlm.nih.gov/12345678/
+retrieved_at: 2026-08-23T00:00:00.000Z
+retraction_status: none
+correction_of: null
+---
+```
+
+Evidence Assertion 保存从一个 Source 中提取、可定位和可审核的具体科研主张。一篇论文可以产生多条 Evidence Assertion，也可以分别支持和反驳不同关系：
+
+```text
+evidence/
+└── ev_6cbd8f39-65fa-4a9e-9eed-cd0f6cf32b20.md
+```
+
+```markdown
+---
+schema_version: "0.1"
+id: ev_6cbd8f39-65fa-4a9e-9eed-cd0f6cf32b20
+source_ref: src_pmid_12345678
+direction: supports
+study_design: in_vivo_perturbation
+biological_model: mouse_melanoma
+locator:
+  kind: abstract_sentence
+  value: "3"
+review_status: reviewed
+reviewed_by: student-a
+reviewed_at: 2026-08-23T00:00:00.000Z
+extraction_method: llm_assisted
 ---
 
-# Paper title
+## Assertion
 
-## Finding
-
-...
-
-## Model
-
-Mouse melanoma
+TREM2 perturbation changed response to anti-PD-1 in the reported mouse model.
 
 ## Limitations
 
@@ -355,23 +386,9 @@ Mouse melanoma
 - Small cohort
 ```
 
-Evidence 文件不维护“支持了哪些节点”的反向列表。Node 或 Edge 使用带 `supports/contradicts` role 的 `evidence_refs` 指向 Evidence，因此证据关系只有一个事实来源，不会双向不同步。
+`review_status` 使用 `candidate | reviewed | rejected`。模型抽取首先只能创建 Candidate；用户审核后，Node 或 Edge 才能通过带 `supports/contradicts` role 的 `evidence_refs` 引用该 Evidence Assertion。Source 和 Evidence Assertion 都不维护“支持了哪些节点”的反向列表，因此证据关系只有一个事实来源，不会双向不同步。
 
-Graph 显示的是：
-
-```text
-Scientific Claim
-```
-
-而不是：
-
-```text
-Paper A
-Paper B
-Paper C
-```
-
-这是和普通文献图谱非常重要的区别。
+Graph 显示的是 Scientific Claim、Result 和关系，而不是 Paper A、Paper B、Paper C。这是和普通文献图谱非常重要的区别。
 
 ## 9. 用户研究结果
 
@@ -392,8 +409,11 @@ schema_version: "0.1"
 id: res_512d7a02-a293-41fa-964f-b4a27c37d03d
 kind: experiment
 title: TREM2 knockout experiment
-author: student-a
-status: completed
+actor_ref: local:student-a
+status: validated
+source_refs:
+  - artifacts/figure-1.png
+summary_method: llm_assisted
 created_at: 2026-08-23T00:00:00.000Z
 ---
 
@@ -412,13 +432,13 @@ TREM2 knockout increased response to anti-PD-1.
 Supports the lipid-mediated TREM2 hypothesis.
 ```
 
-这个 Result 文件本身直接显示为 Graph 中的 User Result。若它支持某个 Hypothesis，创建一条 `ResultId → HypothesisId` 的 `supports` Edge；不再额外生成内容重复的 User Result Node。
+这个 Result 文件本身直接显示为 Graph 中的 Result 卡片。若它支持某个 Hypothesis，创建一条 `ResultId → HypothesisId` 的 `supports` Edge；不再额外生成内容重复的 Result Node。Result 状态使用 `draft | completed | validated | superseded`；只有 `validated` Result 能满足 Finding/Supported 的支持门槛。
 
 第一版不提供 `Add Result` 按钮或专用表单。例如用户可以在 Chat 中要求：
 
 > 读取 `results/figure-1.png`，总结主要观察，区分观察事实与解释，并把它加入当前假设。
 
-LLM 负责提取 Method、Result 和 Interpretation，保留可用的源文件路径或附件引用，并明确标记自动生成的总结；用户确认后调用 `research_graph_apply(CreateResult)`。保存的 Result 直接投影为 Graph 中的 User Result 卡片，即用户所看到的结果节点。SciFork 不复制生成第二个 Node，也不把无法读取或无法追溯的图表总结声明为直接证据。
+LLM 负责提取 Method、Result 和 Interpretation，保留可用的源文件路径或附件引用，并明确标记自动生成的总结；用户确认后调用 `research_graph_apply(CreateResult)`。保存的 Result 直接投影为 Graph 中的 Result 卡片。SciFork 不复制生成第二个 Node，也不把无法读取、无法追溯或尚未验证的图表总结声明为直接证据。
 
 Agent 随后可以：
 
@@ -470,7 +490,7 @@ Reasoning
 Supporting evidence
 Contradictory evidence
 Evidence gap
-Confidence
+Confidence Band
 ```
 
 所以虚拟推演的本质不是 AI 给一个答案，而是：
@@ -513,7 +533,7 @@ Agent 先提出 branch 名称和隔离理由，用户明确确认后才由 DSH �
 
 ## 12. Graph → Chat
 
-Chat ↔ Graph 双向同步是插件体验的关键。
+Chat ↔ Graph 双向同步是插件体验的关键。Graph Companion 的 URL fragment 只携带一个短期、一次性 launch token；Host 端记录把它绑定到 `sessionId` 和项目身份，交换后页面立即清除 fragment。页面只通过 Host 校验后的会话上下文工作，不接受调用方或模型传入任意目录。Focus 由 Host 按 session 与项目保存，因此 DSH Chat 与独立页面读取的是同一个状态。
 
 用户点击：
 
@@ -549,7 +569,9 @@ A → B → H001
 
 DSH 先在 Research Graph 中解析候选实体；若只有一个明确匹配，直接设置 Focus，若存在多个近似匹配，则在 Chat 中列出简短候选供用户选择。Graph 本身不实现第二套搜索体验。
 
-点击 `Simulate` 后，插件调用 DSH Agent。Agent 完成推演之后：
+点击 `Simulate` 后，Companion 只发送一个短期、一次性的 DraftRequest ID；session 与项目绑定由 Host 内部记录解析，不信任页面参数。DSH 中的 SciFork Client Bridge 认领请求后，在浏览器侧调用公开的 conversation input 服务写入 composer draft；Host 不直接修改浏览器状态，也不会自动发送消息。若对应 DSH 页面未打开，Companion 保留结构化提示并提供复制，不静默丢失。
+
+用户确认发送后，Agent 完成推演：
 
 ```text
 write research files
@@ -582,9 +604,11 @@ Agent：
 ```text
 PubMed search
      ↓
-Evidence extraction
+research_graph_apply(CreateSource)
      ↓
-research_graph_apply(CreateEvidence)
+Evidence Assertion extraction and review
+     ↓
+research_graph_apply(CreateEvidenceAssertion)
      ↓
 research_graph_apply(UpdateNode)
      ↓
@@ -614,7 +638,9 @@ DSH 原生负责：
 
 ```text
 Research Graph parser
-Research Graph sidebar
+Research Graph Companion
+same-origin Graph API
+DSH open/draft bridge
 Research-specific tools
 Research-specific skills
 ```
@@ -661,7 +687,7 @@ research_focus
 - `research_graph_apply`：新增或修改科研实体，也承载用户明确要求的 Git `Back`、`Forward` 和指定状态恢复。
 - `research_focus`：设置当前研究焦点。
 
-PubMed 检索本身可以作为独立 Skill / Tool；Git 直接使用已有 Git 能力。
+PubMed 检索由 SciFork Host 内置的窄 Entrez adapter 提供确定性文章记录，查询规划与筛选仍由 Skill 负责；它不是独立服务或第三方插件。Git 直接使用 DSH 已有能力。
 
 不要为了“架构漂亮”写二十个工具。
 
@@ -706,7 +732,7 @@ PI 可以 review：
 
 - 新增了什么证据？
 - 修改了什么 claim？
-- 哪些 hypothesis confidence 发生变化？
+- 哪些 Hypothesis 的 Confidence Band 发生变化？
 
 不需要开发专门的团队审批系统。
 
@@ -730,7 +756,7 @@ A → B → C → D?
 > - 新增 Hypothesis D；
 > - 新增 Finding E；
 > - 加入 4 篇 PubMed evidence；
-> - C→D confidence 从 0.52 升至 0.71。
+> - C→D 的 Confidence Band 从 moderate 调整为 high。
 
 这可以成为团队周会非常有价值的功能。
 
@@ -763,7 +789,7 @@ SciFork 不把“访问 PubMed”与“构建研究图谱”混成同一层。�
 | PubTator3 | 可选增强，MVP 非必需 | 发现基因、疾病、药物、变异及候选关系 |
 | 完整 PubMed Knowledge Graph | 不引入 | 避免大规模同步、额外数据库和把自动抽取关系误当科研事实 |
 
-MeSH 和 PubTator3 只增强发现能力，不成为科研事实源。PubTator3 输出的实体关系默认是 `Candidate relation`，必须带 provider、PMID 和待审查状态；它不能直接创建 `supported` Edge。第一版不在仓库中复制完整 MeSH 或 PubTator 数据，只保存最终被研究项目采用的 Evidence 和必要来源标识。
+MeSH 和 PubTator3 只增强发现能力，不成为科研事实源。PubTator3 输出的实体关系默认是 `Candidate relation`，必须带 provider、PMID 和待审查状态；它不能直接创建 `supported` Edge。第一版不在仓库中复制完整 MeSH 或 PubTator 数据，只保存最终被 Research Project 采用的 Source 与 reviewed Evidence Assertion。
 
 - [NLM MeSH](https://www.nlm.nih.gov/mesh/meshhome.html)
 - [NCBI Entrez E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/)
@@ -775,7 +801,7 @@ SciFork 接受 LLM Wiki 的核心思想：知识不是每次提问时从原始�
 
 | LLM Wiki | SciFork 对应物 |
 | --- | --- |
-| Raw Sources | PubMed/PMC 来源及 Evidence |
+| Raw Sources | Source + Evidence Assertion |
 | Wiki pages | Node、Edge 和 Result |
 | Schema | Core Schema + Research Skills |
 | `index.md` | 可重建的 GraphSnapshot |
@@ -795,7 +821,7 @@ SciFork 接受 LLM Wiki 的核心思想：知识不是每次提问时从原始�
             ↓
 Literature Search Skill 制定检索计划
             ↓
-DSH 调用可用的 Entrez / Web / PubTator 工具
+SciFork Host 调用内置 Entrez adapter；可选 Web / PubTator 仅辅助发现
             ↓
 确定性工具返回标准文章记录
             ↓
@@ -810,11 +836,11 @@ SciFork Core 验证 ResearchCommand
 写入 Graph + 自动本地检查点
 ```
 
-Skill 负责查询规划、MeSH/同义词扩展、纳入排除标准和证据抽取规则；它本身不是网络执行器。实际数据访问由 DSH 中可用的 Tool、API connector 或现有 NCBI 能力完成。若环境没有合适检索能力，Skill 应明确报告不可用，而不是由模型凭参数记忆补造文献。
+Skill 负责查询规划、MeSH/同义词扩展、纳入排除标准和证据抽取规则；它本身不是网络执行器。SciFork Host 的窄 Entrez adapter 负责 ESearch、ESummary/EFetch 与必要的 ELink 调用、限流、重试和响应校验，只输出标准 `RetrievedArticle`，不直接修改 Graph。网络不可用或 NCBI 返回无效记录时明确失败，不允许模型凭参数记忆补造文献。
 
-检索工具先返回确定性文章数据，例如 PMID、标题、摘要、作者、日期、文章类型、MeSH 和 source URL。LLM 随后按照 Skill 输出 `RetrievalPlan`、`EvidenceCandidate` 和 `GraphProposal` 等结构化对象，在 Chat 中完成去重、排序、纳入排除解释和候选筛选；只有用户决定采纳的对象才通过 typed `research_graph_apply` 参数进入插件。Core 不从自由 Markdown 中猜测持久化数据。
+Entrez adapter 先返回确定性文章数据，例如 PMID、标题、摘要、作者、日期、文章类型、MeSH、版本状态和 source URL。LLM 随后按照 Skill 输出 `RetrievalPlan`、`EvidenceCandidate` 和 `GraphProposal` 等结构化对象，在 Chat 中完成去重、排序、纳入排除解释和候选筛选；只有用户决定采纳的 Source 与审核后的 Evidence Assertion 才通过 typed `research_graph_apply` 参数进入插件。Core 不从自由 Markdown 中猜测持久化数据。
 
-检索、排序和临时候选只存在于 DSH Chat / Tool 结果中，不进入 Graph，不增加候选面板，也不会创建 Git 检查点。只有 Evidence、Node、Edge、Result 或 manifest 真正发生有效变化时才创建检查点。一次用户操作产生多个单实体命令时，各检查点共享 `actionGroupId`；`research_graph_read(timeline)` 在 Chat 中将其聚合为一项科研操作。
+检索、排序和 Evidence Candidate 只存在于 DSH Chat / Tool 结果中，不进入 Graph，不增加候选面板，也不会创建 Git 检查点。只有 Source、Evidence Assertion、Node、Edge、Result 或 manifest 真正发生有效变化时才创建检查点。一次用户操作产生多个单实体命令时，各检查点共享 `actionGroupId`；`research_graph_read(timeline)` 在 Chat 中将其聚合为一项科研操作。
 
 ### 20.4 DSH、Skill 与插件的能力边界
 
@@ -823,15 +849,16 @@ Skill 负责查询规划、MeSH/同义词扩展、纳入排除标准和证据抽
 | Chat、模型调用、Session、工具循环 | DSH |
 | 文件能力、权限、Subagent 和可用外部工具 | DSH |
 | Push、Pull、分支切换、Merge、Rebase 和冲突解决 | DSH |
+| 确定性 PubMed/Entrez 请求、限流与响应校验 | SciFork Host adapter |
 | 查询规划、MeSH 扩展和文献筛选 | Literature Search Skill |
 | Claim、研究模型、限制和矛盾抽取 | Literature Search / Critique Skill |
 | 科研虚拟推演 | Simulation Skill |
 | 语义重复、反例和 Evidence Gap 分析 | Critique Skill |
 | Schema、ID、引用完整性和确定性去重 | SciFork Core |
-| Evidence/Node/Edge/Result 受控写入 | SciFork Core + Host |
-| Graph、Focus、本地 Timeline 和恢复 | SciFork Plugin |
+| Source/Evidence Assertion/Node/Edge/Result 受控写入 | SciFork Core + Host |
+| Graph Companion、Focus、本地 Timeline 和恢复 | SciFork Host + Companion |
 
-因此第一版不独立实现 Chat、Agent Runtime、Graph 搜索框、检索候选面板、PubMed 搜索服务器、PDF 管理、文章知识图谱、向量数据库、RAG 后端或远端 Git 客户端。
+因此第一版不独立实现 Chat、Agent Runtime、Graph 搜索框、检索候选面板、独立 PubMed 服务、PDF 管理、文章知识图谱、向量数据库、RAG 后端或远端 Git 客户端。Entrez adapter 只是随 Host 运行的窄数据端口。
 
 ## 21. 插件真正负责的东西只有四块薄能力
 
@@ -843,12 +870,14 @@ research-plugin/
 │   ├── graph-parser
 │   └── graph-writer
 ├── host/
-│   ├── dsh-tools-and-remote
-│   ├── file-and-focus-adapters
+│   ├── dsh-tools-and-web-routes
+│   ├── file-focus-and-entrez-adapters
 │   └── local-git-timeline
-├── client/
-│   ├── ResearchGraphView
+├── web/
+│   ├── companion-graph-and-details
+│   └── dsh-open-and-draft-bridge
 └── skills/
+SciFork 可以参考 [DSH-better-sidebar v0.15.2](https://github.com/omdsh-dev/DSH-better-sidebar/releases/tag/v0.15.2) 的 session/cwd 作用域、页面可见性暂停、composer draft 接入、插件生命周期和 mount smoke test；它只作为 MIT 许可的参考实现，不是 dependency、peerDependency 或运行时 provider。SciFork 不复用其 portal、全局布局 CSS、`/sidebar/api`、WebSocket、终端、Git、浏览器或 `node-pty` 能力。若复制具体代码，发布工件必须保留来源和许可证声明。
     ├── literature-search
     ├── scientific-simulation
     └── scientific-critique
@@ -908,7 +937,7 @@ sim/lipid-metabolism
 results/res_512d7a02-a293-41fa-964f-b4a27c37d03d.md
 ```
 
-Result 文件直接显示为 User Result，并通过 `supports` Edge 连接 Hypothesis。只有具备支持 Evidence 或 User Result 时，Hypothesis 才能转变为 Supported；该语义操作完成后，SciFork 自动创建本地检查点：
+Result 文件直接显示为 Result 卡片，并通过 `supports` Edge 连接 Hypothesis。只有具备经过审核的 Evidence Assertion 或来自 `validated` Result 的支持时，Hypothesis 才能转变为 Supported/Finding；该语义操作完成后，SciFork 自动创建本地检查点：
 
 ```text
 experiment: support lipid-mediated TREM2 hypothesis
@@ -965,33 +994,25 @@ experiment: support lipid-mediated TREM2 hypothesis
 ## 25. 最终产品结构
 
 ```text
-                    DeepSeek Harness
+┌────────────────────────┐      ┌────────────────────────────┐
+│ DeepSeek Harness Web   │      │ SciFork Graph Companion    │
+│ Native Chat / Tools    │      │ Graph / Details / Actions  │
+└───────────┬────────────┘      └─────────────┬──────────────┘
+            │ tools + draft bridge            │ same-origin API
+            └──────────────┬──────────────────┘
+                           ↓
+                    SciFork Host/Core
+             Focus / Entrez / Skills / Timeline
                            │
-              ┌────────────┴────────────┐
-              │                         │
-         Native Chat              Research Graph
-              │                 Selected DSH View
-              │                         │
-              └──────────┬──────────────┘
-                         ↓
-                   Research Skills
-                         │
-            ┌────────────┼────────────┐
-            ↓            ↓            ↓
-         Search       Simulation    Critic
-            │            │            │
-            └────────────┼────────────┘
-                         ↓
-                   Research Repo
-                  Markdown + JSON
-                         │
-                         ↓
-                        Git
-                  ┌──────┴──────┐
-                  ↓             ↓
-             Git Remote      Local
-                  │
-             Team Collaboration
+                           ↓
+                    Research Repo
+           Markdown + JSON + local Git checkpoints
+                           │
+                 ┌─────────┴─────────┐
+                 ↓                   ↓
+              Local Git       Any Git Remote
+                                     │
+                              Team Collaboration
 ```
 
 ## 26. 最核心的竞争力
@@ -1002,7 +1023,7 @@ experiment: support lipid-mediated TREM2 hypothesis
 
 真正形成闭环的是：
 
-**Evidence → Graph → Hypothesis → Simulation → Experiment → New Evidence → Graph Revision**
+**Reviewed Evidence → Graph → Hypothesis → Simulation → Experiment → New Result / Evidence → Graph Revision**
 
 而 Git 让这个过程：
 

@@ -1,8 +1,8 @@
-# SciFork 软件架构与具体实现设计 v0.8
+# SciFork 软件架构与具体实现设计 v0.9
 
 > 状态：Proposed（已完成一致性审查与 MVP 精简）  
 > 日期：2026-08-23  
-> 上位设计：[SciFork 产品设计 v0.7](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.8](./scifork-product-design.md)
 
 ## 1. 结论先行
 
@@ -10,24 +10,26 @@ SciFork 应实现为一个可独立安装的 **DeepSeek Harness bundle**，而�
 
 第一版采用以下架构决策：
 
-1. **科研仓库是唯一科研事实源**：节点、关系、证据和用户结果只保存在 Markdown / JSON 文件中。
+1. **科研仓库是唯一科研事实源**：Source、Evidence Assertion、Claim、关系和 Result 只保存在 Markdown / JSON 文件中。
 2. **Graph 是可重建投影**：不使用 Neo4j、PostgreSQL 或 SQLite 保存科研图谱。
 3. **核心领域层不依赖 DSH**：文件格式、校验、命令和 Graph 投影均可脱离 DSH 单独测试。
-4. **DSH Host 插件只做适配**：注册科研工具、注入当前研究焦点、连接工作区和浏览器端。
-5. **浏览器端使用 DSH Client Plugin**：Graph UI 通过现有 slot 系统挂载，不修改 DSH Web 源码。
-6. **临时交互状态不进入科研仓库**：当前焦点、面板偏好等按 session 保存到 DSH 的本地 storage domain。
-7. **不写第三方自定义 SessionEvent**：当前 DSH 预览版的插件事件持久化仍存在兼容风险。
-8. **单次科研写操作只修改一个实体文件**：避免在缺少多文件事务的文件系统上制造半完成事务。
-9. **第一版不封装 GitHub API 和 PubMed 平台 API**：SciFork 只实现受控的本地 Git 时间线；远端 Git 操作复用 DSH 现有能力。PubMed 检索先由 Skill 编排现有 Web/API 工具完成。
-10. **GitHub 是唯一发布入口**：源码保留四个包的职责边界，正式版本只交付一个预构建的 `dsh-scifork` bundle。
-11. **Result 只保存一次**：`results/*.md` 本身投影为 Graph 中的 User Result，不再复制为 `kind: user_result` Node。
-12. **Evidence 使用正向引用**：Node 和 Edge 引用 Evidence，Evidence 文件不维护反向列表。
-13. **读版本与写保护分离**：`projectRevision` 用于快照缓存，目标文件 `file_version` 用于并发写入保护。
-14. **本地 Git 时间线默认开启**：初始化研究项目时同时初始化 Git、建立 `main` 基线并切换到个人工作分支；每个成功的科研语义操作自动生成本地检查点。
-15. **远端协作不进入 SciFork**：push、pull、fetch、PR、merge、rebase 和冲突解决由 DSH 根据用户指令处理，SciFork 只检测结果并重新加载。
-16. **检索由 DSH + Skill 编排**：Skill 定义查询、筛选和抽取工作流，实际网络访问使用 DSH 中可用的结构化 API/Tool；Core 不包含 PubMed client。
-17. **结构化数据分层进入 Graph**：确定性工具返回文章记录，LLM 只生成 typed Evidence candidates / ResearchCommand；MeSH 用于轻量术语扩展，PubTator 关系只能作为候选，不能直接成为科研事实。
-18. **SciFork UI 固定使用英语**：按钮、状态、空状态、tooltip、ARIA label 和错误展示统一使用英语；DSH Chat 与科研文件内容不受此限制。
+4. **DSH Host 插件只做适配**：注册科研工具、同源 Web 路由、内置 Entrez adapter、工作区和本地 Git 时间线。
+5. **Graph 使用独立 Companion 页面**：Host 通过公开的 `ctx.webServer.register()` 在 `/scifork/*` 提供 SPA 与 typed API；不占用 DSH 的 `sidebar`、`conversation` 或 `details`。
+6. **DSH Client 只是轻量 Bridge**：通过 additive `shell.overlay` 提供 `Open Research Graph`，并在客户端接收经过校验的 Simulate 请求写入 composer draft；Bridge 不渲染 Graph。
+7. **没有第三方运行插件依赖**：`DSH-better-sidebar` 仅作为 v0.15.2 固定版本的参考实现，不进入 dependency、peerDependency、profile 或运行时 capability。
+8. **临时交互状态不进入科研仓库**：Focus 和窗口密度按 session/project 保存；Git 导航按 project/branch 共享，全部位于本地 sidecar。
+9. **不写第三方自定义 SessionEvent**：当前 DSH 预览版的插件事件持久化仍存在兼容风险。
+10. **单次科研写操作只修改一个实体文件**：避免在缺少多文件事务的文件系统上制造半完成事务。
+11. **内置窄 Entrez adapter**：MVP 自己完成确定性 PubMed 请求、限流、重试和响应校验，但不实现独立检索服务、RAG 或文章知识图谱。
+12. **GitHub 是唯一发布入口**：源码保留四个包的职责边界，正式版本只交付一个预构建的 `dsh-scifork` bundle。
+13. **Result 只保存一次**：`results/*.md` 本身投影为 Graph 中的 Result，不再复制为 Node。
+14. **Source 与 Evidence Assertion 分离**：Source 保存论文/数据集身份；一条可定位、可审核的 Evidence Assertion 才能被 Node/Edge 正向引用。
+15. **Confidence 使用定性分档**：`low | moderate | high` 表达支持强度，不伪装成校准概率。
+16. **读版本与写保护分离**：`projectRevision` 用于快照缓存，目标文件 `file_version` 用于并发写入保护。
+17. **本地 Git 时间线默认开启**：初始化研究项目时同时初始化 Git、建立 `main` 基线并切换到个人工作分支；每个成功的科研语义操作自动生成本地检查点。
+18. **远端协作不进入 SciFork**：push、pull、fetch、PR、merge、rebase 和冲突解决由 DSH 根据用户指令处理，SciFork 只检测结果并重新加载。
+19. **结构化数据分层进入 Graph**：Entrez 返回 Source record，LLM 只生成待审核 Evidence Candidate / typed ResearchCommand；PubTator 关系只能作为候选。
+20. **SciFork UI 固定使用英语**：按钮、状态、空状态、tooltip、ARIA label 和错误展示统一使用英语；DSH Chat 与科研文件内容不受此限制。
 
 “GitHub 是唯一发布入口”只描述 SciFork 软件本身的分发；用户 Research Repo 保持 Git-host-neutral，可使用 GitHub、GitLab、Gitea、SSH、本地 NAS 或纯本地 Git。
 
@@ -42,6 +44,9 @@ SciFork 应实现为一个可独立安装的 **DeepSeek Harness bundle**，而�
 - SciFork 自有 UI 的固定文案全部使用英语，且不改变用户科研内容的原始语言。
 - 文件被外部编辑后，Graph 能重新加载并显示诊断信息。
 - 团队成员在不同 Git branch 新增实体时，尽量减少文件级冲突。
+- Graph Companion 能在 DSH Web 同源独立窗口中打开、恢复并与对应 session 同步 Focus。
+- 不安装任何第三方 DSH 插件时，Graph、Details、Simulate 和本地 Timeline 仍完整可用。
+- v0.1 只在 loopback 暴露 Companion；检测到非 loopback DSH Web 时拒绝启用路由，未来网络部署必须另立可信 origin、TLS 与认证设计。
 - 所有模型写入都通过领域命令完成，不能让模型任意拼接数据文件。
 - 插件升级失败不能损坏科研仓库或 DSH 会话。
 
@@ -56,7 +61,7 @@ SciFork 应实现为一个可独立安装的 **DeepSeek Harness bundle**，而�
 - PDF 全文管理。
 - 自动执行实验或计算任务。
 - 自定义 Agent Runtime。
-- 在科研仓库内保存 UI 坐标、当前面板和当前会话焦点。
+- 在科研仓库内保存 UI 坐标、窗口布局和当前会话焦点。
 
 ## 3. DSH 集成基线
 
@@ -70,8 +75,10 @@ SciFork 应实现为一个可独立安装的 **DeepSeek Harness bundle**，而�
 - 模型工具通过 `ctx.tools.register()` 注册。
 - 文件访问应通过 `ctx.fs`，以继承工作区、沙箱和原子文本写入语义。
 - 非 Session 数据可通过 `ctx.storageDomain` 保存。
-- Web Client 通过 `dsh.client` 声明加载，并通过 `ctx.slots.register()` 组合 UI。
-- Host 与 Client 的一元调用使用 Typert Remote / `ctx.remote`。
+- Host 插件可以通过公开的 `ctx.webServer.register()` 注册 exact/prefix HTTP 路由并随 effect 卸载。
+- Web Client 通过 `dsh.client` 声明加载；SciFork Bridge 只注册 additive `shell.overlay` 入口，不替换 single slot。
+- 当前会话的 composer draft 由浏览器侧 `conversation.input.for(scope).setDraft()` 修改；Host 不能直接写浏览器状态。
+- Companion 使用 SciFork 自有的同源 typed HTTP API；不依赖 DSH 私有 React 组件或第三方 channel。
 
 实现时采用以下版本策略：
 
@@ -87,50 +94,49 @@ CI：只测试兼容矩阵中的版本
 ## 4. 系统上下文
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│                  DeepSeek Harness Web                        │
-│                                                              │
-│  Native Chat        SciFork Graph Panel       DSH Sessions   │
-│       │                     │                       │          │
-└───────┼─────────────────────┼───────────────────────┼──────────┘
-        │                     │ Typed Remote          │
-        │ tools/context       │                       │
-┌───────▼─────────────────────▼───────────────────────▼──────────┐
-│                     SciFork Host Plugin                       │
-│                                                              │
-│ Tool Adapter  Focus Context  Remote API  Project Locator      │
-│ Local Git Timeline Adapter                                    │
-│                          │                                   │
-│                   Application Service                        │
-└──────────────────────────┼────────────────────────────────────┘
-                           │
-┌──────────────────────────▼────────────────────────────────────┐
-│                    SciFork Core                               │
-│ Domain Types  Schemas  Commands  Validation  Graph Projection│
-└──────────────────────────┼────────────────────────────────────┘
-                           │ ResearchFileStore
-┌──────────────────────────▼────────────────────────────────────┐
-│               DSH File Repository Adapter                    │
-│                         ctx.fs                               │
-└──────────────────────────┼────────────────────────────────────┘
-                           │
-┌──────────────────────────▼────────────────────────────────────┐
-│                  Local Research Git Repository               │
-│ research.json + Markdown + JSON + automatic checkpoints      │
-└──────────────────────────▲────────────────────────────────────┘
-                           │ argv-only Git calls
-                    ctx.subprocess
+┌──────────────────────────────┐      ┌──────────────────────────────┐
+│ DeepSeek Harness Web         │      │ SciFork Graph Companion      │
+│ Native Chat / Sessions       │      │ Graph / Details / Actions    │
+│ Open action + Draft Bridge   │      │ Compact / Workspace density  │
+└──────────────┬───────────────┘      └──────────────┬───────────────┘
+               │ tools/context                       │ /scifork/api/*
+               │ same-origin launch                  │ bearer capability
+               └──────────────────┬───────────────────┘
+                                  ▼
+┌────────────────────────────────────────────────────────────────┐
+│ SciFork Host Plugin                                            │
+│ Web Routes | Tool Adapter | Focus | Entrez | Project Locator   │
+│ Local Git Timeline | Application Service                       │
+└───────────────────────────────┬────────────────────────────────┘
+                                ▼
+┌────────────────────────────────────────────────────────────────┐
+│ SciFork Core                                                   │
+│ Domain Types | Schemas | Commands | Validation | Projection    │
+└───────────────────────────────┬────────────────────────────────┘
+                                │ ResearchFileStore
+┌───────────────────────────────▼────────────────────────────────┐
+│ DSH File Repository Adapter (ctx.fs)                           │
+└───────────────────────────────┬────────────────────────────────┘
+                                ▼
+┌────────────────────────────────────────────────────────────────┐
+│ Local Research Git Repository                                 │
+│ research.json + Markdown + JSON + automatic checkpoints       │
+└───────────────────────────────▲────────────────────────────────┘
+                                │ argv-only Git calls
+                         ctx.subprocess
 
 Machine-local sidecar:
-DSH storage domain ── sessionId → current focus / local UI state
+DSH storage domain ── sessionId + projectId → focus / timeline navigation
+Companion sessionStorage ── launch capability / density (never research facts)
 ```
 
 核心依赖方向必须始终保持：
 
 ```text
-DSH adapters → application → domain
-client UI    → remote contract
-repository   → domain ports
+DSH Host adapters → application → domain
+Companion SPA    → typed web contract
+DSH Client Bridge → launch/draft bridge contract
+repository       → domain ports
 
 domain 不得反向 import DSH、React、Git 或网络客户端
 ```
@@ -142,9 +148,9 @@ domain 不得反向 import DSH、React、Git 或网络客户端
 | 单元 | 发布属性 | 职责 |
 | --- | --- | --- |
 | `@scifork/core` | `private: true` | 领域模型、Schema、命令、校验和 Graph 投影 |
-| `@scifork/dsh-host` | `private: true` | DSH Host、工具、文件适配、本地 Git 时间线、焦点状态和 Remote API |
-| `@scifork/dsh-client` | `private: true` | 浏览器 Graph/Timeline UI、Client store 和 Remote client |
-| `dsh-scifork` | 唯一分发包 | DSH bundle manifest、客户端声明和完整发布工件 |
+| `@scifork/dsh-host` | `private: true` | DSH Host、typed Web API、Entrez、文件、Focus 与本地 Git 时间线 |
+| `@scifork/web` | `private: true` | 独立 Companion SPA 与最小 DSH Open/Draft Bridge |
+| `dsh-scifork` | 唯一分发包 | DSH bundle manifest、Bridge 声明、Companion assets 和完整发布工件 |
 
 这里的“四包”是开发和构建边界，不是四个独立产品、服务或 GitHub 仓库。三个内部包不得单独发布，也不能成为用户安装时必须解析的 workspace 依赖。
 
@@ -161,7 +167,8 @@ SciFork/
 │   │       ├── domain/
 │   │       │   ├── node.ts
 │   │       │   ├── edge.ts
-│   │       │   ├── evidence.ts
+│   │       │   ├── source.ts
+│   │       │   ├── evidence-assertion.ts
 │   │       │   ├── result.ts
 │   │       │   └── project.ts
 │   │       ├── schema/
@@ -178,28 +185,37 @@ SciFork/
 │   │       ├── focus-store.ts
 │   │       ├── skills-provider.ts
 │   │       ├── context.ts
-│   │       ├── remote.ts
+│   │       ├── web-router.ts
+│   │       ├── launch-capabilities.ts
+│   │       ├── entrez-adapter.ts
 │   │       ├── project-locator.ts
 │   │       ├── timeline/
 │   │       │   ├── local-git-timeline.ts
 │   │       │   └── branch-policy.ts
 │   │       └── repository/
 │   │           └── dsh-file-repository.ts
-│   └── dsh-client/
-│       ├── package.json                 # @scifork/dsh-client，private
+│   └── web/
+│       ├── package.json                 # @scifork/web，private
 │       └── src/
-│           ├── apply.ts
-│           ├── store.ts
-│           ├── remote.ts
-│           ├── GraphPanel.tsx
-│           ├── LocalGraphCanvas.tsx
-│           ├── GraphActionBar.tsx
-│           ├── GraphStateNotice.tsx
-│           ├── ui-text.ts
-│           └── styles.module.css
+│           ├── bridge/
+│           │   ├── apply.ts
+│           │   ├── OpenGraphAction.tsx
+│           │   └── draft-channel.ts
+│           ├── companion/
+│           │   ├── main.tsx
+│           │   ├── CompanionApp.tsx
+│           │   ├── LocalGraphCanvas.tsx
+│           │   ├── DetailsView.tsx
+│           │   └── GraphActionBar.tsx
+│           └── shared/
+│               ├── api-contract.ts
+│               └── ui-text.ts
 ├── dist/                                 # 构建产物，不作为手写源码
 │   ├── host/index.js
-│   └── client/client.js
+│   ├── client/client.js                  # 仅 DSH Open/Draft Bridge
+│   └── companion/
+│       ├── index.html
+│       └── assets/*
 ├── scripts/
 │   ├── build-release.mjs
 │   ├── verify-package.mjs
@@ -269,28 +285,30 @@ SciFork/
       name: dsh-scifork
 ```
 
-构建时，Core、Host 和 Client 被收拢到 `dsh-scifork`：
+构建时，Core、Host、Companion SPA 和 DSH Bridge 被收拢到 `dsh-scifork`：
 
 ```text
 private source packages
         │
-        ├── core + host ──→ dist/host/index.js
-        └── client UI   ──→ dist/client/client.js
-                                  │
-                                  ▼
-                         dsh-scifork-0.1.0.tgz
+        ├── core + host ──────→ dist/host/index.js
+        ├── DSH bridge ───────→ dist/client/client.js
+        └── Companion SPA ────→ dist/companion/index.html + assets/*
+                                         │
+                                         ▼
+                                dsh-scifork-0.1.0.tgz
 ```
 
 发布工件必须满足：
 
 - 不包含 `workspace:*` 运行时依赖。
 - 用户安装时不需要克隆 monorepo，也不需要理解四包结构。
-- DSH 和它提供的浏览器运行时保持 external，不能在包内复制第二份 DSH/React runtime。
-- SciFork 自身的 Core 代码和必要 UI 依赖进入构建产物。
-- `cordis.patch.yml`、Client bundle、Skills、README 和 LICENSE 都包含在 tarball 中。
+- DSH Bridge 将 DSH/React runtime 设为 external，不能在主页面复制第二份宿主 runtime。
+- Companion 运行在独立 document 中，可以把自己锁定的 React、Graph 和 Markdown 依赖编译进静态 assets；这些库不是第三方 DSH 插件。
+- `cordis.patch.yml`、Bridge bundle、Companion assets、Skills、README 和 LICENSE 都包含在 tarball 中。
+- tarball 不声明 `dsh-better-sidebar` 或其他 UI provider 的 dependency/peerDependency。
 - `pnpm pack` 后必须在一个全新的 DSH profile 中完成安装和启动测试。
 
-`dsh.client.inject` 若需要声明依赖，只能填写实际客户端包名依赖；`slots`、`layout`、`remote` 等运行时服务名属于浏览器插件导出的 `inject`，不能写进 package manifest。SciFork 不是启动基础设施，MVP 不设置 `immediately: true`，让 Client bundle 按需加载。
+`dsh.client.inject` 若需要声明依赖，只能填写实际客户端包名依赖；`slots`、`sessions`、`conversation` 等运行时服务名属于 Bridge 代码导出的 `inject`，不能写进 package manifest。SciFork 不是启动基础设施，MVP 不设置 `immediately: true`。Companion assets 由 Host 路由按需提供，不进入 DSH Client Module graph。
 
 ### 5.1 GitHub 发布模型
 
@@ -367,16 +385,17 @@ research-project/
 ├── edges/
 │   ├── edge_c094....json
 │   └── edge_d282....json
+├── sources/
+│   └── src_pmid_12345678.md
 ├── evidence/
-│   ├── ev_pmid_12345678.md
-│   └── ev_pmid_23456789.md
+│   └── ev_6cbd....md
 └── results/
     └── res_512d....md
 ```
 
-目录允许为空，但 `/research init` 会一次性创建四个受管目录。这样后续实体写入只需要使用 `ctx.fs.writeText` 创建文件。
+目录允许为空，但 `/research init` 会一次性创建五个受管目录。这样后续实体写入只需要使用 `ctx.fs.writeText` 创建文件。
 
-当前 DSH `ctx.fs` 基线没有通用 `mkdir` 原语，因此初始化器是一个明确隔离的 local-only 适配器：它从 session cwd 解析出本地 process path，只能创建固定名称的 `nodes/edges/evidence/results`，且 `/research init` 必须由用户显式触发。除这一步目录 provision 之外，项目文件读写全部经过 `ctx.fs`。如果未来 DSH 增加目录创建能力，应删除这个本地例外。
+当前 DSH `ctx.fs` 基线没有通用 `mkdir` 原语，因此初始化器是一个明确隔离的 local-only 适配器：它从 session cwd 解析出本地 process path，只能创建固定名称的 `nodes/edges/sources/evidence/results`，且 `/research init` 必须由用户显式触发。除这一步目录 provision 之外，项目文件读写全部经过 `ctx.fs`。如果未来 DSH 增加目录创建能力，应删除这个本地例外。
 
 ### 6.2 Manifest
 
@@ -399,7 +418,7 @@ research-project/
 - 工作区可能处于 dirty 状态，数字版本无法准确表达。
 - 多分支同时递增同一个字段会产生无意义冲突。
 
-运行时 `projectRevision` 由 `research.json` 和四个受管目录中的实体文件内容计算得到，不包含 README 或其他普通仓库文件，也不回写仓库。持久化文件统一使用 `snake_case`；Core 的 TypeScript 对象可以在解析后映射为 `camelCase`。
+运行时 `projectRevision` 由 `research.json` 和五个受管目录中的实体文件内容计算得到，不包含 README 或其他普通仓库文件，也不回写仓库。持久化文件统一使用 `snake_case`；Core 的 TypeScript 对象可以在解析后映射为 `camelCase`。
 
 ### 6.3 ID 规则
 
@@ -411,10 +430,11 @@ research-project/
 hyp_<uuid>       hypothesis
 find_<uuid>      finding
 pred_<uuid>      prediction
-res_<uuid>       user result
+res_<uuid>       result
 edge_<uuid>      edge
-ev_pmid_<pmid>   PubMed evidence，确定性 ID
-ev_<uuid>        其他 evidence
+src_pmid_<pmid>  PubMed source，确定性 ID
+src_<uuid>       其他 source
+ev_<uuid>        evidence assertion
 ```
 
 UI 可以显示短 ID，但文件和引用必须使用完整 ID。文件名只使用 ID，不把标题放进文件名，避免修改标题导致 Git rename。
@@ -428,13 +448,13 @@ id: hyp_8d15c5d4-b474-4a35-9918-581169f126d4
 kind: hypothesis
 status: plausible
 title: TREM2 may alter anti-PD-1 response through lipid metabolism
-confidence: 0.64
+confidence: moderate
 origin: ai
 created_at: 2026-08-23T00:00:00.000Z
 updated_at: 2026-08-23T00:00:00.000Z
 created_by: scifork-agent
 evidence_refs:
-  - evidence_id: ev_pmid_12345678
+  - evidence_id: ev_6cbd8f39-65fa-4a9e-9eed-cd0f6cf32b20
     role: supports
 ---
 
@@ -462,16 +482,17 @@ TREM2-positive macrophages may promote anti-PD-1 resistance through altered lipi
 kind       finding | hypothesis | prediction
 status     draft | plausible | supported | contested | rejected | superseded
 origin     literature | experiment | user | ai
-confidence 0.0–1.0
+confidence low | moderate | high
 ```
 
 Core 必须执行跨字段约束，而不是只依靠提示词：
 
 - `origin: ai` 只能创建 `hypothesis` 或 `prediction`，不能创建 `finding`。
 - `status: plausible` 只适用于 Hypothesis/Prediction；Finding 使用 `draft/supported/contested/rejected/superseded`。
-- `status: supported` 必须至少有一个 `role: supports` 的 Evidence 引用，或存在来自 User Result 的 `supports` Edge。
-- `finding` 必须有可追溯的 Evidence/User Result 来源；只有模型推理时仍保持 Hypothesis/Prediction。
-- `evidence_refs` 只保存正向引用，Evidence 文件不保存反向列表。
+- `status: supported` 必须至少引用一条 `review_status: reviewed` 且 `role: supports` 的 Evidence Assertion，或存在来自 `status: validated` Result 的 `supports` Edge。
+- `finding` 必须满足同一支持门槛；模型推理不足以把 Hypothesis 升级为 Finding。
+- `confidence` 是定性支持强度，不是概率；每次变化必须在命令中携带 rationale。
+- `evidence_refs` 只保存正向引用，Source/Evidence Assertion 不保存反向目标列表。
 
 ### 6.5 Edge
 
@@ -483,9 +504,9 @@ Core 必须执行跨字段约束，而不是只依靠提示词：
   "target": "hyp_8d15c5d4-b474-4a35-9918-581169f126d4",
   "relation": "supports",
   "basis": "literature",
-  "confidence": 0.72,
+  "confidence": "moderate",
   "evidence_refs": [
-    { "evidence_id": "ev_pmid_12345678", "role": "supports" }
+    { "evidence_id": "ev_6cbd8f39-65fa-4a9e-9eed-cd0f6cf32b20", "role": "supports" }
   ],
   "created_at": "2026-08-23T00:00:00.000Z"
 }
@@ -496,7 +517,7 @@ relation supports | contradicts | causes | inhibits | associated_with
 basis    literature | experiment | user_assertion | ai_inference
 ```
 
-Edge 的 `source` 和 `target` 使用 `GraphEntityId = NodeId | ResultId`。因此实验结果可以直接作为 User Result 连接到 Hypothesis，不需要创建重复 Node。Edge 上的 Evidence 引用证明的是“这条关系”；Node 上的 Evidence 引用证明的是“这个科研主张”。
+Edge 的 `source` 和 `target` 使用 `GraphEntityId = NodeId | ResultId`。因此实验结果可以直接作为 Result 连接到 Hypothesis，不需要创建重复 Node。Edge 上的 Evidence Assertion 引用证明“这条关系”；Node 上的引用证明“这个科研主张”。
 
 早期方案中的 `inferred` 不作为 relation。它描述的是关系的认识来源，而不是关系语义，因此持久化为 `basis: ai_inference`。例如 AI 推断的因果关系表示为：
 
@@ -504,26 +525,47 @@ Edge 的 `source` 和 `target` 使用 `GraphEntityId = NodeId | ResultId`。因�
 { "relation": "causes", "basis": "ai_inference" }
 ```
 
-### 6.6 Evidence
+### 6.6 Source
 
 ```markdown
 ---
 schema_version: "0.1"
-id: ev_pmid_12345678
+id: src_pmid_12345678
 kind: publication
 pmid: "12345678"
+doi: "10.0000/example"
 title: Paper title
+canonical_url: https://pubmed.ncbi.nlm.nih.gov/12345678/
 retrieved_at: 2026-08-23T00:00:00.000Z
-source_url: https://pubmed.ncbi.nlm.nih.gov/12345678/
+retraction_status: none
+correction_of: null
+---
+```
+
+`src_pmid_<pmid>` 对 PubMed 来源使用确定性 ID，重复检索更新同一个 Source record。Source 只描述来源身份、版本和生命周期，不表达它支持哪个科研结论。
+
+### 6.7 Evidence Assertion
+
+```markdown
+---
+schema_version: "0.1"
+id: ev_6cbd8f39-65fa-4a9e-9eed-cd0f6cf32b20
+source_ref: src_pmid_12345678
+direction: supports
+study_design: in_vivo_perturbation
+biological_model: mouse_melanoma
+locator:
+  kind: abstract_sentence
+  value: "3"
+review_status: reviewed
+reviewed_by: local:student-a
+reviewed_at: 2026-08-23T00:00:00.000Z
+extraction_method: llm_assisted
 ---
 
-## Finding
+## Assertion
 
-...
-
-## Model
-
-Mouse melanoma
+TREM2 perturbation changed response to anti-PD-1 in the reported mouse model.
 
 ## Limitations
 
@@ -531,9 +573,9 @@ Mouse melanoma
 - Small cohort
 ```
 
-Evidence 不在 front matter 中维护反向 `supports` 列表。Node/Edge 通过 `evidence_refs` 引用 Evidence，避免双向数据不同步，同时允许 Evidence 直接支持一个科研主张或一条关系。
+每条 Evidence Assertion 只对应一个可审核主张和一个精确 Source locator；一篇论文可以生成多条 assertion。模型只能创建 `review_status: candidate`，用户审核后才能转为 `reviewed`。Node/Edge 通过 `evidence_refs` 正向引用 reviewed assertion；Source 和 Evidence Assertion 都不保存反向目标列表。
 
-### 6.7 User Result
+### 6.8 Result
 
 ```markdown
 ---
@@ -541,8 +583,11 @@ schema_version: "0.1"
 id: res_512d7a02-a293-41fa-964f-b4a27c37d03d
 kind: experiment
 title: TREM2 knockout experiment
-author: student-a
-status: completed
+actor_ref: local:student-a
+status: validated
+source_refs:
+  - artifacts/figure-1.png
+summary_method: llm_assisted
 created_at: 2026-08-23T00:00:00.000Z
 ---
 
@@ -561,10 +606,11 @@ Supports the lipid-mediated TREM2 hypothesis.
 
 Result 与 Claim Node 是两个领域概念，但 Result 本身就是可投影的 Graph 实体：
 
-- `results/*.md` 是实验、生信或计算结果的唯一事实文件。
-- Graph Projection 将 Result 显示为 `User Result` 节点样式。
+- `results/*.md` 是实验、生信或计算观察的唯一事实文件。
+- 状态使用 `draft | completed | validated | superseded`；只有 `validated` Result 可满足 Claim 的支持门槛。
+- Graph Projection 将 Result 显示为 `Result` 卡片。
 - Edge 可以从 `ResultId` 指向 Node，例如 `{ relation: "supports", basis: "experiment" }`。
-- 不再创建内容重复的 `kind: user_result` Node。
+- 不再创建内容重复的 Result Node。
 
 ## 7. Core 领域设计
 
@@ -575,7 +621,8 @@ interface ResearchProject {
   manifest: ResearchManifest
   nodes: ReadonlyMap<NodeId, ResearchNode>
   edges: ReadonlyMap<EdgeId, ResearchEdge>
-  evidence: ReadonlyMap<EvidenceId, Evidence>
+  sources: ReadonlyMap<SourceId, ResearchSource>
+  evidenceAssertions: ReadonlyMap<EvidenceId, EvidenceAssertion>
   results: ReadonlyMap<ResultId, ResearchResult>
   diagnostics: readonly Diagnostic[]
   projectRevision: string
@@ -611,10 +658,10 @@ HTTP client
 读取项目时：
 
 1. 校验 `research.json`。
-2. 并行扫描四类实体目录。
+2. 并行扫描五类实体目录。
 3. 每个文件独立解析和校验。
 4. 构建全局 ID 索引。
-5. 校验 Edge 的 Node/Result endpoint 和 Evidence 引用。
+5. 校验 Evidence Assertion 的 Source、Edge 的 Node/Result endpoint 和 reviewed Evidence Assertion 引用。
 6. 计算内容 `projectRevision`。
 7. 返回有效实体和诊断列表。
 
@@ -642,8 +689,10 @@ type ResearchCommand =
   | UpdateNode
   | CreateEdge
   | UpdateEdge
-  | CreateEvidence
-  | UpdateEvidence
+  | CreateSource
+  | UpdateSource
+  | CreateEvidenceAssertion
+  | ReviewEvidenceAssertion
   | CreateResult
   | UpdateResult
   | UpdateManifest
@@ -696,7 +745,7 @@ interface MutationGuard {
 - `projectRevision` 用于 Snapshot 缓存、Graph 刷新和跨实体校验，不作为所有写入的统一文件锁。
 - Create 命令使用 `target: { kind: 'absent' }`，防止覆盖同名实体。
 - Update 命令必须携带目标文件的 `file_version`，只在目标实体确实被别人修改时返回 `STALE_TARGET`。
-- CreateEdge 等依赖多个实体的命令额外携带 `expectedProjectRevision`，在写前重新确认 endpoint 和 Evidence 仍有效。
+- CreateEvidenceAssertion/CreateEdge 等依赖多个实体的命令额外携带 `expectedProjectRevision`，在写前重新确认 Source、endpoint 和 reviewed Evidence Assertion 仍有效。
 - SciFork 自身写操作在 Host 内串行化；外部编辑仍通过 file version、重新加载和写后诊断检测。
 
 返回值示例：
@@ -705,7 +754,7 @@ interface MutationGuard {
 {
   "projectRevision": "7d45...",
   "changed": ["nodes/hyp_8d15....md"],
-  "summary": "Updated hypothesis confidence from 0.52 to 0.71",
+  "summary": "Updated hypothesis confidence band from moderate to high",
   "timelineEntry": {
     "actionId": "act_6d62...",
     "actionGroupId": "grp_8a31...",
@@ -732,7 +781,7 @@ export const inject = [
   'subprocess',
   'systemPrompt',
   'storageDomain',
-  'typertGateway',
+  'webServer',
   'commands',
   'skills'
 ]
@@ -748,7 +797,7 @@ export const inject = [
 session.header.cwd/research.json
 ```
 
-第一版不自动向父目录递归查找，不接受模型传入任意绝对路径。这样可以避免误操作其他仓库，也让 DSH 的 workspace sandbox 边界保持清晰。
+第一版不自动向父目录递归查找，不接受模型传入任意绝对路径。若 cwd 位于 Git 仓库中，初始化和 mutation 前必须执行 `git rev-parse --show-toplevel`，并要求解析出的仓库根严格等于项目根；父仓库或意外嵌套仓库都返回 `PROJECT_REPOSITORY_MISMATCH`。
 
 没有 `research.json` 时返回 `PROJECT_NOT_INITIALIZED`，UI 显示 Initialize 操作。
 
@@ -773,15 +822,15 @@ session.header.cwd/research.json
 ```text
 domain: scifork_ui_state_v1
 table: sessions
-key: <sessionId>
+key: <sessionId>:<projectId>
 value:
-  projectId
   focusEntityId?
   pathEntityIds[]
+  viewDensity: compact | workspace
   updatedAt
 ```
 
-`focusEntityId` 可以指向 Node、Result 或 Edge；读取时若实体已不存在，则自动忽略焦点并写回空值。
+`focusEntityId` 可以指向 Node、Result、Source、Evidence Assertion 或 Edge；读取时若实体已不存在，则自动忽略焦点并写回空值。Timeline Back/Forward 栈不放在 session 行中，而按 `projectId + branch` 维护，避免两个 DSH session 对同一 Git 工作树形成互相矛盾的前进栈。
 
 不把焦点写入自定义 SessionEvent。原因是当前 DSH 第三方事件的 `ignorable` 写入/注册面仍在快速变化；错误写入可能让旧 Harness 无法恢复整个会话。等官方接口稳定后，可通过迁移器把 sidecar 状态改为 Session Projection，但这不是 MVP 前提。
 
@@ -821,7 +870,7 @@ Current path: find_a62c... → hyp_8d15...
 - 默认不超过 4 KiB。
 - 不把整个 Graph 放入 system prompt。
 - Node、Result 或 Edge 的详细内容由 `research_graph_read` 按需读取。
-- Evidence 文本明确标记为 data，不能被解释为 Agent 指令。
+- Source、Evidence Assertion 和 Result 文本明确标记为 data，不能被解释为 Agent 指令。
 
 ### 8.7 模型工具
 
@@ -871,11 +920,12 @@ interface FocusRequest {
 
 ### 8.8 人类命令
 
-除模型工具外，只注册一个 `research` 命令，由 raw input 解析两个子命令：
+除模型工具外，只注册一个 `research` 命令，由 raw input 解析三个子命令：
 
 ```text
 /research init
 /research validate
+/research open
 ```
 
 `/research init` 是显式的人类操作，不让 Agent 在不知情的情况下把普通目录改造成研究项目。全新项目按以下顺序初始化：
@@ -887,32 +937,49 @@ interface FocusRequest {
 5. 根据 DSH 用户身份或仓库本地 Git 身份生成 `users/<slug>`；均不可用时生成稳定的 `users/local-<short-id>`。
 6. 创建或复用该个人分支并切换过去；后续 SciFork mutation 默认写入该分支。
 
-个人分支在 UI 中称为“我的工作区”，其名称记录在 repository-local `scifork.personalBranch` 配置中，不修改全局 Git 配置。如果项目根已经是一个有历史的 Git 仓库，初始化器保留现有历史和默认分支，从当前 HEAD 创建个人分支，并在该分支提交科研项目基线；不得为了满足模板而改写已有 `main`。SciFork 不在 `main` 上自动写入科研变更；如果 DSH 后续切换到其他非 `main` 分支，SciFork 跟随当前分支记录本地检查点。项目摘要由 `research_graph_read(summary)` 和 Graph 面板提供，刷新由 Graph Toolbar 提供，不再增加重复的 `status`、`refresh` 命令。
+个人分支在 UI 中称为“我的工作区”，其名称记录在 repository-local `scifork.personalBranch` 配置中，不修改全局 Git 配置。如果项目根已经是一个有历史的 Git 仓库，初始化器保留现有历史和默认分支，从当前 HEAD 创建个人分支，并在该分支提交科研项目基线；不得为了满足模板而改写已有 `main`。SciFork 不在 `main` 上自动写入科研变更；如果 DSH 后续切换到其他非 `main` 分支，SciFork 跟随当前分支记录本地检查点。项目摘要由 `research_graph_read(summary)` 和 Companion 提供；`/research open` 生成一次性 launch link，作为 DSH Bridge action 的回退入口。
 
-## 9. Host ↔ Client API
+## 9. Companion Web 路由与 typed API
 
-使用 DSH 的 Typert Remote 做一元调用，不自建 Express/FastAPI。
-
-命名空间：
+SciFork 不启动 Express/FastAPI，也不占用额外端口。Host 使用 DSH 公开的 `ctx.webServer.register({ kind, path, handler })`，在现有 DSH Web origin 下注册一个前缀：
 
 ```text
-ctx.remote.scifork
+/scifork/
+├── index.html + assets/*          Companion SPA
+└── api/*                          SciFork typed JSON API
 ```
 
-接口：
+Host 必须通过 `ctx.effect(() => ctx.webServer.register(route), label)` 注册并使用返回的 disposer 卸载。prefix handler 自己执行方法白名单、路径解析、大小限制和错误映射，不能把未知写请求落入 DSH SPA fallback。
+
+### 9.1 启动与 capability
+
+`Open Research Graph` 只能由真实用户点击触发：
+
+1. Bridge 先同步调用 `window.open('about:blank', ...)`，避免异步请求被浏览器 popup blocker 拦截。
+2. Bridge `POST /scifork/api/launch`，提交当前 `sessionId`；Host 验证 session、cwd、project 和 exact Origin/Host。
+3. Host 返回 `/scifork/#launch=<one-time-token>`。launch token 只存在 URL fragment，30 秒过期且只能兑换一次，不进入 access log 或 Referer。
+4. Companion `POST /scifork/api/connect` 兑换一个绑定 `sessionId + projectId + cwd` 的短期 bearer capability，并立即从地址栏移除 launch fragment。
+5. capability 只保存在该窗口的 sessionStorage/内存中；不同 session 的多个窗口互不覆盖。
+
+MVP 的 `/scifork/api/*` JSON 操作统一使用 `POST`，并验证 bearer capability、exact Origin、Host、HTTP method、Content-Type 和 body size；静态资源才允许清单内的 `GET/HEAD`。API 不启用 CORS，不接受路径、cwd 或 session 身份由模型自由指定。
+
+### 9.2 API contract
 
 ```ts
-interface SciForkRemote {
-  snapshot(sessionId, request, signal): Promise<SnapshotResponse>
-  focus(sessionId, request, signal): Promise<FocusState>
-  timelineBack(sessionId, signal): Promise<TimelineNavigationResult>
-  timelineForward(sessionId, signal): Promise<TimelineNavigationResult>
+interface CompanionApi {
+  connect(request: ConnectRequest): Promise<ConnectedSession>
+  snapshot(request: { sinceProjectRevision?: string }): Promise<SnapshotResponse>
+  entity(request: { entityId: FocusEntityId }): Promise<EntityDocument>
+  setFocus(request: FocusRequest): Promise<FocusState>
+  timelineBack(request: TimelineGuard): Promise<TimelineNavigationResult>
+  timelineForward(request: TimelineGuard): Promise<TimelineNavigationResult>
+  createDraftRequest(request: { focusEntityId: FocusEntityId }): Promise<DraftRequest>
 }
 ```
 
-Remote 只做参数校验、session/workspace 解析和 application service 转发。工具与 Remote 必须调用同一个 `SciForkApplicationService`，不能复制业务规则。
+所有 handler 只负责认证、参数校验、session/project 解析和 application service 转发。模型工具与 Web API 必须调用同一个 `SciForkApplicationService`，不能复制业务规则。
 
-Graph 更新通知第一版不新增自定义流协议。Panel 可见且浏览器窗口处于前台时，每 5 秒调用一次轻量 snapshot；窗口隐藏或 Panel 未挂载时暂停：
+Graph 更新第一版不新增 WebSocket。Companion 可见且 `document.visibilityState === 'visible'` 时每 5 秒请求轻量 snapshot；隐藏时暂停，重新可见时立即请求：
 
 ```ts
 { sinceProjectRevision: currentProjectRevision }
@@ -924,116 +991,91 @@ Graph 更新通知第一版不新增自定义流协议。Panel 可见且浏览�
 { "kind": "not_modified", "projectRevision": "7d45..." }
 ```
 
-刷新和适配视图由 Client 自动完成，不提供手动 Refresh 或 Fit view 按钮。文件 watcher 不进入 MVP；只有性能数据证明轮询成为瓶颈后才考虑增加。
+### 9.3 Simulate 草稿桥接
 
-## 10. DSH Client Plugin
+Host 不能直接修改浏览器 composer。Companion 创建一个 60 秒有效的一次性 DraftRequest，并通过同源 `BroadcastChannel('scifork:v1')` 只广播随机 request id，不广播科研正文。
 
-### 10.1 加载形式
+DSH Bridge 保留发起 launch 时得到的 session-scoped bridge secret。收到通知后，它向 Host claim 对应 DraftRequest；Host 同时验证 secret、request id 和 session，返回草稿文本。Bridge 最终在 DSH 浏览器上下文调用公开的 `conversation.input.for(scope).setDraft(text)`，然后通过 channel 回传 ack。Companion 超时未收到 ack 时显示可复制提示，不自动发送、不静默丢失。
 
-`@scifork/dsh-client` 只是 private 源码包，不作为独立安装包，也不拥有对外 manifest。它的浏览器代码构建进根部 `dsh-scifork` 的 `dist/client/client.js`；根部 package manifest 统一声明 `dsh.client` 和 `exports["./client"]`。
+## 10. DSH Bridge 与 Companion SPA
 
-package manifest 中的 `dsh.client.inject` 只在确实存在跨客户端包依赖时填写包名；浏览器插件实际使用的服务通过代码导出声明：
+### 10.1 DSH Bridge
+
+`@scifork/web` 的 Bridge entry 构建进 `dist/client/client.js`，由根 package 的 `dsh.client` 声明加载。它是 DSH Client Module Registry 可加载的 lazy-CJS factory：
 
 ```ts
-export const inject = ['slots', 'layout', 'sessions', 'remote']
+export const inject = ['slots', 'sessions', 'conversation']
 ```
 
-Client 输出必须是 DSH Client Module Registry 可加载的 lazy-CJS factory，而不是普通浏览器 ESM。SciFork 不是启动基础设施，不设置 `immediately: true`。具体 bundler 配置和 external 列表由 M0 在锁定 DSH 版本上验证。
+Bridge 只承担两个职责：
 
-### 10.2 右侧面板策略
+- 向 additive `shell.overlay` list slot 注册一个不遮挡主界面的 `Open Research Graph` action；它不替换任何 single slot。
+- 监听经过 Host claim 验证的 DraftRequest，并在当前 session 的客户端 input service 写入草稿。
 
-当前 DSH `details` 是 `single` slot，并已被 `ui-conversation` 的 Tool Details 占用；第三方注册会替换整个右栏，而不是在其中追加内容。同时当前官方实现注明 Tool Details 尚没有可达入口。
+Bridge 不读取研究仓库、不布局 Graph、不渲染 Markdown，也不通过全局 CSS 改变 DSH 几何。若 additive action 注册失败，`/research open` 返回同一 launch link 作为可访问回退；Graph 数据能力不受影响。
 
-MVP 不提供 `panelMode` 配置，也不长期维护两套挂载代码。M0 compatibility spike 只负责作出一次选择：
+### 10.2 Companion SPA
 
-1. 首选验证 `details`：如果锁定 DSH 版本上替换 occupant 不破坏任何可达能力，则 SciFork 使用右侧 Research Graph，并在 conversation header action 中提供打开按钮。
-2. 如果 `details` 合约不安全，则该版本只发布 `conversation.view` tab。
-
-选择结果写入兼容矩阵并由一个 UI contract test 固定；未选方案不进入 v0.1 生产代码。未来 DSH 提供 additive details slot 时，再迁移到官方追加面。
-
-### 10.3 UI 组件
+Companion 是独立 document，不复用 DSH React tree 或主题内部对象。它把锁定版本的 React、Graph、布局和 Markdown 依赖编译进 `dist/companion/assets`：
 
 ```text
-GraphPanel
+CompanionApp
+├── SessionHeader
+│   ├── Project / Focus
+│   └── Compact / Workspace density
 ├── LocalGraphCanvas
 │   ├── FindingCard
 │   ├── HypothesisCard
 │   ├── PredictionCard
-│   └── UserResultCard
+│   └── ResultCard
 ├── GraphActionBar
 │   ├── Back
 │   ├── Forward
 │   ├── Simulate
 │   └── Details
+├── DetailsView
 └── GraphStateNotice
-    ├── Saved / Working…
-    ├── Read-only / Git conflict
-    └── File error / Capability unavailable
 ```
 
-`LocalGraphCanvas` 只请求以当前 Focus 为中心的局部投影：默认包含 Focus、当前研究路径和一层邻居。节点使用有尺寸上限的信息卡片，显示类型、标题/一行 Claim、状态/置信度/来源，以及支持、反对和 Evidence Gap 计数。
+`LocalGraphCanvas` 默认请求 Focus、当前研究路径和一层邻居。Compact 针对窄窗口；Workspace 使用更大画布和同页 Details，但二者共享同一组件树与 API，不是两套挂载模式。浏览器不能可靠强制 always-on-top，系统级置顶与分屏不属于插件权限。
 
-Client 不实现 GraphToolbar、EntityInspectorDrawer、TimelinePanel、Graph 搜索框或 Candidate Panel。刷新、视图适配和局部布局自动完成；详细内容直接打开受管 Markdown 源文件。
+所有固定文案集中在 `ui-text.ts`，使用英语；节点标题、Claim 和正文保持原始语言。Finding、Hypothesis、Prediction、Result 以及 literature/experiment/ai_inference/contradicts 关系必须同时通过线型、标签或图标区分，不能只依赖颜色。
 
-所有 SciFork 自有可见文案集中在 `ui-text.ts`，组件不得散落硬编码文本：
+### 10.3 Details
 
-```ts
-export const UI_TEXT = {
-  back: 'Back',
-  backTooltip: 'Restore previous research state',
-  forward: 'Forward',
-  forwardTooltip: 'Restore next research state',
-  simulate: 'Simulate',
-  simulateTooltip: 'Draft a simulation from the current focus',
-  details: 'Details',
-  detailsTooltip: 'Open the source Markdown file',
-  saved: 'Saved',
-  working: 'Working…',
-  readOnly: 'Read-only',
-  gitConflict: 'Git conflict',
-  fileError: 'File error',
-  capabilityUnavailable: 'Capability unavailable',
-  emptyGraph: 'No research graph yet',
-} as const
-```
+`DetailsView` 只读取 API 返回的受管实体文档。Markdown renderer 必须：
 
-按钮文本、tooltip、ARIA label、状态、空状态以及 SciFork 生成的错误说明均使用英语。节点标题、Claim 和文件正文属于研究内容，保持原始语言。v0.1 不实现语言切换，但集中式文案保留未来接入本地化表的替换点。
+- 禁用 raw HTML、script、iframe、事件属性和任意 URL scheme。
+- 对链接、图片和附件重新解析为 project-scoped asset request，并再次执行 containment。
+- 不允许 `file://`、绝对路径、`..`、符号链接逃逸或任意 Host 文件读取。
+- 展示 Source、Evidence Assertion review、Result status 和模型辅助摘要 provenance。
 
-`Details` 通过一个薄的 Client-side `FilePreviewPort` 交给 DSH 或兼容文件预览插件：
-
-```ts
-interface FilePreviewPort {
-  isAvailable(): boolean
-  open(request: { workspaceId: string; path: string }): Promise<void>
-}
-```
-
-M0 必须在锁定的 DSH 组合中确认真实 provider、注入名和路径 contract。当前官方主线尚无稳定、文档化的内置文件预览 service，因此 SciFork 不猜测私有接口，也不提供 Drawer 回退；发布工件必须声明并测试所需的文件预览组合。
-
-建议继续使用 `@xyflow/react` 渲染局部卡片和边，使用 `@dagrejs/dagre` 提供确定性有向布局，并复用 DSH React 与主题 token。布局坐标仅存在浏览器内存，不写入科研仓库。
-
-节点与边仍按科研语义区分：Finding 实线、Hypothesis 虚线、Prediction 点线、User Result 强调色；literature/experiment 关系为实线，ai_inference 为虚线，contradicts 使用冲突样式，且不只依赖颜色。
+Markdown、Graph 和布局库随 SciFork tarball 构建；v0.1 不保留外部文件预览兼容层、details drawer 兼容层或第三方 UI 插件依赖。
 
 ### 10.4 四个页面操作
 
-`Back` 和 `Forward` 是项目级 Git 状态导航，不依赖当前 Focus；`Simulate` 和 `Details` 作用于当前 Focus。
+`Back` 和 `Forward` 是项目级 Git 状态导航；`Simulate` 和 `Details` 作用于当前 Focus。
 
-- **Back**：调用 `timelineBack()`，以 `actionGroupId` 为单位恢复上一个科研状态并创建恢复检查点；这不是 Focus 历史。
-- **Forward**：调用 `timelineForward()`，重新应用撤回栈中的下一个 Git 状态并创建恢复检查点。没有可前进状态时禁用；撤回后出现新 mutation 时清空 forward stack。
-- **Simulate**：将基于当前 Focus 的结构化提示写入 DSH composer draft，由用户确认发送。
-- **Details**：将所选 Node 或 Result 的受管 Markdown 路径交给 `FilePreviewPort`。Edge 详情及任意复杂查询通过 Chat 读取。
+- **Back**：以 `actionGroupId` 为单位恢复上一个科研状态并创建恢复检查点。
+- **Forward**：重新应用撤回栈中的下一个状态；撤回后发生新 mutation 时清空 forward stack。
+- **Simulate**：创建一次性 DraftRequest，由 DSH Bridge 写入 composer draft，用户确认后发送。
+- **Details**：在 Companion 内安全渲染所选 Node、Result、Source 或 Evidence Assertion；复杂查询仍通过 Chat。
 
-查找证据、寻找反证、添加实验结果、检索候选筛选、查看 Timeline、恢复任意历史点和错误诊断都通过 Chat / Tool 完成。Graph 页面不增加 `Find Evidence`、`Find Counterevidence`、`Add Result` 等按钮或专用面板。
+查找证据、寻找反证、添加 Result、检索候选筛选、查看完整 Timeline、恢复任意历史点和错误诊断仍通过 Chat/Tool 完成。Graph 页面不增加搜索框、Candidate Panel、Add Result 或 Timeline Panel。
 
-用户在 Chat 中提供实验文字、工作区图表路径或运行环境支持的附件时，DSH Tool 先读取原始内容，LLM 再生成结构化 Result 草稿；用户确认后调用 `research_graph_apply(CreateResult)`。保存的 `results/*.md` 直接投影为 User Result 卡片，不复制第二个 Node。
+仓库存在未解决冲突时，Companion 保持最后一个有效投影并进入只读状态；外部文件变化由 `projectRevision` 轮询自动刷新。多个 Companion 窗口可以并存，但同一项目分支的 mutation 和 Timeline 导航必须由 Host 串行化。
 
-仓库存在未解决冲突时，Graph 保持最后一个有效投影并进入只读状态；外部文件变化由 `projectRevision` 轮询自动刷新；文件错误通过 `GraphStateNotice` 被动显示，不增加 Diagnostics 按钮。
+### 10.5 better-sidebar 参考边界
+
+SciFork 参考 [DSH-better-sidebar v0.15.2](https://github.com/omdsh-dev/DSH-better-sidebar/releases/tag/v0.15.2) 的 session/cwd 作用域、页面可见性暂停、composer draft 接入、effect/disposer 生命周期和 mount smoke test。它只作为 MIT 许可参考实现，不是依赖。
+
+SciFork 不复用其 portal、`#root` 布局 CSS、`/sidebar/api`、WebSocket、Tab/FileViewer service、terminal、Git、browser、subagent 或 `node-pty`。复制具体代码时必须保留来源和 MIT notice；只借鉴模式时在 References 中固定 tag，不能引用移动的 `main` 作为兼容合同。
 
 ## 11. 检索、知识编译与科研推演
 
 ### 11.1 执行边界
 
-PubMed 检索由 Skill 编排，不进入 Graph Core，也不要求 SciFork 自建 Agent Runtime 或检索服务器：
+PubMed 查询由 Skill 编排，由 SciFork Host 内置的窄 Entrez adapter 执行，不进入 Graph Core，也不要求独立检索服务器或第三方插件：
 
 ```text
 User question + current Graph Focus
@@ -1042,7 +1084,7 @@ scifork-literature-search Skill
               ↓
 RetrievalPlan（查询、概念、纳入排除标准）
               ↓
-DSH available Tool / API connector
+SciFork Entrez adapter（ESearch / ESummary / EFetch / ELink）
               ↓
 RetrievedArticle[]（确定性文章记录）
               ↓
@@ -1057,9 +1099,9 @@ research_graph_apply(typed ResearchCommand)
 Core validation → files → local checkpoints
 ```
 
-Skill 是按需加载的操作说明和语义契约，不是网络执行器。实际请求由 DSH 环境中可用的 Entrez、Web、MCP 或其他结构化 Tool 完成。Host 在启动或首次检索时做 capability check；没有可用能力时返回 `RETRIEVAL_CAPABILITY_UNAVAILABLE`，不得让模型凭参数记忆补造 PMID、标题或结果。
+Skill 是按需加载的操作说明和语义契约，不是网络执行器。Host adapter 负责 NCBI 请求、工具标识、速率限制、指数退避、超时、响应 schema 校验和 E-utilities usage policy；网络不可用时返回 `RETRIEVAL_UNAVAILABLE`，记录不能校验时返回 `RETRIEVAL_RESULT_INVALID`。任何失败都不得让模型凭参数记忆补造 PMID、标题或结果。
 
-检索、排序、查询扩展和临时 Evidence candidate 都是 DSH Chat / Tool 结果中的瞬时状态，不进入 Graph Client，不修改科研仓库，也不创建 Git 检查点。Chat 根据 Skill 契约协助去重、排序、解释纳入排除理由和筛选；只有用户采纳的候选才转换为 typed ResearchCommand。第一版不实现独立 Candidate Panel 或临时候选节点层。
+检索、排序、查询扩展和 Evidence Candidate 都是 DSH Chat / Tool 结果中的瞬时状态，不进入 Companion，不修改科研仓库，也不创建 Git 检查点。Chat 根据 Skill 契约协助去重、排序、解释纳入排除理由和筛选；只有用户采纳的 Source 与审核后的 Evidence Assertion 才转换为 typed ResearchCommand。第一版不实现 Candidate Panel 或临时候选节点层。
 
 ### 11.2 结构化检索契约
 
@@ -1068,14 +1110,18 @@ Skill 是按需加载的操作说明和语义契约，不是网络执行器。�
 ```ts
 interface RetrievedArticle {
   pmid: string
+  doi?: string
+  pmcid?: string
   title: string
   abstract?: string
   authors: readonly string[]
+  journal?: string
   publishedAt?: string
   publicationTypes: readonly string[]
   meshTerms: readonly { id?: string; label: string }[]
   sourceUrl: string
   retrievedAt: string
+  retractionStatus: 'none' | 'retracted' | 'corrected' | 'unknown'
 }
 ```
 
@@ -1091,14 +1137,15 @@ interface RetrievalPlan {
 }
 
 interface EvidenceCandidate {
-  pmid: string
-  claim: string
+  sourceId: SourceId
+  assertion: string
+  locator: SourceLocator
   studyDesign?: string
   biologicalModel?: string
   direction: 'supports' | 'contradicts' | 'context'
   limitations: readonly string[]
   targetEntityIds: readonly GraphEntityId[]
-  confidence: number
+  reviewStatus: 'candidate'
 }
 
 interface GraphProposal {
@@ -1107,21 +1154,21 @@ interface GraphProposal {
 }
 ```
 
-`research_graph_apply` 的 typed tool schema 是持久化边界。Core 必须重新校验 PMID ID、实体引用、AI origin、Finding/Supported 约束和单实体写入规则，不能从模型输出的自由文本中猜测字段。
+`research_graph_apply` 的 typed tool schema 是持久化边界。Core 必须重新校验 Source ID、locator、review status、实体引用、AI origin、Finding/Supported 约束和单实体写入规则，不能从模型输出的自由文本中猜测字段。
 
-一次用户检索操作可能依次产生 Evidence → Node → Edge。每个成功 ResearchCommand 保留一个底层 Git 检查点，并共享 Host 生成的 `actionGroupId`；`research_graph_read(timeline)` 默认返回聚合后的操作组，用户需要时可在 Chat 中继续读取组内变化。
+一次用户检索操作可能依次产生 Source → Evidence Assertion → Node/Edge。每个成功 ResearchCommand 保留一个底层 Git 检查点，并共享 Host 生成的 `actionGroupId`；`research_graph_read(timeline)` 默认返回聚合后的操作组，用户需要时可在 Chat 中继续读取组内变化。
 
 ### 11.3 数据源选择
 
 | 数据能力 | MVP 策略 | 持久化规则 |
 | --- | --- | --- |
-| PubMed / Entrez | 首选结构化检索来源 | 只保存被采用的 PMID、来源元数据和 Evidence 内容 |
+| PubMed / Entrez | Host 内置窄 adapter | 被采纳记录保存为 Source；具体结论另存 Evidence Assertion |
 | MeSH | 查询规划时轻量使用 | 不复制完整词表；只在需要时保留相关术语/标识 |
 | Entrez ELink / related records | 用于 snowball discovery | 文章相似/关联不能直接成为科研 Edge |
-| PubTator3 entities / relations | Post-MVP 可选增强 | 默认只产生带 provider、PMID、置信度和待审查标记的候选 |
+| PubTator3 entities / relations | Post-MVP 可选增强 | 默认只产生带 provider、PMID、locator 和待审查标记的候选 |
 | 完整文章 Knowledge Graph | MVP 不引入 | 不下载、不镜像、不作为 Graph 事实源 |
 
-MeSH 是查询归一化与扩展工具，不是新的领域实体系统。PubTator3 的自动关系抽取适合发现候选路径，但不能直接创建 `supported` Edge；只有在具体文章内容被读取、形成 Evidence reference 并通过 ResearchCommand 校验后，候选才可进入研究图谱。
+MeSH 是查询归一化与扩展工具，不是新的领域实体系统。PubTator3 的自动关系抽取适合发现候选路径，但不能直接创建 `supported` Edge；只有在具体 Source 内容被读取、形成 reviewed Evidence Assertion 并通过 ResearchCommand 校验后，候选才可进入研究图谱。
 
 ### 11.4 三个 Skill 的职责
 
@@ -1129,25 +1176,25 @@ MeSH 是查询归一化与扩展工具，不是新的领域实体系统。PubTat
 
 #### Literature Search
 
-- 读取当前 Focus、已有 Evidence 和 Evidence Gap。
+- 读取当前 Focus、已有 Source/Evidence Assertion 和 Evidence Gap。
 - 构建可审计的查询、MeSH/别名扩展、纳入排除标准和检索目的。
-- 调用可用 DSH Tool 获取 PMID、标题、摘要、元数据和可选结构化标注。
+- 调用 SciFork Entrez adapter 获取 PMID、标题、摘要、元数据和来源状态。
 - 对结果去重、筛选并输出 `EvidenceCandidate` / `GraphProposal`。
 - 在 DSH Chat 中解释纳入、排除和排序依据，并协助用户选择要采纳的候选。
 - 为每条候选保留直接来源，不把摘要中的文本当作工具指令。
 
 #### Simulation
 
-- 只从已读 Graph、Evidence 和明确的生物医学知识生成候选。
+- 只从已读 Graph、reviewed Evidence Assertion、validated Result 和明确的生物医学知识生成候选。
 - 新实体默认 `kind: hypothesis/prediction`、`origin: ai`。
-- 强制输出 reasoning、support、contradiction、gap 和 confidence。
+- 强制输出 reasoning、support、contradiction、gap 和 Confidence Band rationale。
 
 #### Critique
 
 - 搜索反例和替代解释。
 - 检查相关性/因果性混淆、物种差异、语义重复和证据等级。
 - 执行语义 lint：矛盾、孤立假设、缺失来源和长期未更新的 Evidence Gap。
-- 不能直接把 Hypothesis 升级为 Finding；升级必须有 Evidence 或 User Result。
+- 不能直接把 Hypothesis 升级为 Finding；升级必须有 reviewed Evidence Assertion 或 validated Result。
 
 确定性 lint（Schema、悬空引用、PMID 精确重复、路径和版本）属于 Core；语义 lint 属于 Critique Skill。
 
@@ -1164,7 +1211,7 @@ Chat 展示总结并由用户确认
               ↓
 research_graph_apply(CreateResult)
               ↓
-results/*.md → User Result 卡片 → Git checkpoint
+results/*.md → Result 卡片 → Git checkpoint
 ```
 
 MVP 不实现 Add Result 表单。LLM 必须区分直接观察与解释，保留可用源路径或附件引用，并标明总结由模型生成；无法读取或无法追溯的图表不能被标为直接实验依据。Result 本身就是 Graph 实体，不再复制成 `nodes/*.md`。
@@ -1174,7 +1221,7 @@ MVP 不实现 Add Result 表单。LLM 必须区分直接观察与解释，保留
 SciFork 采用 LLM Wiki 的“持久知识编译”思想，但复用现有领域实体，不创建第二套 Wiki：
 
 ```text
-LLM Wiki Raw Sources  → PubMed/PMC 来源与 Evidence
+LLM Wiki Raw Sources  → Source + Evidence Assertion
 LLM Wiki Wiki Pages   → Node / Edge / Result
 LLM Wiki Schema       → Core Schema + Research Skills
 LLM Wiki index.md     → GraphSnapshot
@@ -1186,7 +1233,7 @@ Ingest / Query / Lint → Literature Search / DSH Chat / Core+Critique
 
 ### 11.7 Post-MVP 路线图
 
-独立 PubMed adapter 不进入 MVP 包结构或里程碑。只有 Graph 闭环稳定，且现有 DSH Tool/API 能力在可用性、限流、重试或结构化元数据上无法达到验收标准时，才在 Host 新增窄接口 adapter；它仍只输出 `RetrievedArticle`，不直接修改 Graph，也不进入 Core。
+窄 Entrez adapter 是 MVP Host 的组成部分，但它只输出 `RetrievedArticle`，不直接修改 Graph，也不进入 Core。Post-MVP 才评估 PMC 全文、缓存、批量队列或可替换 provider；这些扩展不得改变 Source/Evidence Assertion 的持久化边界。
 
 PubTator3 在检索评测证明能提高候选召回且不会显著增加错误关系后再启用。只有 GraphSnapshot + 普通文件搜索在真实项目规模上出现可测量的召回问题时，才评估 BM25 或向量检索；完整文章知识图谱和独立 RAG 不是默认路线。
 
@@ -1223,7 +1270,7 @@ enable automatic local checkpoints
 
 ### 12.2 自动本地检查点
 
-每个成功的科研语义命令都必须形成一个本地 Git 检查点。提交仅包含 SciFork 管理的 `research.json`、`nodes/`、`edges/`、`evidence/` 和 `results/` 路径，禁止使用 `git add .`，也不得改变用户全局 Git 配置或干扰不相关的暂存内容。Adapter 使用显式 managed pathspec，并以 `git commit --only -- <managed paths>` 或等价隔离 index 方案排除已经暂存的无关文件；mutation 前若受管路径已有外部修改，则先按 13.3 节处理，不能把它悄悄并入当前科研操作。
+每个成功的科研语义命令都必须形成一个本地 Git 检查点。提交仅包含 SciFork 管理的 `research.json`、`nodes/`、`edges/`、`sources/`、`evidence/` 和 `results/` 路径，禁止使用 `git add .`，也不得改变用户全局 Git 配置或干扰不相关的暂存内容。Adapter 使用显式 managed pathspec，并以 `git commit --only -- <managed paths>` 或等价隔离 index 方案排除已经暂存的无关文件；mutation 前若受管路径已有外部修改，则先按 13.3 节处理，不能把它悄悄并入当前科研操作。
 
 自动提交通过 Host 的 `LocalGitTimelineAdapter` 调用 `ctx.subprocess` 完成：
 
@@ -1254,7 +1301,7 @@ A ─ B ─ C ─ R(B) ─ R(C)
 - **新 mutation**：若逻辑游标不在最新状态，清空 forward stack；被清空的状态仍保留在 Git 历史中，可由 Chat 指定 `actionId` 恢复。
 - **分支变化**：切换 branch 后清空导航栈，并从该分支当前 HEAD 重建逻辑游标。
 
-Git 保存所有科研内容状态和恢复记录；DSH storage domain 只保存当前 session 的逻辑游标与 forward action IDs，用于按钮启用状态，不成为科研事实源。restore commit trailer 至少记录 `SciFork-Restore-Direction`、`SciFork-Restore-From`、`SciFork-Restore-To` 和 `SciFork-Action-Group-Id`，使重启后可以从 Git 重建导航状态。
+Git 保存所有科研内容状态和恢复记录；DSH storage domain 按“真实项目根 + branch”保存共享逻辑游标与 forward action IDs，用于按钮启用状态，不成为科研事实源。不同 DSH session 或 Companion 窗口不能拥有彼此冲突的独立 forward stack。restore commit trailer 至少记录 `SciFork-Restore-Direction`、`SciFork-Restore-From`、`SciFork-Restore-To` 和 `SciFork-Action-Group-Id`，使重启后可以从 Git 重建导航状态。
 
 禁止使用 `reset --hard`、强制移动 branch ref 或删除历史。Chat 中的“恢复到某个历史点”也调用同一 restore 流程并创建新检查点。
 
@@ -1300,13 +1347,13 @@ interface LocalTimelinePort {
 
 ### 13.2 多文件关系
 
-需要新增 Evidence、Node 和 Edge 时，按以下顺序调用：
+需要新增 Source、Evidence Assertion、Node 和 Edge 时，按以下顺序调用：
 
 ```text
-Evidence → Node → Edge
+Source → Evidence Assertion → Node → Edge
 ```
 
-中断最多留下暂时未引用的 Evidence/Node，不会产生指向不存在实体的 Edge。
+中断最多留下暂时未引用的 Source、Evidence Assertion 或 Node，不会产生指向不存在实体的引用或 Edge。
 
 ### 13.3 外部编辑
 
@@ -1322,6 +1369,14 @@ Evidence → Node → Edge
 - merge/rebase 及冲突解决由 DSH 处理，SciFork 不尝试自动选择科研结论。
 - 检测到 unmerged entries 时，SciFork 进入只读状态；冲突清除且 Graph 校验通过后再恢复 mutation。
 
+### 13.5 多窗口与多 Session
+
+- Host 以解析后的真实项目根和当前 branch 作为 mutation 串行化键；同一项目同一分支上的 Companion 窗口与 DSH session 共享一个写入队列。
+- 每次 mutation、Back、Forward 都同时验证 `expectedHead`、`expectedBranch` 和 `expectedProjectRevision`；任一不匹配都拒绝写入并要求重新读取。
+- Timeline 导航状态属于“项目 + branch”，不属于某个浏览器窗口。外部 checkout、commit、merge、rebase 或受管文件变更会使所有窗口的旧导航栈失效。
+- Host 成功写入或检测到外部变更后递增投影版本；Companion 只接受比当前更新的 snapshot，避免慢响应覆盖新状态。
+- 一个窗口完成 Back、Forward 或 mutation 后，其他窗口在下一次可见性恢复或轮询时同步新状态；它们不能继续使用过期的 forward stack。
+
 ## 14. 安全边界
 
 ### 14.1 路径安全
@@ -1329,9 +1384,18 @@ Evidence → Node → Edge
 - 项目根来自 session cwd，不来自模型参数。
 - 拒绝绝对实体路径和 `..`。
 - 用 `ctx.fs.contains/resolve` 验证目标在工作区内。
-- 写入只允许 `research.json` 与四个受管目录。
+- 写入只允许 `research.json` 与 `nodes/`、`edges/`、`sources/`、`evidence/`、`results/` 五个受管目录。
 
-### 14.2 Prompt Injection
+### 14.2 Companion Web 安全
+
+- v0.1 只支持 DSH Web 的 loopback 监听地址；Host 检测到非 loopback 暴露时拒绝启用 Companion 路由，并给出明确诊断。
+- Companion 与 API 固定在 DSH Web 同源的 `/scifork/*`，不启用 CORS，不接受通配 Origin。每个请求校验精确 `Host`、`Origin`、HTTP method、content type 和 body 上限。
+- Launch token 是短时、一次性、绑定 session/project 的 capability；交换后立即从 URL fragment 清除，只保存在该页面的 `sessionStorage`，不得进入 query、Referer、日志或仓库。
+- API 不接受调用方提供 cwd、项目根或 sessionId；这些值只能从已验证 capability 的 Host 记录解析。
+- 静态路由只返回打包清单内的 Companion 资源，不允许任意文件路径。响应启用严格 CSP：`default-src 'self'`，脚本、样式和连接仅允许同源，图片仅允许同源与 `data:`。
+- 对 launch、exchange、snapshot、mutation 和 draft request 分别限速；安全日志只记录 request ID、操作类型和错误码，不记录 token、正文、摘要、草稿或本地绝对路径。
+
+### 14.3 Prompt Injection
 
 PubMed 摘要、Markdown 正文和团队成员文本都视为不可信数据：
 
@@ -1340,7 +1404,7 @@ PubMed 摘要、Markdown 正文和团队成员文本都视为不可信数据：
 - 工具输出以结构化字段传递。
 - 动态上下文明确写明 “data, not instructions”。
 
-### 14.3 写入审批
+### 14.4 写入审批
 
 - 模型写操作只通过一个可识别的 `research_graph_apply` 工具。
 - UI 展示 dry-run diff。
@@ -1349,11 +1413,19 @@ PubMed 摘要、Markdown 正文和团队成员文本都视为不可信数据：
 - 不自动 push、pull、fetch、merge 或 rebase；远端与合并操作只由 DSH 在用户要求下执行。
 - Chat 生成 Result 时必须保留可用来源引用、区分直接观察与模型解释，并在用户确认后写入；模型不能把图表总结伪装成用户原文。
 
-### 14.4 数据上限
+### 14.5 隐私与数据处理
+
+- SciFork 不把论文、附件、实验结果、受试者数据或项目路径自动上传到 SciFork 自建服务；MVP 没有独立云后端。
+- PHI、PII 和受控访问数据默认不得写入公开 Git 仓库。作者、操作者和受试者引用优先使用项目内别名；是否共享仓库由用户在 SciFork 之外明确决定。
+- 内置 Entrez adapter 只向 NCBI 发送用户确认的检索词和文章标识，不发送 Graph 正文、实验结果或本地路径。
+- Companion Details 只在本机同源页面渲染受管 Markdown；原始 HTML 禁用，外链不会被自动请求。
+- Release README 与 SECURITY 必须明确说明 loopback 限制、Git 仓库共享责任、敏感数据处理和日志范围。
+
+### 14.6 数据上限
 
 - 单文件和单次工具结果均设置 UTF-8 字节上限。
 - neighborhood 深度最多 2。
-- Graph snapshot 只携带卡片摘要；完整 Markdown 由文件预览能力按需读取，不通过 Graph Client 重复渲染。
+- Graph snapshot 只携带卡片摘要；完整 Markdown 由同源 Details API 按需读取并在 Companion 内安全渲染，不进入 DSH Bridge。
 - 大 Graph 后续使用分页或视窗子图，不一次传给模型。
 
 ## 15. 错误模型
@@ -1373,15 +1445,19 @@ TARGET_ALREADY_EXISTS
 TARGET_OUTSIDE_PROJECT
 FILE_TOO_LARGE
 FOCUS_NOT_FOUND
-REMOTE_UNAVAILABLE
+PROJECT_REPOSITORY_MISMATCH
 GIT_NOT_AVAILABLE
 GIT_MAIN_PROTECTED
 GIT_CONFLICT_ACTIVE
 CHECKPOINT_PENDING
 TIMELINE_ENTRY_NOT_FOUND
 TIMELINE_FORWARD_UNAVAILABLE
-FILE_PREVIEW_UNAVAILABLE
-RETRIEVAL_CAPABILITY_UNAVAILABLE
+COMPANION_ORIGIN_FORBIDDEN
+COMPANION_CAPABILITY_INVALID
+COMPANION_CAPABILITY_EXPIRED
+COMPANION_POPUP_BLOCKED
+DRAFT_BRIDGE_UNAVAILABLE
+RETRIEVAL_UNAVAILABLE
 RETRIEVAL_RESULT_INVALID
 ```
 
@@ -1404,16 +1480,19 @@ interface SciForkErrorPayload {
 | --- | --- | --- |
 | 语言 | TypeScript strict | 与 DSH/Cordis/Client 一致 |
 | 包管理 | pnpm workspace | 与 DSH 开发方式一致 |
-| 测试 | Vitest | Host、Core、Client 共用 |
+| 测试 | Vitest | Host、Core、Bridge、Companion 共用 |
 | Schema | Zod | 运行时校验与 TS 类型统一 |
 | Markdown front matter | gray-matter + YAML parser | 成熟且保持人类可读 |
 | ID | Node `crypto.randomUUID()` | 不增加 ID 依赖、避免分支冲突 |
 | Graph UI | `@xyflow/react` | 节点、边、缩放和交互成熟 |
 | Graph layout | `@dagrejs/dagre` | MVP 足够、确定性输出 |
+| Companion UI | React + 浏览器原生状态 | 独立文档、无需额外状态框架 |
+| Details Markdown | `react-markdown` + `remark-gfm` | 禁用 raw HTML，在本机同源页面安全渲染 |
 | Hash | Node `crypto` SHA-256 | 生成内容 projectRevision |
-| Host/Client | DSH Typert Remote | 复用官方校验和连接层 |
+| Host/Companion | DSH `ctx.webServer.register` + typed HTTP | 同源前缀路由、无额外端口 |
+| DSH Draft Bridge | `BroadcastChannel` + `conversation.input.for(scope).setDraft` | 只桥接一次性草稿请求，不承载 Graph |
 | 本地 Git | DSH `ctx.subprocess` + 系统 Git | argv-only 调用；不引入 Git SDK，不包含远端工作流 |
-| 临时状态 | DSH storage domain | 不污染科研仓库和 Session log |
+| 临时状态 | DSH storage domain + 页面 `sessionStorage` | 服务端状态可恢复；页面 capability 不持久化 |
 | 源码与协作 | GitHub monorepo | Issue、PR、文档和代码使用同一入口 |
 | 正式分发 | GitHub Releases + 预构建 `.tgz` | 用户只安装一个 bundle，且无需本地编译 |
 
@@ -1437,10 +1516,10 @@ GitHub SDK
 
 - 所有 schema 的合法/非法 fixture。
 - Markdown round-trip 不丢正文。
-- Node/Edge Evidence 引用与 GraphEntity endpoint 完整性。
-- Result 直接投影为 User Result，不生成重复 Node。
-- AI origin、Finding、supported status 的跨字段约束。
-- UUID 与 deterministic PMID ID。
+- Node/Edge 的 Evidence Assertion 引用与 GraphEntity endpoint 完整性。
+- Result 直接投影为 Result 卡片，不生成重复 Node。
+- AI origin、Finding 支持门槛、Result 生命周期和 reviewed Evidence Assertion 的跨字段约束。
+- UUID、deterministic Source ID 与随机 Evidence Assertion ID。
 - projectRevision 对文件顺序不敏感、对受管内容变化敏感。
 - 每个 ResearchCommand 的成功和拒绝路径。
 - stale target file 不发生写入；跨实体 stale revision 不发生写入。
@@ -1462,8 +1541,8 @@ GitHub SDK
 - session cwd 正确定位项目。
 - focus sidecar 在重启后可恢复。
 - packaged Skills 可被发现、读取并在卸载时移除。
-- Literature Search Skill 能识别可用检索 Tool；缺失能力时明确失败，不伪造文献。
-- 检索 Tool 记录能被校验为 RetrievedArticle，自由文本或缺失 PMID 的结果被拒绝。
+- 内置 Entrez adapter 只接受有界 RetrievalPlan，网络不可用时明确失败，不伪造文献。
+- Entrez 响应能被校验为 RetrievedArticle；自由文本、缺失 PMID 或无效记录被拒绝。
 - `/research init` 与 `/research validate` 通过同一个 command handler 工作。
 - `/research init` 创建 `main` 基线、个人工作分支并停留在个人分支。
 - 每个成功 mutation 自动形成只包含受管路径的本地检查点。
@@ -1472,19 +1551,21 @@ GitHub SDK
 - 不产生任何 SciFork 自定义 SessionEvent。
 - DSH session 在卸载 SciFork 后仍可恢复。
 
-### 17.4 Client 测试
+### 17.4 Companion 与 DSH Bridge 测试
 
-- Focus-centered snapshot → 局部信息卡片和边渲染。
+- DSH Bridge 只注册 additive `shell.overlay` Open action，不占用 `sidebar`、`conversation` 或 `details` single slot。
+- 同源 launch 能在同步点击中打开独立窗口；popup 被阻止时显示可复制链接，不丢失用户操作。
+- 一次性 launch token 只能交换一次，过期、错误 Origin、错误 Host 和跨 session/project 使用均被拒绝；URL 清理后不残留 token。
+- Focus-centered snapshot 能渲染局部信息卡片和边；Compact 与 Workspace 两种密度使用同一语义状态。
 - Graph 页面只显示 `Back`、`Forward`、`Simulate`、`Details` 四个操作。
-- `Back` / `Forward` 调用 Git Timeline Remote，不改变 Focus 浏览历史；不可前进时 `Forward` 禁用。
-- `Details` 只调用 `FilePreviewPort` 打开对应受管 Markdown，不渲染 Drawer。
-- Client 不包含 GraphToolbar、EntityInspectorDrawer、TimelinePanel、实体搜索框、Candidate Panel、Add Result 或反证按钮。
-- Chat 通过 `research_graph_read(find)` 设置 Focus 后，局部图居中对应卡片。
-- Finding/Hypothesis/Inference 样式不混淆。
-- projectRevision 未变化时不重复布局。
-- diagnostics 不导致整个面板崩溃，冲突状态进入只读。
-- M0 选定的唯一 Graph 挂载面和文件预览 provider 均可加载、卸载和重新挂载。
-- 普通模式不暴露 commit、hash 和 Git 命令。
+- `Back` / `Forward` 调用 typed HTTP Timeline API，不改变 Focus 浏览历史；不可前进时 `Forward` 禁用。
+- `Details` 通过同源 API 读取对应受管 Markdown；raw HTML、脚本、远程图片和危险链接不能执行或自动加载。
+- Companion 不包含 TimelinePanel、实体搜索框、Candidate Panel、Add Result 或反证按钮。
+- Chat 通过 `research_graph_read(find)` 设置 Focus 后，所有可见 Companion 窗口最终居中对应卡片。
+- `createDraftRequest` 经一次性请求交给 DSH Bridge，并调用官方 composer `setDraft`；Bridge 不可用时保留明确的 Copy fallback。
+- 两窗口同时 mutation 时只有一个成功；另一个收到 stale 诊断并刷新，不覆盖新状态。
+- 页面隐藏时停止轮询，恢复可见时立即重新校验 projectRevision、HEAD 与 branch。
+- Finding、Hypothesis、Prediction、Result 和 AI inference 样式不混淆；普通模式不暴露 commit、hash 和 Git 命令。
 - 按钮、tooltip、ARIA label、状态、空状态和错误提示均为英语；测试不把节点标题或 Claim 等研究内容误判为 UI 文案。
 
 ### 17.5 E2E
@@ -1495,12 +1576,13 @@ GitHub SDK
 → 初始化项目
 → 验证 main 基线与个人工作分支
 → Literature Search Skill 读取 Focus 并生成 RetrievalPlan
-→ 结构化 Tool 返回 RetrievedArticle
-→ LLM 生成 EvidenceCandidate，Core 拒绝无来源候选
+→ Host 内置 Entrez adapter 返回 RetrievedArticle
+→ LLM 生成 Evidence Candidate，Core 拒绝无 Source 或 locator 的候选
+→ 用户审核并保存 Source 与 Evidence Assertion
 → 添加 Finding
 → 验证自动本地检查点
 → 添加 Hypothesis
-→ 为 Hypothesis 添加直接 Evidence reference
+→ 为 Hypothesis 添加 reviewed Evidence Assertion reference
 → 添加 AI-inference Edge
 → Graph 显示虚线
 → 用户在 Chat 提供图表路径，LLM 总结并经确认创建 Result
@@ -1509,8 +1591,10 @@ GitHub SDK
 → 点击 `Forward` 并验证重新应用被撤回状态
 → 刷新浏览器
 → 当前焦点恢复
+→ 在第二个窗口并列打开 Companion，验证共享 Focus 和导航状态
+→ 从 Companion 生成 Simulate draft，验证回填 DSH composer
 → 重启 DSH
-→ Session 与 Graph 都可重新打开
+→ Session 与独立 Graph Companion 都可重新打开
 ```
 
 ### 17.6 Git 协作测试
@@ -1528,7 +1612,8 @@ GitHub SDK
 - 无 ID 冲突。
 - 无 manifest 热点冲突。
 - Graph 能读取合并结果。
-- 相同 PMID Evidence 产生相同确定性 ID，重复内容得到明确诊断。
+- 相同 PMID Source 产生相同确定性 ID；同一 Source 可以拥有多个独立、可审核的 Evidence Assertion。
+- 两个窗口对同一项目分支的并发 mutation 被串行化；过期 HEAD/projectRevision 不发生写入。
 - unmerged 状态下 SciFork 只读；冲突解决且重新校验后恢复写入。
 
 ### 17.7 发布工件测试
@@ -1539,8 +1624,8 @@ GitHub SDK
 2. 检查 tarball 不含 `workspace:*`、测试 fixture、开发配置或密钥。
 3. 在空临时目录和全新 DSH Web profile 中安装 tarball。
 4. 执行 `dsh --profile <test-profile> --dump-config`，确认 `scifork` 只出现一次。
-5. 启动 DSH，验证 Host tool、Remote、Client bundle 和 Graph Panel。
-6. 卸载后重启 DSH，确认 profile 与原有 Session 可恢复。
+5. 启动 DSH，验证 Host tool、同源 `/scifork/*` 路由、DSH Bridge 和独立 Companion。
+6. 验证 tarball 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件，再卸载并重启 DSH，确认 profile 与原有 Session 可恢复。
 7. Windows、Linux 至少各完成一次 smoke test。
 8. 计算 SHA-256，并验证 Git tag、package version、tarball 文件名一致。
 
@@ -1552,25 +1637,25 @@ GitHub SDK
 
 只做最小垂直验证：
 
-1. 安装本地 bundle。
-2. 注册一个只读 dummy tool。
-3. 建立一个 Typert echo Remote。
-4. 通过 package-owned lazy Client bundle 分别探测 `details` 和 `conversation.view`，并选择一个生产挂载面。
-5. 验证一个公开或明确声明兼容的 FilePreview provider 能打开受管 Markdown 路径；不可用时 M0 阻塞。
-6. 打开 storage domain，按 sessionId 写入/读取 focus 与 Timeline navigation state。
-7. 注册并读取一个 package-owned dummy Skill。
-8. 注册一个 `/research validate` dummy command。
+1. 安装本地 bundle，注册一个只读 dummy tool。
+2. 用 `ctx.webServer.register` 提供同源 `/scifork/` 静态页和 `/scifork/api/echo` typed HTTP 路由，并验证卸载 disposer。
+3. 通过 package-owned lazy Client bundle 向 additive `shell.overlay` 注册一个 Open action；不占用任何 single slot。
+4. 在同步点击中打开独立浏览器窗口，完成一次性 launch token 交换并从 URL 清除 token。
+5. 验证 Companion 的 Compact/Workspace 密度、浏览器并列布局和同源安全 Markdown Details。
+6. 用 `BroadcastChannel` 发送一次性 draft request，验证 DSH Bridge 调用 `conversation.input.for(scope).setDraft`；再验证无 Bridge 时的 Copy fallback。
+7. 打开 storage domain，按真实项目根 + branch 写入/读取 Focus 与 Timeline navigation state。
+8. 注册并读取一个 package-owned dummy Skill，以及 `/research validate` dummy command。
 9. 通过 `ctx.subprocess` 以 argv-only 方式调用固定的 `git --version`。
-10. 重启 DSH，确认原 Session、Focus 与 Git 前进/后退状态可恢复。
+10. 重启 DSH，确认原 Session、Focus、独立 Companion 与 Git 前进/后退状态可恢复。
 
-验收标准：所有接口均来自公开/文档化扩展面；没有修改 DSH 源码；版本和实际 slot contract 被记录。
+验收标准：所有接口均来自公开/文档化扩展面；没有修改 DSH 源码；没有第三方 DSH 插件依赖；锁定版本的 route、slot 和 composer contract 已记录。
 
 ### M1：Research Core
 
 1. 定义 schema 和 ID。
 2. 实现 parser、validator、projectRevision 和 file version guard。
 3. 实现单实体 ResearchCommand。
-4. 实现 Result 直接 Graph 投影与 Node/Edge Evidence references。
+4. 实现 Source/Evidence Assertion 分层、Result 直接 Graph 投影与 Node/Edge 正向引用。
 5. 建立三套 fixture。
 6. Core 单元测试通过。
 
@@ -1578,39 +1663,37 @@ GitHub SDK
 
 ### M2：Host Plugin
 
-1. 实现 DSH FileStore adapter。
-2. 实现 Project Locator。
-3. 实现 SciForkApplicationService。
-4. 注册 `read/apply/focus` 三个工具。
-5. 实现 storage-domain focus store。
-6. 实现 compact Research Context。
-7. 注册 packaged Skills provider 和精简后的 `research` command。
-8. 实现 LocalGitTimelineAdapter、main 保护、个人分支初始化和自动检查点。
-9. 实现 Timeline Remote 与 conflict 只读门。
+1. 实现 DSH FileStore adapter 与严格 Project Locator。
+2. 实现 SciForkApplicationService，注册 `read/apply/focus` 三个工具。
+3. 实现按真实项目根 + branch 作用域的 Focus/Timeline store 与 mutation queue。
+4. 实现 compact Research Context、packaged Skills provider 和精简后的 `research` command。
+5. 实现 LocalGitTimelineAdapter、main 保护、个人分支初始化和自动检查点。
+6. 实现内置窄 Entrez adapter，以及超时、限流、无效记录和无网络诊断。
+7. 注册同源 Companion 静态/API 路由、capability 校验、CSP 和 conflict 只读门。
 
-验收标准：仅通过 Chat 和工具即可完成 Evidence → Finding/Hypothesis → Edge，以及 Result → Hypothesis support 的闭环。
+验收标准：仅通过 Chat 和工具即可完成 Source → reviewed Evidence Assertion → Finding/Hypothesis → Edge，以及 validated Result → Hypothesis support 的闭环；Host 不依赖第三方 DSH 插件。
 
-### M3：Graph UI
+### M3：Graph Companion
 
-1. 实现 Focus-centered Local Graph Canvas 和信息卡片。
-2. 实现仅含 `Back`、`Forward`、`Simulate`、`Details` 的英语 GraphActionBar。
-3. 实现 Timeline back/forward Remote、英语 tooltip 与按钮状态机。
-4. 接入 M0 验证通过的 FilePreviewPort，不实现 details drawer。
-5. 只实现 M0 选定的 Graph UI 挂载面。
-6. 实现只读冲突和被动错误状态，不实现 GraphToolbar、TimelinePanel、搜索、候选、结果表单或反证按钮。
+1. 实现独立页面的 Focus-centered Local Graph Canvas 和信息卡片。
+2. 实现 Compact 与 Workspace 两种密度，以及仅含 `Back`、`Forward`、`Simulate`、`Details` 的英语 GraphActionBar。
+3. 实现 typed HTTP snapshot/Focus/Timeline API、英语 tooltip 与按钮状态机。
+4. 实现同源安全 Markdown Details，不实现外部 FilePreview 适配。
+5. 实现最小 DSH Bridge：Open action、一次性 DraftRequest、composer `setDraft` 与 Copy fallback。
+6. 实现多窗口 stale 处理、页面可见性暂停、只读冲突和被动错误状态；不实现 TimelinePanel、搜索、候选、结果表单或反证按钮。
 
-验收标准：文件、Graph、Git 导航、焦点和 Chat context 一致；Graph 页面只有四个英语操作，并且所有 SciFork 自有状态与错误文案均为英语。
+验收标准：DSH 与 Companion 可悬浮或由操作系统并列；文件、Graph、Git 导航、Focus 和 Chat context 一致；页面只有四个英语操作，且没有第三方 DSH 插件依赖。
 
 ### M4：Research Skills
 
 1. 定义 `RetrievalPlan`、`RetrievedArticle`、`EvidenceCandidate` 和 `GraphProposal` 契约。
 2. 实现 Literature Search Skill 的 Focus 读取、查询规划、MeSH 扩展、筛选和 typed proposal。
-3. 实现 Chat ResultDraft：读取用户文字/图表路径，区分观察与解释，经确认生成 User Result。
+3. 实现 Chat ResultDraft：读取用户文字/图表路径，区分观察与解释，经确认生成 Result。
 4. 实现 Simulation Skill。
 5. 实现 Critique Skill，并区分 Core deterministic lint 与 Skill semantic lint。
-6. 用 TREM2 fixture 完成检索 → Evidence → Chat Result → Graph → Git `Back` / `Forward` 端到端演示。
+6. 用 TREM2 fixture 完成检索 → Source/Evidence Assertion → Chat Result → Graph → Git `Back` / `Forward` 端到端演示。
 
-验收标准：外部 Tool 返回标准文章记录；缺失检索能力时显式失败；Agent 生成的每个新推断都标记为 AI hypothesis，并可追溯到支持/反对证据或明确 evidence gap。PubTator 候选不能未经审查成为 supported Edge。
+验收标准：内置 Entrez adapter 返回标准文章记录；网络或上游不可用时显式失败；Agent 生成的每个新推断都标记为 AI hypothesis，并可追溯到 reviewed Evidence Assertion、validated Result 或明确 evidence gap。PubTator 候选不能未经审查成为 supported Edge。
 
 ### M5：发布准备
 
@@ -1630,24 +1713,24 @@ GitHub SDK
 ```text
 SF-001  创建 GitHub monorepo、三内部包与根部 dsh-scifork bundle 骨架
 SF-002  完成 DSH bundle load/unload spike
-SF-003  完成 Host/Client Remote echo spike
-SF-004  验证 Graph 挂载面与兼容 FilePreview provider，并固定生产组合
-SF-005  验证 storage-domain focus sidecar
-SF-006  验证 packaged Skill provider 与 commands contract
-SF-007  定义 research.json / Node / Edge / Evidence / Result schema
-SF-008  实现 Result 直接 Graph 投影与 Evidence references
-SF-009  实现 ResearchProject parser 与 diagnostics
-SF-010  实现 projectRevision、file version guard 与 optimistic concurrency
+SF-003  验证 ctx.webServer 同源静态页、typed HTTP 路由与 disposer
+SF-004  验证 shell.overlay Open action、BroadcastChannel 与 composer setDraft
+SF-005  验证一次性 launch capability、CSP、Origin/Host 和 popup fallback
+SF-006  验证 project+branch storage、packaged Skill 与 commands contract
+SF-007  定义 research.json / Node / Edge / Source / Evidence Assertion / Result schema
+SF-008  实现 Result 直接 Graph 投影与 Evidence Assertion references
+SF-009  实现 ResearchProject parser、diagnostics 与安全 Details renderer
+SF-010  实现 projectRevision、file version、HEAD/branch guard 与 mutation queue
 SF-011  实现单实体 ResearchCommand
-SF-012  实现 DSH FileStore adapter
+SF-012  实现 DSH FileStore adapter 与严格 Project Locator
 SF-013  实现 LocalGitTimelineAdapter 与 argv-only Git 调用
 SF-014  实现 main 基线、个人分支、自动检查点及 action-group Back/Forward
 SF-015  注册三个模型工具和精简后的 research command
-SF-016  定义检索契约并实现 Literature Search Skill 的能力检测
-SF-017  实现局部信息卡片与英语四操作 GraphActionBar
-SF-018  实现 branch 变化检测和 conflict 只读门
-SF-019  将 Core/Host/Client 构建为单一可安装 tarball
-SF-020  完成 fresh-profile tarball 安装 smoke test
+SF-016  实现内置窄 Entrez adapter 与 Literature Search Skill
+SF-017  实现独立 Companion、两种密度与英语四操作 GraphActionBar
+SF-018  实现多窗口同步、branch 变化检测和 conflict 只读门
+SF-019  将 Core/Host/Web 构建为单一可安装 tarball
+SF-020  完成 fresh-profile、无第三方插件安装 smoke test
 SF-021  建立 GitHub CI 与 Release workflow
 ```
 
@@ -1657,25 +1740,28 @@ SF-021  建立 GitHub CI 与 Release workflow
 
 | 风险 | 影响 | 应对 |
 | --- | --- | --- |
-| DSH 预览版 API 破坏性变化 | 插件无法加载 | 精确版本、薄适配层、compatibility spike |
-| `details` 是 single slot | 可能替换内置 Tool Details | M0 只选择一个安全挂载面，不在 MVP 维护双模式 |
-| 官方主线缺少稳定 FilePreview service | `Details` 无法打开 Markdown | M0 验证并锁定兼容 provider；作为发布依赖；不回退到自建 Drawer |
-| `Back` 后产生新 mutation | `Forward` 目标不再线性 | 清空 forward stack；旧状态仍保留在 Git，可由 Chat 指定恢复 |
-| 第三方 SessionEvent 持久化不稳定 | 会话无法恢复 | MVP 完全不写自定义 SessionEvent |
+| DSH 预览版 API 破坏性变化 | bundle、Open action 或草稿桥失效 | 精确版本、薄 Bridge、M0 compatibility spike 与 fresh-profile smoke |
+| DSH Web 被配置为非 loopback | Companion API 暴露给不受信任网络 | v0.1 拒绝启用路由；未来必须另立 TLS、认证和可信 Origin 设计 |
+| 浏览器阻止新窗口 | Open Graph 无响应 | 同步点击先打开空窗口；失败时显示可复制的同源链接 |
+| Launch capability 泄露 | 非预期页面读取项目投影 | fragment 传递、一次交换、短时绑定、立即清 URL、日志脱敏 |
+| DSH Bridge 不可达 | Simulate 无法回填 composer | 一次性 DraftRequest 超时；保留可见 Copy fallback |
+| 多窗口同时写入或导航 | stale write、forward stack 分叉 | project+branch queue；HEAD/branch/projectRevision guard；共享导航状态 |
+| `Back` 后产生新 mutation | `Forward` 目标不再线性 | 清空共享 forward stack；旧状态仍保留在 Git，可由 Chat 指定恢复 |
 | `ctx.fs` 暂无 mkdir 原语 | 初始化受限于本地文件系统 | 显式 local-only 初始化器；固定目录；后续全部走 ctx.fs |
-| 多文件没有事务 | 半完成关系 | 单命令单文件；Evidence→Node→Edge 顺序 |
+| 多文件没有事务 | 半完成关系 | 单命令单文件；Source→Evidence Assertion→Node→Edge 顺序 |
 | DSH Git 操作后 stale write | 覆盖团队修改 | 检测 HEAD/branch；目标 file version guard；跨实体命令再校验 projectRevision |
 | 系统没有 Git 或 Git 不可执行 | 无法建立本地时间线 | 初始化前检测；明确报错并保持普通目录不被半初始化 |
 | 文件写入成功但 checkpoint 失败 | UI 与时间线状态不一致 | `CHECKPOINT_PENDING`、受管路径恢复信息和自动重试；未完成前不显示 `Saved` |
 | DSH merge/rebase 留下冲突 | 在冲突文件上继续写入 | 检测 unmerged entries；Graph 只读；解决并验证后恢复 |
-| DSH 环境缺少结构化检索能力 | Literature Skill 无法可靠获取文章 | 启动/首次使用 capability check；明确错误；不让模型补造来源 |
-| PubTator 自动关系被当作事实 | 图谱混入未经审查结论 | 只作为 transient candidate；要求 PMID、provider、Evidence review 和 typed command |
-| Markdown 被手工改坏 | Graph 无法加载 | 每文件独立诊断、部分投影、validate 命令 |
-| Graph 变大 | UI/模型上下文过载 | 子图读取、正文按需加载、字节上限 |
+| NCBI 网络、限流或上游格式变化 | Literature Skill 无法可靠获取文章 | 内置 adapter 超时/退避/校验；明确错误；不让模型补造来源 |
+| Source 与 Evidence Assertion 混用 | 无法区分书目身份和可审核断言 | 分目录、分 schema、不同 ID；Finding 只接受 reviewed assertion 或 validated Result |
+| PubTator 自动关系被当作事实 | 图谱混入未经审查结论 | 只作为 transient candidate；要求 Source、locator、review 和 typed command |
+| Markdown 被手工改坏或含恶意 HTML | Graph 失败或页面注入 | 每文件诊断；raw HTML 禁用；CSP；危险链接与远程资源默认不加载 |
+| Graph 变大 | UI/模型上下文过载 | 子图读取、正文按需加载、字节上限、页面不可见时暂停轮询 |
 | 文献 prompt injection | Agent 行为被污染 | research data 明确视为 untrusted data |
-| Skill 文件已打包但未注册 | Research Skills 不可见 | package-owned provider + fresh-profile discovery test |
-| tarball 遗漏 Client/Skill/License | 安装成功但功能不完整 | package 内容清单 + fresh-profile smoke test |
-| 发布包残留 `workspace:*` | 用户环境无法解析内部包 | 三个内部包 private；pack 后静态检查依赖和文件 |
+| 敏感研究数据被提交到共享 Git | 隐私或合规风险 | 本地默认、README/SECURITY 警告、别名化；是否远端共享由用户明确决定 |
+| Skill 或 Companion 资源漏打包 | 安装成功但功能不完整 | package 内容清单 + fresh-profile discovery/route test |
+| 发布包残留 `workspace:*` 或第三方插件依赖 | 用户环境无法解析或需额外安装 | 内部包 private；pack 后检查依赖、资源与 profile |
 | 用户误装 GitHub Source zip | 缺少构建产物、插件无法加载 | Release 页面突出 `.tgz`；Source zip 标记为非安装包 |
 | 直接 Git 安装执行 `prepare` | 需要构建授权并扩大安装期信任面 | 仅作为开发者路径；固定 tag/SHA；普通用户使用预构建 tarball |
 | tag、包版本与附件不一致 | 难以审计和回退 | Release workflow 校验一一对应后才允许发布 |
@@ -1688,7 +1774,7 @@ SF-021  建立 GitHub CI 与 Release workflow
 
 ### ADR-002：Core 与 DSH 解耦
 
-接受。DSH 变化只允许影响 `dsh-host`、`dsh-client` 和 bundle。
+接受。DSH 变化只允许影响 `dsh-host`、`web` 中的 DSH Bridge 和 bundle；纯 Core 与独立 Companion 的领域/展示逻辑不依赖 DSH UI slot。
 
 ### ADR-003：不存 graphVersion
 
@@ -1710,13 +1796,13 @@ SF-021  建立 GitHub CI 与 Release workflow
 
 接受。它不是科研事实，也不写入当前不稳定的第三方 SessionEvent。
 
-### ADR-008：MVP 只发布一个 Graph 挂载面
+### ADR-008：Graph 使用独立 Companion 页面
 
-接受。M0 优先验证 details；若不安全则选择 conversation view tab。v0.1 不提供双模式配置。
+接受。Graph 不占用 DSH 的 `sidebar`、`conversation` 或 `details` single slot。它由同源独立浏览器窗口承载，可用操作系统窗口管理实现悬浮或并列；DSH 页面只保留 additive Open action 与草稿桥。
 
 ### ADR-009：GitHub 单仓库、单工件发布
 
-接受。Core、Host、Client 保留为 private 源码包；仓库根部的 `dsh-scifork` 是唯一分发包。正式版本通过 GitHub Release 发布预构建 tarball，不发布四个独立 npm 包。
+接受。Core、Host、Web 保留为 private 源码包；仓库根部的 `dsh-scifork` 是唯一分发包。正式版本通过 GitHub Release 发布预构建 tarball，不发布内部 npm 包。
 
 ### ADR-010：预构建 tarball 是默认安装路径
 
@@ -1724,11 +1810,11 @@ SF-021  建立 GitHub CI 与 Release workflow
 
 ### ADR-011：Result 是独立领域实体，也是 Graph 实体
 
-接受。`results/*.md` 直接投影为 User Result；不再创建内容重复的 `kind: user_result` Node。
+接受。`results/*.md` 直接投影为 Result 卡片；不再创建内容重复的 `kind: user_result` Node。Result 保留观察与解释边界，只有 `validated` 状态可满足 Finding 支持门槛。
 
-### ADR-012：Evidence 使用正向引用
+### ADR-012：Source 与 Evidence Assertion 分层并使用正向引用
 
-接受。Node/Edge 通过带 role 的 `evidence_refs` 引用 Evidence，Evidence 不保存反向列表。
+接受。Source 保存可定位的书目或材料身份；Evidence Assertion 保存某个可审核断言及 locator、方向、模型、限制和 review state。Node/Edge 通过带 role 的 `evidence_refs` 正向引用 reviewed Evidence Assertion；两类文件都不保存反向列表。
 
 ### ADR-013：读版本与写保护分离
 
@@ -1746,58 +1832,69 @@ SF-021  建立 GitHub CI 与 Release workflow
 
 接受。SciFork 不实现 push、pull、fetch、PR、merge、rebase 或冲突解决。DSH 完成这些操作后，SciFork 只检测新 HEAD/branch、重新解析，并在冲突期间保持只读。
 
-### ADR-017：检索由 DSH Tool 与 Skill 编排
+### ADR-017：检索由 Skill 与内置窄 Entrez adapter 协作
 
-接受。Skill 定义查询规划、筛选和语义抽取；DSH Tool/API 返回确定性文章记录；Core 只接收 typed ResearchCommand。MVP 不实现独立 PubMed client、RAG 或文章知识图谱。
+接受。Skill 定义查询规划、筛选和语义抽取；Host 内置 adapter 只调用 NCBI Entrez 并返回确定性 RetrievedArticle；Core 只接收 typed ResearchCommand。MVP 不依赖外部检索插件，也不实现 RAG 或文章知识图谱。
 
 ### ADR-018：借鉴 LLM Wiki 的知识编译，不复制其文件层
 
-接受。Evidence/Node/Edge/Result 已构成持久知识层，GraphSnapshot 和 Git Timeline 分别替代 `index.md` 与 `log.md`。不创建平行 `wiki_pages/`，避免双重事实源。
+接受。Source/Evidence Assertion/Node/Edge/Result 已构成持久知识层，GraphSnapshot 和 Git Timeline 分别替代 `index.md` 与 `log.md`。不创建平行 `wiki_pages/`，避免双重事实源。
 
-### ADR-019：Graph 默认使用 Focus 局部信息卡片
+### ADR-019：Companion 默认使用 Focus 局部信息卡片
 
-接受。Client 默认只渲染 Focus、当前路径和一层邻居；节点摘要显示为信息卡片，完整内容交给文件预览能力。MVP 不把完整项目图谱塞入右栏，也不实现详情 Drawer。
+接受。独立 Companion 默认只渲染 Focus、当前路径和一层邻居；节点摘要显示为信息卡片，完整内容由同源 Details API 按需读取并安全渲染。MVP 不默认铺开完整项目图谱。
 
 ### ADR-020：节点定位和检索候选复用 DSH Chat
 
-接受。Graph Client 不实现搜索框或 Candidate Panel。Chat 通过有界 `research_graph_read(find)` 定位节点，通过 Skill 辅助筛选文献候选；只有采纳后的 typed command 才进入科研仓库。
+接受。Companion 不实现搜索框或 Candidate Panel。Chat 通过有界 `research_graph_read(find)` 定位实体，通过 Skill 辅助筛选文献候选；只有经用户审核和 typed command 采纳的 Source/Evidence Assertion 才进入科研仓库。
 
 ### ADR-021：Graph 页面只保留四个页面操作
 
 接受。页面只提供 `Back`、`Forward`、`Simulate` 和 `Details`。`Back` / `Forward` 操作 Git 科研状态；证据、反证、Result、候选、任意历史恢复和诊断都通过 Chat 完成。
 
-### ADR-022：`Details` 复用外部文件预览能力
+### ADR-022：`Details` 由 Companion 自有安全渲染器提供
 
-接受。SciFork 只把受管 Markdown 路径交给 M0 验证通过的 FilePreview provider，不维护 Inspector Drawer 或 Markdown renderer。文件预览能力是发布组合的显式依赖。
+接受。Host 只通过同源 API 返回已校验的受管 Markdown；Companion 禁用 raw HTML、脚本和远程资源并遵守严格 CSP。Markdown renderer 随 bundle 打包，不需要外部 FilePreview provider。
+
+### ADR-023：better-sidebar 只作参考，不作依赖
+
+接受。固定参考 v0.15.2 的 session/cwd 作用域、页面可见性暂停、composer draft 接入、effect/disposer 和 mount smoke；不复用其 portal、全局布局 CSS、`/sidebar/api`、WebSocket、终端、Git、浏览器或 `node-pty` 能力。
+
+### ADR-024：Companion 只同源、只 loopback
+
+接受。v0.1 不开放 CORS 或独立端口；页面通过短时一次性 capability 绑定 session/project。若 DSH Web 暴露到非 loopback，Host 拒绝启用 Companion 路由。
 
 ## 22. MVP 完成定义
 
 满足以下条件才算 SciFork v0.1 的架构闭环完成：
 
-- 一个普通目录可初始化为研究项目，并自动形成 `main` 基线与个人工作分支。
-- Chat 能读取当前 Graph，并通过三个工具进行受控修改。
-- Graph UI 能显示 Finding、Hypothesis、Prediction、直接由 Result 投影的 User Result，以及关系来源。
-- Graph 默认以 Focus 为中心显示局部信息卡片；完整详情通过兼容文件预览 provider 打开受管 Markdown。
-- Graph 页面只显示 `Back`、`Forward`、`Simulate`、`Details` 四个英语操作；`Back` / `Forward` 按 action group 操作 Git 检查点。
-- Node 和 Edge 均能引用支持/反驳 Evidence，Evidence 文件不维护反向引用。
-- 用户选中 Node、Result 或 Edge 后，下一次模型请求获得精简的 Current Research Focus。
-- 用户可在 Chat 中按名称或 Claim 定位节点、完成歧义选择并改变 Focus，Graph Client 不提供重复搜索框。
-- AI 推断在文件、工具输出和 UI 中均不能显示为事实。
-- 手工编辑 Markdown 后 Graph 自动刷新，并通过英语状态提示或 Chat 提供错误诊断。
+- 一个普通目录可初始化为 Research Project，并自动形成 `main` 基线与个人工作分支。
+- Chat 能读取当前 Research Graph，并通过三个工具进行受控修改。
+- 同源独立 Graph Companion 可从 DSH Open action 打开，并由操作系统悬浮或与 DSH 并列；它不占用 DSH single slot。
+- Companion 能显示 Finding、Hypothesis、Prediction、Result 与关系来源，默认以 Focus 为中心呈现局部信息卡片。
+- `Details` 通过同源 API 安全渲染受管 Markdown，不依赖外部 FilePreview provider。
+- 页面只显示 `Back`、`Forward`、`Simulate`、`Details` 四个英语操作；`Back` / `Forward` 按 action group 操作 Git 检查点。
+- Simulate 可通过一次性 DraftRequest 回填当前 DSH composer；Bridge 不可用时有明确 Copy fallback。
+- Source 保存材料身份；Evidence Assertion 保存可审核断言。Node 和 Edge 只引用 reviewed assertion；Source 与 Evidence Assertion 文件都不维护反向引用。
+- Result 区分观察与解释，只有 `validated` Result 可满足 Finding 支持门槛；AI 推断不能显示为事实。
+- 用户在 Chat 或 Companion 选择 Node、Result、Edge 后，下一次模型请求获得精简的 Current Research Focus。
+- 多个 Companion/DSH session 在同一项目分支共享 mutation queue 与 Timeline 导航；stale HEAD/branch/projectRevision 不发生写入。
+- 手工编辑 Markdown 后 Companion 自动刷新，并通过英语状态提示或 Chat 提供错误诊断。
 - 每个成功科研语义操作自动产生只包含受管路径的本地 Git 检查点。
 - `Back`、`Forward` 和 Chat 指定历史恢复均创建新的 Git 检查点并保留原历史；Graph 不实现 Timeline Panel。
 - SciFork 不执行远端和合并操作；DSH 切换分支后 Graph/Timeline 能重新加载，冲突期间保持只读。
 - 两个学生 branch 的新增实体可低冲突合并。
-- Literature Search Skill 能从 Focus 生成结构化 RetrievalPlan，并把确定性 RetrievedArticle 转换为可校验候选。
-- 检索候选在 Chat 中完成去重、解释和辅助筛选；未采纳候选不进入 Graph、科研仓库或 Timeline。
-- 用户可在 Chat 提供实验描述或图表路径，由 LLM 生成可确认的 ResultDraft；保存后直接投影为 User Result。
-- 缺少检索能力时明确失败；MeSH 只做轻量扩展；PubTator 关系不能未经审查进入 supported Graph。
-- 三个 packaged Skills 可由 DSH 发现、按需读取，并随插件卸载而移除。
-- 锁定 DSH 版本只启用一个经过测试的 Graph UI 挂载面。
+- Literature Search Skill 能从 Focus 生成 RetrievalPlan；内置窄 Entrez adapter 返回可校验 RetrievedArticle，并显式处理网络、限流和无效记录。
+- 检索候选在 Chat 中去重、解释和审核；未采纳候选不进入 Graph、科研仓库或 Timeline。
+- 用户可在 Chat 提供实验描述或图表路径，由 LLM 生成可确认的 ResultDraft；保存后直接投影为 Result。
+- MeSH 只做轻量扩展；PubTator 关系不能未经审查进入 supported Graph。
+- 三个 packaged Skills 可由 DSH 发现、按需读取，并随 bundle 卸载而移除。
+- v0.1 在非 loopback DSH Web 上拒绝启用 Companion；capability 不进入 URL query、日志或仓库。
+- bundle 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件。
 - 卸载 SciFork 后科研仓库完全可读，DSH Session 仍能恢复。
 - GitHub tag 可自动生成唯一的预构建 `dsh-scifork-<version>.tgz` 和 SHA-256 校验文件。
 - 该 tarball 可在全新 DSH Web profile 中安装、启动和卸载，且不依赖任何 `@scifork/*` workspace 包。
-- Release 页面明确列出 DSH 兼容版本、安装方式和升级说明。
+- Release 页面明确列出 DSH 兼容版本、安装方式、loopback/隐私边界和升级说明。
 
 ## 23. 官方接口参考
 
@@ -1810,11 +1907,17 @@ SF-021  建立 GitHub CI 与 Release workflow
 - [Skills subsystem](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md)
 - [Human commands registry](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/interaction/commands/README.md)
 - [Client modules](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/client-modules.md)
+- [HTTP Server subsystem](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/web-server.md)
+- [Host WebServer package contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/host/webserver/README.md)
 - [Web Client slot rules](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/AGENTS.md)
-- [UI layout contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-layout/README.zh.md)
-- [Typert API Gateway](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/api-gateway.md)
+- [UI layout source contract](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-layout/src/client/index.ts)
+- [Conversation client service](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-conversation/src/client/service.ts)
+- [Conversation InputHub](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-conversation/src/client/input/hub.ts)
 - [Subprocess service](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/subprocess/README.md)
 - [NLM MeSH](https://www.nlm.nih.gov/mesh/meshhome.html)
 - [NCBI Entrez E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/)
 - [NCBI PubTator3](https://www.ncbi.nlm.nih.gov/research/pubtator3/)
 - [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+- [DSH-better-sidebar v0.15.2（reference only）](https://github.com/omdsh-dev/DSH-better-sidebar/releases/tag/v0.15.2)
+- [DSH-better-sidebar conversation draft bridge](https://github.com/omdsh-dev/DSH-better-sidebar/blob/v0.15.2/src/client/conversation-draft.ts)
+- [DSH-better-sidebar MIT License](https://github.com/omdsh-dev/DSH-better-sidebar/blob/v0.15.2/LICENSE)
