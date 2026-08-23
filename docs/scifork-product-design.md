@@ -1,4 +1,4 @@
-# SciFork 产品设计 v0.8
+# SciFork 产品设计 v0.7
 
 > **Fork hypotheses. Connect evidence. Advance research.**
 
@@ -30,9 +30,9 @@ SciFork 不重新实现 Chat，不建立复杂科研平台，也不维护独立�
 
 插件只增加一个主要界面：
 
-> **侧边栏工作台中的 Research Graph Tab**
+> **右侧 Research Graph Sidebar**
 
-v0.1 不直接占用 DSH 的右栏：右栏 (`details`) 是 single slot 且已被内置 Tool Details 占用，任何第三方注册都会遮蔽它并连同工具详情一并消失，这违背「不破坏已有能力」的目标。因此 SciFork 采用社区共享的侧边栏宿主 **DSH better-sidebar**，把 Research Graph 注册成工作台中的一个 Tab，与文件 / 终端 / Git / 子代理等 Tab 并列；聊天保持居中常驻，用户可以边聊边看图谱。一次发布只实现这一种挂载面，不让用户承担兼容模式选择。
+如果锁定版本的 DSH 右栏扩展契约不安全，v0.1 会使用原生 Conversation Graph Tab。一次发布只实现其中一种，不让用户承担兼容模式选择。
 
 因此用户仍然使用熟悉的：
 
@@ -157,28 +157,26 @@ SciFork 自有界面中的按钮、状态、空状态、提示和错误信息统
 
 ## 4. 用户界面
 
-不设计新的完整 Web App。产品目标布局使用 DSH 的原生 Chat 加一个侧边栏工作台；Research Graph 作为工作台中的一个 Tab（由社区宿主 DSH better-sidebar 承载）。下图是 v0.1 的目标布局：
+不设计新的完整 Web App。产品目标布局使用 DSH 的原生 Chat 加一个局部 Research Graph 视图；下图是右栏扩展契约可用时的首选布局：
 
 ```text
-┌────────────────────────────┬──────────────────────────────────┐
-│  better-sidebar 工作台     │          Native DSH Chat          │
-│  … 其他 Tab（文件 / 终端 /  │   User / Assistant / Tools       │
-│      Git / 子代理 / 会话）  │                                  │
-│                            │                                  │
-│   ── Research Tab (active) ├──────────────────────────────────┤
-│   [Finding] A              │                                  │
-│        ↓                   │                                  │
-│   [Hypothesis] B           │                                  │
-│   Back Forward Simulate    │                                  │
-│   Details                  │                                  │
-└────────────────────────────┴──────────────────────────────────┘
+┌────────────┬────────────────────────────┬────────────────────────┐
+│ Sessions   │      Native DSH Chat       │    Local Graph         │
+│            │                            │                        │
+│            │ User / Assistant / Tools   │ [Finding] A            │
+│            │                            │      ↓                 │
+│            │                            │ [Hypothesis] B         │
+│            │                            │                        │
+│            │                            │ Back Forward Simulate  │
+│            │                            │ Details                │
+└────────────┴────────────────────────────┴────────────────────────┘
 ```
 
 Research Graph 视图只承担三个功能：
 
 ### 看
 
-查看以当前 Focus 为中心的局部 Research Graph。默认展示当前实体、当前研究路径和一层直接邻居；本地工作台视图不铺开完整项目。
+查看以当前 Focus 为中心的局部 Research Graph。默认展示当前实体、当前研究路径和一层直接邻居；右侧视图不铺开完整项目。
 
 每个节点使用紧凑信息卡片，固定显示类型、标题或一行 Claim、状态/置信度/来源，以及支持、反对和 Evidence Gap 计数。
 
@@ -199,7 +197,7 @@ Graph 页面只显示四个操作；`Simulate` 和 `Details` 作用于当前 Foc
 
 SciFork 不实现 details drawer、Graph 搜索框、`Find Evidence`、`Find Counterevidence`、`Add Result` 按钮或 Timeline 面板。查找证据、筛选文献、寻找反证、添加实验结果、查看完整历史和恢复指定状态都通过 Chat 完成。
 
-`Details` 通过 better-sidebar 的文件打开能力（`ctx.betterSidebar.openFile`，内置 markdown viewer）打开所选实体的受管 Markdown 源码；SciFork 只提交受管文件路径，不实现第二套 Markdown 渲染器，也不做详情 Drawer。
+`Details` 依赖运行环境提供可发现的文件预览能力；SciFork 只提交受管文件路径，不再实现第二套 Markdown 渲染器。如果锁定版本的 DSH 没有兼容能力，M0 必须将相应文件预览插件列为运行依赖，而不是把 Drawer 加回 SciFork。
 
 ## 5. Research Graph 的基本模型
 
@@ -972,7 +970,7 @@ experiment: support lipid-mediated TREM2 hypothesis
               ┌────────────┴────────────┐
               │                         │
          Native Chat              Research Graph
-              │                 Selected DSH View (→ Sidebar Workbench Tab, hosted via DSH better-sidebar)
+              │                 Selected DSH View
               │                         │
               └──────────┬──────────────┘
                          ↓
