@@ -1,6 +1,6 @@
 # SciFork M1: Core 与 Git
 
-> 状态：Proposed；随实现更新为 Complete
+> 状态：Complete；全部自动化检查通过
 > 日期：2026-08-24
 > 上位设计：[软件架构 v0.12](../scifork-software-architecture.md) §16 M1、[产品设计 v0.11](../scifork-product-design.md)
 > 钉住版本：DeepSeek Harness `0.1.1-rc.2`（沿用 M0 一次性 profile）
@@ -379,10 +379,17 @@ interface ProjectionEdge {
 ```
 
 - 同一 project root + branch 的 mutation 经 Host 内存队列串行（架构 §12.1）。
-- 检查点失败（CHECKPOINT_FAILED）→ 补偿回滚：更新类 `git checkout -- <path>`，
-  创建类 `git clean -f -- <path>`（argv-only、只作用于刚写入的受管路径），
+- 检查点失败（CHECKPOINT_FAILED）→ 补偿回滚：更新类
+  `git checkout HEAD -- <path>`，创建类 `git rm -f -q -- <path>` 后
+  `git clean -f -- <path>`（argv-only、只作用于刚写入的受管路径），
   失败不留下“Saved”假象。
 - commit 用 `--only <paths>`：不改变无关 staged files，绝不 `git add .`。
+- 真实 Git 验证的路径语义：`git commit --only` 的 pathspec 必须命中 index，
+  因此先 `git add -- <paths>` 再 `commit --only`；paths 由
+  `managedCheckpointPaths` 从当前受管文件集推导（跳过空目录）。
+- 一步恢复用 `git ls-tree -r --name-only <ref> -- <受管路径>` 列出源检查点
+  的受管文件，`git checkout <ref> -- <源文件>` 还原/复活，
+  `git rm -f` 删除源中不存在的当前文件；不使用 `reset --hard`。
 
 ### Git 检查点与一步 Back/Forward（git-checkpoints.ts、ui-state.ts）
 
@@ -443,28 +450,49 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
 
 ## Acceptance criteria
 
-- [ ] `docs/specs/m1-core-git.md` 存在且与本文件一致；v0.11 §5 示例已按
+- [x] `docs/specs/m1-core-git.md` 存在且与本文件一致；v0.11 §5 示例已按
       文档修正同步；README 状态段提及 M1。
-- [ ] `pnpm check`（typecheck + Vitest + build）全绿；`node --check index.js`
+- [x] `pnpm check`（typecheck + Vitest + build）全绿；`node --check index.js`
       与 `git diff --check` 干净。
-- [ ] Core 测试覆盖：全部实体 schema 成败 fixture；Markdown round-trip 与
+- [x] Core 测试覆盖：全部实体 schema 成败 fixture；Markdown round-trip 与
       Publication Reference 规范化/PMID-DOI 一致提示；projectRevision/fileVersion；
       Finding 支持门槛；Draft schema/标识/locator/上限/禁止字段；每条命令的
       validate/render 成败与单实体边界。
-- [ ] Host 测试覆盖：Project Locator containment 与 Git root equality；三个
+- [x] Host 测试覆盖：Project Locator containment 与 Git root equality；三个
       工具注册/卸载/参数上限/read 各 operation；mutation 流水线（fake fs +
       fake subprocess）的 stale revision/target、只读冲突、检查点失败补偿；
       checkpoint 只提交受管路径且不改变无关 staged files；一步 Back/Forward
       与新 mutation 清除 Forward；init 的 git init/identity/基线检查点。
-- [ ] undo/focus 记录经 storageDomain 契约测试（fake Domain）。
+- [x] undo/focus 记录经 storageDomain 契约测试（fake Domain）。
+- [x] 真实 Git 最小验证：临时仓库验证 pathspec commit 语义、无关 staged
+      files 不受影响、Back/Forward restore commit 流与新增文件移除。
 - [ ] 一次性 profile 冒烟（需用户批准）：工具可发现、`/research init` 在临时
       目录完成、创建实体产生受管路径检查点、Back/Forward 一步恢复。
+
+## Final results（2026-08-24）
+
+1. `pnpm typecheck` 干净；19 个测试文件、232 项 Vitest 全绿（Core 100 项、
+   Host 129 项、真实 Git 集成 3 项）；`pnpm build` 生成 `dist/host` 全部新
+   模块与 `dist/client.js`。
+2. 真实 Git 集成测试（系统 Git，临时仓库）确认：`git add + commit --only
+   <paths>` 只提交受管路径且不动无关 staged files（含 unborn HEAD 根提交）；
+   `git restore`/`checkout <ref> -- <files>` 与 `git rm -f` 组合完成一步
+   Back/Forward，历史只追加 restore commit，rev-list 计数严格递增。
+3. 实现期间的契约修正（已回写本文档）：① `commit --only` pathspec 需先
+   `git add`（pathspec 必须命中 index）；② restore 改为
+   `ls-tree` 列文件 + `checkout <ref> -- <files>` + `git rm -f` 精确还原；
+   ③ undo 记录的 commit id 接受 40–64 位小写 hex（SHA-1/SHA-256 仓库）；
+   ④ front matter 解析/渲染统一使用 js-yaml v4（YAML 1.2）引擎，替换
+   gray-matter 内置的 js-yaml v3，保证 round-trip 不被 YAML 1.1 布尔规则改写。
+4. 环境说明：本会话 pnpm 依赖安装需 full-access 沙箱（esbuild 生命周期脚本
+   spawn 子进程）；安装本身对仓库无影响（node_modules/.pnpm-store 均被
+   gitignore）。
 
 ## Test plan
 
 - 单元：`tests/core/*.test.ts`（Vitest，node 环境，注入 SHA-256 哈希）。
 - Host 单元/集成：`tests/host/*.test.ts`，用结构性 fake Fs/Subprocess/Storage
   端口驱动完整流水线，不做网络或真实 Git 依赖。
-- 真实 Git 最小验证：在临时目录用系统 Git 执行 init/checkpoint/back/forward
-  的 argv 行为（若环境无 Git 则跳过并记录）。
+- 真实 Git 最小验证：`tests/host/git-real.test.ts` 在临时目录用系统 Git
+  执行 init/checkpoint/back/forward 的 argv 行为（无 Git 时自动跳过）。
 - 冒烟：一次性 DSH profile，验证工具/命令/检查点，结果写入本文档。

@@ -15,8 +15,17 @@ introduced the first toolchain: pnpm, TypeScript strict, and Vitest, with
 esbuild for the browser client bundle. The spike code exercises bundle
 load/unload, `/scifork/api/*` web routes with disposers, the two packaged
 Skills, the `shell.overlay` Open action, the scoped `SessionInput.setDraft +
-submit` path, and argv-only Git probes. Implementation continues by milestone:
-M1 Core+Git, M2 Companion, M3 Research.
+submit` path, and argv-only Git probes.
+
+M1 (Core + Git) is implemented ([M1 spec](docs/specs/m1-core-git.md)): the
+pure-TypeScript Core (strict schemas, front-matter parser, cross-entity
+validation with the Finding support threshold, rebuildable projection, typed
+single-entity commands, and Research Import Draft validation), plus the Host
+Project Locator, the three model tools (`research_graph_read`,
+`research_graph_apply`, `research_graph_focus`), the `/research init | open |
+validate` commands, Focus/undo storage domains, and current-branch checkpoints
+with one-step Back/Forward. Implementation continues by milestone: M2
+Companion, M3 Research.
 
 All M0 gates pass: automated checks, clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, and the

@@ -1,11 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import {
   GIT_GRACE_MS,
+  backMessage,
   buildGitArgv,
+  checkpointMessage,
+  forwardMessage,
+  gitCheckoutPath,
+  gitCheckpoint,
+  gitCleanPath,
+  gitIdentityConfigured,
+  gitInit,
+  gitListManagedFiles,
+  gitPreflight,
+  gitRemovePath,
+  gitRestoreManagedFrom,
   gitShowToplevel,
+  initCheckpointMessage,
+  managedCheckpointPaths,
+  parsePorcelainStatus,
   parseRevParseToplevel,
 } from '../../src/host/git-checkpoints.js'
 import type { SubprocessPort } from '../../src/host/contracts.js'
+import { MANAGED_PATHS } from '../../src/core/schema.js'
 
 describe('buildGitArgv', () => {
   it('returns an argv-only spec with the program first', () => {
@@ -118,5 +134,232 @@ describe('gitShowToplevel', () => {
     }
     await gitShowToplevel(subprocess, 'C:\\proj')
     expect(seenGraceMs).toBe(GIT_GRACE_MS)
+  })
+})
+
+function scriptedGit(
+  responder: (argv: readonly string[]) => { exitCode?: number; stdout?: string },
+): { port: SubprocessPort; calls: string[][] } {
+  const calls: string[][] = []
+  const port: SubprocessPort = {
+    async resolveExecutable() {
+      return 'C:\\git\\git.exe'
+    },
+    spawn(spec) {
+      calls.push([...spec.argv])
+      const response = responder(spec.argv)
+      return {
+        pid: 1,
+        collected: {
+          stdout: {
+            readFrom() {
+              return { text: response.stdout ?? '', nextOffset: 0, lossy: false }
+            },
+          },
+          stderr: {
+            readFrom() {
+              return { text: '', nextOffset: 0, lossy: false }
+            },
+          },
+        },
+        done: Promise.resolve({ exitCode: response.exitCode ?? 0, signal: null }),
+        terminate() {},
+        async waitForExit() {
+          return true
+        },
+      }
+    },
+  }
+  return { port, calls }
+}
+
+const HEAD_SHA = 'abcdef1234567890abcdef1234567890abcdef12'
+
+function healthyResponder(argv: readonly string[]): { exitCode?: number; stdout?: string } {
+  const sub = argv[1]
+  if (sub === 'symbolic-ref') return { stdout: 'main\n' }
+  if (sub === 'rev-parse') return { stdout: `${HEAD_SHA}\n` }
+  if (sub === 'ls-files') return { stdout: '' }
+  if (sub === 'status') return { stdout: '' }
+  return { stdout: '' }
+}
+
+describe('parsePorcelainStatus', () => {
+  it('parses status lines and renames, skipping headers', () => {
+    const parsed = parsePorcelainStatus('## main\n M nodes/a.md\nA  nodes/b.md\nR  nodes/old.md -> nodes/new.md\n')
+    expect(parsed).toEqual([
+      { code: ' M', path: 'nodes/a.md' },
+      { code: 'A ', path: 'nodes/b.md' },
+      { code: 'R ', path: 'nodes/new.md' },
+    ])
+  })
+
+  it('returns an empty list for clean output', () => {
+    expect(parsePorcelainStatus('')).toEqual([])
+  })
+})
+
+describe('gitPreflight', () => {
+  it('passes a clean on-branch repository and returns branch and HEAD', async () => {
+    const { port } = scriptedGit(healthyResponder)
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({ ok: true, branch: 'main', head: HEAD_SHA })
+  })
+
+  it('reports a detached HEAD as GIT_STATE_UNSUPPORTED', async () => {
+    const { port } = scriptedGit((argv) =>
+      argv[1] === 'symbolic-ref' ? { exitCode: 1, stdout: '' } : healthyResponder(argv),
+    )
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({ ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'HEAD is detached or unborn' })
+  })
+
+  it('reports dirty managed paths as READ_ONLY_CONFLICT', async () => {
+    const { port } = scriptedGit((argv) =>
+      argv[1] === 'status' ? { stdout: ' M nodes/a.md\n' } : healthyResponder(argv),
+    )
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({ ok: false, code: 'READ_ONLY_CONFLICT', reason: 'managed paths have uncommitted changes' })
+  })
+
+  it('reports unmerged entries as GIT_STATE_UNSUPPORTED', async () => {
+    const { port } = scriptedGit((argv) =>
+      argv[1] === 'ls-files' ? { stdout: '100644 abc 1\tnodes/a.md\n' } : healthyResponder(argv),
+    )
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({ ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'managed paths have unmerged entries' })
+  })
+
+  it('reports GIT_UNAVAILABLE when git cannot run', async () => {
+    const port: SubprocessPort = {
+      async resolveExecutable() {
+        throw new Error('no git')
+      },
+      spawn() {
+        throw new Error('unreachable')
+      },
+    }
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('GIT_UNAVAILABLE')
+  })
+})
+
+describe('gitCheckpoint', () => {
+  it('stages then commits only the managed paths and returns the new HEAD', async () => {
+    const { port, calls } = scriptedGit(healthyResponder)
+    const result = await gitCheckpoint(port, 'C:\\proj', 'scifork: create_node node_1', ['research.json', 'nodes'])
+    expect(result).toEqual({ ok: true, head: HEAD_SHA })
+    expect(calls[0]).toEqual(['C:\\git\\git.exe', 'add', '--', 'research.json', 'nodes'])
+    expect(calls[1]).toEqual([
+      'C:\\git\\git.exe',
+      'commit',
+      '--only',
+      '-m',
+      'scifork: create_node node_1',
+      '--',
+      'research.json',
+      'nodes',
+    ])
+    expect(calls[2]).toEqual(['C:\\git\\git.exe', 'rev-parse', 'HEAD'])
+  })
+
+  it('fails with CHECKPOINT_FAILED when the commit is rejected', async () => {
+    const { port } = scriptedGit((argv) =>
+      argv[1] === 'commit' ? { exitCode: 128, stdout: '' } : healthyResponder(argv),
+    )
+    const result = await gitCheckpoint(port, 'C:\\proj', 'scifork: x', ['research.json'])
+    expect(result).toEqual({ ok: false, code: 'CHECKPOINT_FAILED' })
+  })
+})
+
+describe('managedCheckpointPaths', () => {
+  it('names only the manifest and non-empty managed directories', () => {
+    expect(managedCheckpointPaths(new Map([
+      ['research.json', '{}'],
+      ['nodes/a.md', 'x'],
+    ]))).toEqual(['research.json', 'nodes'])
+    expect(managedCheckpointPaths(new Map([['research.json', '{}']]))).toEqual(['research.json'])
+    expect(managedCheckpointPaths(new Map())).toEqual([])
+  })
+})
+
+describe('gitListManagedFiles and gitRestoreManagedFrom', () => {
+  it('lists managed files per directory from a commit', async () => {
+    const { port, calls } = scriptedGit((argv) => {
+      if (argv[1] === 'ls-tree') {
+        const path = argv[argv.length - 1]
+        if (path === 'research.json') return { stdout: 'research.json\n' }
+        if (path === 'nodes') return { stdout: 'nodes/a.md\nnodes/b.md\n' }
+        return { stdout: '' }
+      }
+      return { stdout: '' }
+    })
+    const files = await gitListManagedFiles(port, 'C:\\proj', HEAD_SHA)
+    expect(files).toEqual(['research.json', 'nodes/a.md', 'nodes/b.md'])
+    expect(calls.filter((call) => call[1] === 'ls-tree')).toHaveLength(MANAGED_PATHS.length)
+  })
+
+  it('restores source paths with checkout and removes extra files with git rm', async () => {
+    const { port, calls } = scriptedGit(() => ({ stdout: '' }))
+    await expect(gitRestoreManagedFrom(
+      port,
+      'C:\\proj',
+      HEAD_SHA,
+      ['research.json', 'nodes/a.md'],
+      ['nodes/removed.md'],
+    )).resolves.toBe(true)
+    expect(calls[0]).toEqual([
+      'C:\\git\\git.exe', 'checkout', HEAD_SHA, '--', 'research.json', 'nodes/a.md',
+    ])
+    expect(calls[1]).toEqual(['C:\\git\\git.exe', 'rm', '-f', '-q', '--', 'nodes/removed.md'])
+  })
+})
+
+describe('restore and compensation ops', () => {
+  it('checkouts and cleans exact single paths for compensation', async () => {
+    const { port, calls } = scriptedGit(healthyResponder)
+    await expect(gitCheckoutPath(port, 'C:\\proj', 'nodes/node_1.md')).resolves.toBe(true)
+    await expect(gitCleanPath(port, 'C:\\proj', 'nodes/node_2.md')).resolves.toBe(true)
+    await expect(gitRemovePath(port, 'C:\\proj', 'nodes/node_3.md')).resolves.toBe(true)
+    expect(calls[0]).toEqual(['C:\\git\\git.exe', 'checkout', 'HEAD', '--', 'nodes/node_1.md'])
+    expect(calls[1]).toEqual(['C:\\git\\git.exe', 'clean', '-f', '--', 'nodes/node_2.md'])
+    expect(calls[2]).toEqual(['C:\\git\\git.exe', 'rm', '-f', '-q', '--', 'nodes/node_3.md'])
+  })
+})
+
+describe('gitInit and gitIdentityConfigured', () => {
+  it('runs a plain git init', async () => {
+    const { port, calls } = scriptedGit(() => ({ stdout: 'Initialized empty Git repository\n' }))
+    await expect(gitInit(port, 'C:\\proj')).resolves.toBe(true)
+    expect(calls[0]).toEqual(['C:\\git\\git.exe', 'init'])
+  })
+
+  it('checks identity from repo or global config', async () => {
+    const { port } = scriptedGit((argv) => {
+      const key = argv[argv.length - 1]
+      if (key === 'user.name') return { stdout: 'Ada\n' }
+      if (key === 'user.email') return { stdout: 'ada@example.com\n' }
+      return { exitCode: 1 }
+    })
+    await expect(gitIdentityConfigured(port, 'C:\\proj')).resolves.toBe(true)
+  })
+
+  it('reports missing identity', async () => {
+    const { port } = scriptedGit((argv) => {
+      const key = argv[argv.length - 1]
+      if (key === 'user.name') return { stdout: 'Ada\n' }
+      return { exitCode: 1 }
+    })
+    await expect(gitIdentityConfigured(port, 'C:\\proj')).resolves.toBe(false)
+  })
+})
+
+describe('checkpoint messages', () => {
+  it('builds stable subjects without research content', () => {
+    expect(checkpointMessage('create_node', 'node_abc')).toBe('scifork: create_node node_abc')
+    expect(initCheckpointMessage()).toBe('scifork: init research project')
+    expect(backMessage(HEAD_SHA)).toBe('scifork: back to abcdef123456')
+    expect(forwardMessage(HEAD_SHA)).toBe('scifork: forward to abcdef123456')
   })
 })
