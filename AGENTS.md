@@ -8,10 +8,11 @@ a same-origin standalone Graph Companion, while ordinary Research Project files
 remain the scientific source of truth and the graph remains a rebuildable
 projection.
 
-This repository is still a design-stage, minimally installable bundle scaffold.
-Do not begin full implementation until the M0 compatibility spike pins the exact
-public DSH preview contracts. Keep SciFork as one package, one first-party
-bundle, and one release tarball.
+This repository is a design-stage, minimally installable bundle scaffold. The
+M0 compatibility spike has pinned the DSH preview contracts (see
+`docs/specs/m0-compatibility-spike.md`); implementation continues by milestone
+(M1 Core+Git, M2 Companion, M3 Research) and stays behind the pinned baseline.
+SciFork remains one package, one first-party bundle, and one release tarball.
 
 This file governs repository development. It does not change SciFork's runtime
 Git behavior described below.
@@ -211,15 +212,22 @@ the topology retained by the `--no-ff` merge.
 
 ## Current verification commands
 
-The scaffold has no formal build, lint, or test scripts yet. Do not invent them.
+`package.json` is the authoritative command source. The M0 spike introduced the
+first real scripts: `pnpm typecheck`, `pnpm test`, `pnpm build`, and the
+combined `pnpm check`. Run `pnpm check` before committing executable changes.
+Use `corepack pnpm` when pnpm is not installed globally.
 
 - Every change: inspect scope and run `git diff --check`.
-- `index.js`: run `node --check index.js`.
-- Bundle metadata: run a package dry-run and inspect the tarball file list.
+- Entry and bundles: `node --check index.js`; `pnpm build` must regenerate
+  `dist/host` and `dist/client.js`.
+- Bundle metadata: run `pnpm pack --dry-run` and inspect the tarball file list.
 - Design documents: verify terminology, version references, README summaries,
   product design, and architecture remain consistent.
-- DSH smoke tests: run only against a pinned DSH version, with user approval, in
-  a disposable profile.
+- DSH smoke tests: run only against the pinned DSH version recorded in
+  `docs/specs/m0-compatibility-spike.md`, with user approval, in a disposable
+  profile.
 
-When real `lint`, `test`, or `build` scripts are introduced, update this guide in
-the same change. `package.json` must remain the authoritative command source.
+Note: esbuild on Windows runs its native binary as a child process, so
+`pnpm test` and `pnpm build` need sandbox permissions that allow piped spawns;
+`pnpm typecheck` runs in confined mode. `package.json` must remain the
+authoritative command source.
