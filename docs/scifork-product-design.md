@@ -204,7 +204,6 @@ Node：
 ---
 id: node_<uuid>
 kind: hypothesis
-status: plausible
 confidence: moderate
 evidence_refs:
   - id: ev_<uuid>
@@ -221,7 +220,7 @@ publication_ref:
   pmid: "12345678"
   doi: "10.xxxx/example"
 locator:
-  kind: abstract
+  kind: pubmed_abstract
 assertion: "..."
 direction: supports
 review_status: reviewed
