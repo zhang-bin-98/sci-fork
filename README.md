@@ -9,9 +9,21 @@ side-by-side layout.
 
 ## Current status
 
-This repository is a design-stage, minimal installable DSH bundle scaffold. The
-implementation remains intentionally empty until the compatibility spike pins
-the exact DSH preview contracts.
+The M0 compatibility spike has pinned the exact DeepSeek Harness `0.1.1-rc.2`
+preview contracts ([spike spec](docs/specs/m0-compatibility-spike.md)) and
+introduced the first toolchain: pnpm, TypeScript strict, and Vitest, with
+esbuild for the browser client bundle. The spike code exercises bundle
+load/unload, `/scifork/api/*` web routes with disposers, the two packaged
+Skills, the `shell.overlay` Open action, the scoped `SessionInput.setDraft +
+submit` path, and argv-only Git probes. Implementation continues by milestone:
+M1 Core+Git, M2 Companion, M3 Research.
+
+Build and verify before installing from a checkout:
+
+```sh
+corepack pnpm install
+corepack pnpm check   # typecheck + vitest + build
+```
 
 The lean MVP design has these boundaries:
 
