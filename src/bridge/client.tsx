@@ -91,8 +91,9 @@ function handleSimulate(ctx: Context): void {
   const sessionId = sessions?.list.getSnapshot().current
   const actx = sessionId !== undefined ? sessions?.scope(sessionId) : undefined
   if (actx === undefined || conversation === undefined) return
-  conversation.input.for(actx).setDraft(SPIKE_PROMPT)
-  conversation.input.for(actx).submit()
+  const input = conversation.input.for(actx)
+  input.setDraft(SPIKE_PROMPT)
+  input.submit()
 }
 
 export function apply(ctx: Context): void {

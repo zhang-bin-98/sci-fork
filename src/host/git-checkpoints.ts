@@ -1,3 +1,4 @@
+import { posix, win32 } from 'node:path'
 import type { SubprocessPort } from './contracts.js'
 
 /** Fixed executable name resolved through the provider's scrubbed PATH. */
@@ -33,7 +34,11 @@ export function buildGitArgv(
  */
 export function parseRevParseToplevel(output: string): string | undefined {
   const trimmed = output.trim()
-  if (!trimmed || trimmed.includes('\n')) return undefined
+  if (
+    !trimmed ||
+    trimmed.includes('\n') ||
+    (!win32.isAbsolute(trimmed) && !posix.isAbsolute(trimmed))
+  ) return undefined
   return trimmed
 }
 

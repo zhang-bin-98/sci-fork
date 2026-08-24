@@ -15,5 +15,5 @@
     "types": ["node"],
     "outDir": "dist"
   },
-  "include": ["src/host", "src/core", "tests", "scripts", "vitest.config.ts"]
+  "include": ["src/host", "src/core", "tests/host", "scripts"]
 }

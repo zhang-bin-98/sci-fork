@@ -18,6 +18,11 @@ Skills, the `shell.overlay` Open action, the scoped `SessionInput.setDraft +
 submit` path, and argv-only Git probes. Implementation continues by milestone:
 M1 Core+Git, M2 Companion, M3 Research.
 
+All M0 gates pass: automated checks, clean-package assembly, real DSH
+HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, and the
+browser click-through for both overlay buttons, sequential Skill loading, and
+scoped Simulate submission.
+
 Build and verify before installing from a checkout:
 
 ```sh

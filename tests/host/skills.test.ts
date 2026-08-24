@@ -50,7 +50,15 @@ describe('loadPackagedSkills', () => {
   it('throws when a declared skill file is missing', () => {
     const root = makeSkillRoot()
     rmSync(join(root, 'pubmed-search', 'SKILL.md'))
-    expect(() => loadPackagedSkills(root)).toThrow()
+    expect(() => loadPackagedSkills(root)).toThrow(
+      'scifork: failed to read packaged skill pubmed-search',
+    )
+
+    try {
+      loadPackagedSkills(root)
+    } catch (error) {
+      expect((error as Error).message).not.toContain(root)
+    }
   })
 
   it('throws when a declared skill body is empty', () => {

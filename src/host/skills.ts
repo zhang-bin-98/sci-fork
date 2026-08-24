@@ -53,7 +53,12 @@ export function loadPackagedSkills(
   entries: readonly PackagedSkillSource[] = PACKAGED_SKILLS,
 ): LoadedPackagedSkill[] {
   return entries.map((entry) => {
-    const content = readFileSync(join(skillsRoot, entry.file), 'utf8')
+    let content: string
+    try {
+      content = readFileSync(join(skillsRoot, entry.file), 'utf8')
+    } catch {
+      throw new Error(`scifork: failed to read packaged skill ${entry.name}`)
+    }
     if (!content.trim()) {
       throw new Error(`scifork: packaged skill ${entry.name} body is empty`)
     }

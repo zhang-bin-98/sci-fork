@@ -28,8 +28,13 @@ describe('buildGitArgv', () => {
 })
 
 describe('parseRevParseToplevel', () => {
-  it('returns a plain absolute path', () => {
+  it('returns Windows and POSIX absolute paths', () => {
     expect(parseRevParseToplevel('C:\\proj\n')).toBe('C:\\proj')
+    expect(parseRevParseToplevel('/srv/research\n')).toBe('/srv/research')
+  })
+
+  it('returns undefined for a relative path', () => {
+    expect(parseRevParseToplevel('research-project\n')).toBeUndefined()
   })
 
   it('returns undefined for empty output', () => {

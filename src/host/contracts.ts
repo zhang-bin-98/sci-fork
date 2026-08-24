@@ -3,10 +3,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 /**
  * Structural DSH contracts pinned against DeepSeek Harness 0.1.1-rc.2.
  *
- * The spike keeps the bundle dependency-free; these declarations mirror the
- * installed types with provenance noted per interface. Sources are under
- * D:\DevTools\nvm\v24.19.0\node_modules\@deepseek-ai\dsh\node_modules\@deepseek-ai\
- * (paths abbreviated below).
+ * The spike keeps the bundle dependency-free. These declarations mirror the
+ * pinned package types, with package-relative provenance noted per interface.
  */
 
 /**
@@ -21,6 +19,7 @@ export interface WebRoute {
 }
 
 export interface WebServerPort {
+  readonly host: '127.0.0.1' | '0.0.0.0'
   register(route: WebRoute): () => void
 }
 

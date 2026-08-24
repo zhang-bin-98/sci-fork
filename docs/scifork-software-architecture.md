@@ -351,7 +351,7 @@ Host 使用 `ctx.webServer.register()` 注册：
 用户点击 Open Research Graph
 → Bridge 同步 window.open('about:blank')
 → POST /scifork/api/launch with current session
-→ Host 验证 session / project / loopback / Origin
+→ Host 验证 session / project / loopback socket / exact same-origin Origin
 → Host 创建 256-bit random Page Key
 → 返回 /scifork/#key=<page-key>
 → 新窗口导航
@@ -546,9 +546,12 @@ A ─ B ─ R(A) ─ R(B)
 
 ### 12.2 Web 安全
 
-- v0.1 仅允许 DSH Web 监听 `127.0.0.1`。
-- Companion 与 API 同源，不启用 CORS。
-- JSON POST 验证 Page Key、Host、Origin、Content-Type 和 body size。
+- v0.1 仅允许 DSH Web 监听 `127.0.0.1`；Host 在 WebServer 为
+  `0.0.0.0` 时 fail closed，不依赖可伪造的 `Host` Header 代替监听地址检查。
+- Companion 与 API 同源，不启用 CORS；浏览器 JSON POST 必须携带与
+  当前 `Host` 的 scheme + authority 精确同源的 `Origin`。
+- JSON POST 验证 Page Key、Host、Origin、实际 socket 地址、精确 JSON
+  Content-Type 和 body size；超限请求返回有界 413 JSON，不在响应前销毁 socket。
 - 静态路由只返回 build manifest 内资源。
 - CSP 至少限制 `default-src 'self'`、`connect-src 'self'`，禁止 object/frame。
 - Page Key 只在 fragment、sessionStorage 和 Host 内存中出现。

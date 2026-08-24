@@ -17,5 +17,5 @@
     "types": [],
     "noEmit": true
   },
-  "include": ["src/bridge", "src/companion", "src/shared"]
+  "include": ["src/bridge", "src/companion", "src/shared", "tests/bridge"]
 }

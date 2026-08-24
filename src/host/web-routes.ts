@@ -7,6 +7,10 @@ export { COMPANION_URL, ROUTE_LAUNCH, ROUTE_SPIKE }
 
 /** Upper bound for JSON API request bodies. */
 export const JSON_BODY_LIMIT = 64 * 1024
+export interface SciforkRouteDependencies {
+  gitProbe(): Promise<boolean>
+}
+
 
 /** Registered route paths must be absolute and carry no trailing slash. */
 export function isAbsoluteNoTrailingSlash(path: string): boolean {
@@ -26,29 +30,62 @@ export function isLoopbackHost(host: string | undefined): boolean {
   return name === '127.0.0.1' || name === '::1' || name === 'localhost'
 }
 
-/** An Origin header is acceptable only when it names a loopback host. */
+/** Socket peer addresses must be numeric loopback addresses. */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false
+  const normalized = address.toLowerCase()
+  return (
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized === '::ffff:127.0.0.1'
+  )
+}
+
+/** An Origin header is acceptable only when it names an HTTP(S) loopback host. */
 export function isLoopbackOrigin(origin: string | undefined): boolean {
   if (!origin) return false
   try {
-    return isLoopbackHost(new URL(origin).host)
+    const parsed = new URL(origin)
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      isLoopbackHost(parsed.host)
+    )
   } catch {
     return false
   }
 }
 
 /**
- * Launch-request admission: the Host header must always be loopback, and a
- * present Origin header must be loopback too. A browser always sends Origin
- * on POST, so a forged non-loopback Origin is rejected even against a
- * loopback Host.
+ * Launch requests require all three boundaries: a loopback Host, a numeric
+ * loopback socket peer, and a mandatory HTTP Origin that exactly matches Host.
  */
 export function isAllowedLaunchRequest(
   origin: string | undefined,
   host: string | undefined,
+  remoteAddress: string | undefined,
 ): boolean {
-  if (!isLoopbackHost(host)) return false
-  if (origin !== undefined && !isLoopbackOrigin(origin)) return false
-  return true
+  if (!origin || !host || !isLoopbackHost(host) || !isLoopbackAddress(remoteAddress)) {
+    return false
+  }
+  try {
+    const parsed = new URL(origin)
+    const expectedOrigin = new URL('http://' + host).origin
+    return (
+      parsed.protocol === 'http:' &&
+      parsed.origin === expectedOrigin &&
+      origin.toLowerCase() === parsed.origin.toLowerCase()
+    )
+  } catch {
+    return false
+  }
+}
+
+/** Match the application/json media type exactly, case-insensitively. */
+export function isJsonContentType(contentType: string | undefined): boolean {
+  if (!contentType) return false
+  const separator = contentType.indexOf(';')
+  const mediaType = (separator === -1 ? contentType : contentType.slice(0, separator)).trim()
+  return mediaType.toLowerCase() === 'application/json'
 }
 
 /** Bounded error used by the API handlers. */
@@ -63,27 +100,66 @@ export class ApiError extends Error {
 }
 
 /**
- * Collect a request body up to `limit` bytes and parse it as JSON. Oversized
- * or malformed bodies fail loudly; the request stream is destroyed on
- * overflow so the connection cannot linger.
+ * Collect a request body up to limit bytes and parse it as JSON. On overflow,
+ * reject immediately while keeping a data listener attached to discard the
+ * remaining body; the handler can send 413 without first destroying the socket.
  */
-export async function readJsonBody(req: Readable, limit: number): Promise<unknown> {
-  const chunks: Buffer[] = []
-  let total = 0
-  for await (const chunk of req) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array)
-    total += buffer.length
-    if (total > limit) {
-      req.destroy()
-      throw new ApiError(413, 'BODY_TOO_LARGE', 'request body exceeds the size limit')
+export function readJsonBody(req: Readable, limit: number): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let total = 0
+    let settled = false
+
+    const cleanup = (): void => {
+      req.off('data', onData)
+      req.off('end', onEnd)
+      req.off('error', onError)
+      req.off('close', onClose)
     }
-    chunks.push(buffer)
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
-  } catch {
-    throw new ApiError(400, 'INVALID_JSON', 'request body is not valid JSON')
-  }
+    const onData = (chunk: unknown): void => {
+      if (settled) return
+      const buffer = Buffer.isBuffer(chunk)
+        ? chunk
+        : typeof chunk === 'string'
+          ? Buffer.from(chunk)
+          : Buffer.from(chunk as Uint8Array)
+      total += buffer.length
+      if (total > limit) {
+        settled = true
+        chunks.length = 0
+        reject(new ApiError(413, 'BODY_TOO_LARGE', 'request body exceeds the size limit'))
+        return
+      }
+      chunks.push(buffer)
+    }
+    const onEnd = (): void => {
+      cleanup()
+      if (settled) return
+      settled = true
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
+      } catch {
+        reject(new ApiError(400, 'INVALID_JSON', 'request body is not valid JSON'))
+      }
+    }
+    const onError = (): void => {
+      cleanup()
+      if (settled) return
+      settled = true
+      reject(new ApiError(400, 'BODY_READ_FAILED', 'request body could not be read'))
+    }
+    const onClose = (): void => {
+      cleanup()
+      if (settled) return
+      settled = true
+      reject(new ApiError(400, 'INCOMPLETE_BODY', 'request body ended unexpectedly'))
+    }
+
+    req.on('data', onData)
+    req.once('end', onEnd)
+    req.once('error', onError)
+    req.once('close', onClose)
+  })
 }
 
 /** Write one JSON response with the standard content type. */
@@ -93,15 +169,33 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
   res.end(JSON.stringify(body))
 }
 
-/** The M0 route table; handlers stay thin over the tested pure helpers. */
-export function sciforkRoutes(): readonly WebRoute[] {
+function sendGitProbeUnavailable(res: ServerResponse): void {
+  sendJson(res, 503, {
+    code: 'GIT_PROBE_FAILED',
+    message: 'Git probe unavailable',
+  })
+}
+
+/** The M0 route table; handlers stay thin over the tested helpers. */
+export function sciforkRoutes({
+  gitProbe,
+}: SciforkRouteDependencies): readonly WebRoute[] {
   return [
     {
       kind: 'exact',
       path: ROUTE_SPIKE,
-      handler: (req, res) => {
+      handler: async (req, res) => {
         if (req.method !== 'GET') {
           sendJson(res, 405, { code: 'METHOD_NOT_ALLOWED', message: 'GET only' })
+          return
+        }
+        try {
+          if (!(await gitProbe())) {
+            sendGitProbeUnavailable(res)
+            return
+          }
+        } catch {
+          sendGitProbeUnavailable(res)
           return
         }
         sendJson(res, 200, { ok: true, stage: 'm0' })
@@ -115,20 +209,31 @@ export function sciforkRoutes(): readonly WebRoute[] {
           sendJson(res, 405, { code: 'METHOD_NOT_ALLOWED', message: 'POST only' })
           return
         }
-        if (!isAllowedLaunchRequest(req.headers.origin, req.headers.host)) {
-          sendJson(res, 403, { code: 'NOT_LOOPBACK', message: 'loopback only' })
+        if (
+          !isAllowedLaunchRequest(
+            req.headers.origin,
+            req.headers.host,
+            req.socket.remoteAddress,
+          )
+        ) {
+          sendJson(res, 403, {
+            code: 'NOT_SAME_ORIGIN',
+            message: 'loopback same-origin request required',
+          })
           return
         }
-        const contentType = req.headers['content-type'] ?? ''
-        if (!contentType.startsWith('application/json')) {
+        if (!isJsonContentType(req.headers['content-type'])) {
           sendJson(res, 415, { code: 'UNSUPPORTED_MEDIA', message: 'JSON body required' })
           return
         }
         try {
-          const body = (await readJsonBody(req, JSON_BODY_LIMIT)) as {
-            sessionId?: unknown
+          const body = await readJsonBody(req, JSON_BODY_LIMIT)
+          if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+            sendJson(res, 400, { code: 'INVALID_REQUEST', message: 'sessionId required' })
+            return
           }
-          if (typeof body.sessionId !== 'string' || !body.sessionId) {
+          const sessionId = (body as Record<string, unknown>).sessionId
+          if (typeof sessionId !== 'string' || !sessionId) {
             sendJson(res, 400, { code: 'INVALID_REQUEST', message: 'sessionId required' })
             return
           }
@@ -136,9 +241,12 @@ export function sciforkRoutes(): readonly WebRoute[] {
           // bound to the session, delivered via the fragment handshake.
           sendJson(res, 200, { url: COMPANION_URL })
         } catch (error) {
-          const apiError = error as ApiError
-          sendJson(res, apiError.status ?? 400, {
-            code: apiError.code ?? 'BAD_REQUEST',
+          const apiError =
+            error instanceof ApiError
+              ? error
+              : new ApiError(400, 'BAD_REQUEST', 'request body could not be read')
+          sendJson(res, apiError.status, {
+            code: apiError.code,
             message: apiError.message,
           })
         }
