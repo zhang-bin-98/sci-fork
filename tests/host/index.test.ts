@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apply, name } from '../../src/host/index.js'
+import { apply, inject, name } from '../../src/host/index.js'
 import type {
   SkillRegistration,
   SkillsPort,
@@ -11,27 +11,23 @@ function fakeContext() {
   const disposers: Array<() => void> = []
   const registeredSkills: Array<() => SkillRegistration> = []
   const registeredRoutes: WebRoute[] = []
+  const skills: SkillsPort = {
+    register(skill) {
+      registeredSkills.push(() => skill)
+      return () => {}
+    },
+  }
+  const webServer: WebServerPort = {
+    register(route) {
+      registeredRoutes.push(route)
+      return () => {}
+    },
+  }
   return {
     ctx: {
       get(key: string) {
-        if (key === 'skills') {
-          const skills: SkillsPort = {
-            register(skill) {
-              registeredSkills.push(() => skill)
-              return () => {}
-            },
-          }
-          return skills
-        }
-        if (key === 'webServer') {
-          const webServer: WebServerPort = {
-            register(route) {
-              registeredRoutes.push(route)
-              return () => {}
-            },
-          }
-          return webServer
-        }
+        if (key === 'skills') return skills
+        if (key === 'webServer') return webServer
         return undefined
       },
       effect(callback: () => () => void) {
@@ -49,6 +45,10 @@ function fakeContext() {
 describe('host apply', () => {
   it('exports the scifork plugin name', () => {
     expect(name).toBe('scifork')
+  })
+
+  it('declares skills and webServer as hard dependencies', () => {
+    expect([...inject]).toEqual(['skills', 'webServer'])
   })
 
   it('registers both packaged skills and the API routes', () => {
@@ -73,12 +73,5 @@ describe('host apply', () => {
     apply(fake.ctx as never)
     expect(fake.disposers).toHaveLength(4)
     for (const dispose of fake.disposers) dispose()
-  })
-
-  it('loads without any services (bare profile)', () => {
-    const fake = fakeContext()
-    apply({ get: () => undefined } as never)
-    expect(fake.registeredSkills).toHaveLength(0)
-    expect(fake.registeredRoutes).toHaveLength(0)
   })
 })

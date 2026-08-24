@@ -5,6 +5,7 @@ import {
   ROUTE_LAUNCH,
   ROUTE_SPIKE,
   isAbsoluteNoTrailingSlash,
+  isAllowedLaunchRequest,
   isLoopbackHost,
   isLoopbackOrigin,
   readJsonBody,
@@ -41,6 +42,22 @@ describe('loopback guards', () => {
     expect(isLoopbackHost(undefined)).toBe(false)
     expect(isLoopbackOrigin(undefined)).toBe(false)
     expect(isLoopbackOrigin('http://example.com:3080')).toBe(false)
+  })
+})
+
+describe('launch request admission', () => {
+  it('accepts a loopback host with a loopback or absent origin', () => {
+    expect(isAllowedLaunchRequest('http://127.0.0.1:3199', '127.0.0.1:3199')).toBe(true)
+    expect(isAllowedLaunchRequest(undefined, '127.0.0.1:3199')).toBe(true)
+  })
+
+  it('rejects a non-loopback origin even against a loopback host', () => {
+    expect(isAllowedLaunchRequest('http://evil.example', '127.0.0.1:3199')).toBe(false)
+  })
+
+  it('rejects a non-loopback host regardless of origin', () => {
+    expect(isAllowedLaunchRequest('http://127.0.0.1:3199', 'evil.example:3199')).toBe(false)
+    expect(isAllowedLaunchRequest(undefined, undefined)).toBe(false)
   })
 })
 

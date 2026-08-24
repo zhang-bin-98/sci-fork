@@ -36,6 +36,21 @@ export function isLoopbackOrigin(origin: string | undefined): boolean {
   }
 }
 
+/**
+ * Launch-request admission: the Host header must always be loopback, and a
+ * present Origin header must be loopback too. A browser always sends Origin
+ * on POST, so a forged non-loopback Origin is rejected even against a
+ * loopback Host.
+ */
+export function isAllowedLaunchRequest(
+  origin: string | undefined,
+  host: string | undefined,
+): boolean {
+  if (!isLoopbackHost(host)) return false
+  if (origin !== undefined && !isLoopbackOrigin(origin)) return false
+  return true
+}
+
 /** Bounded error used by the API handlers. */
 export class ApiError extends Error {
   constructor(
@@ -100,7 +115,7 @@ export function sciforkRoutes(): readonly WebRoute[] {
           sendJson(res, 405, { code: 'METHOD_NOT_ALLOWED', message: 'POST only' })
           return
         }
-        if (!isLoopbackOrigin(req.headers.origin) && !isLoopbackHost(req.headers.host)) {
+        if (!isAllowedLaunchRequest(req.headers.origin, req.headers.host)) {
           sendJson(res, 403, { code: 'NOT_LOOPBACK', message: 'loopback only' })
           return
         }

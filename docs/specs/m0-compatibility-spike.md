@@ -52,7 +52,8 @@ interface WebRoute {
 register(route: WebRoute): () => void   // 同 (kind, path) 重复注册抛错；返回 disposer
 ```
 
-获取方式：`ctx.get('webServer')`（可选服务，需 undefined 检查）。所有注册经
+获取方式：spike 中以 `inject: ['skills', 'webServer']` 声明硬依赖，Cordis 在
+服务就绪后激活 fiber；`ctx.webServer` 直接访问。所有注册经
 `ctx.effect` 挂在插件 fiber 上，卸载时由 disposer 移除。
 
 ### 3. `shell.overlay` Open action（Client Slot）
@@ -113,7 +114,7 @@ type SkillRegistration = Omit<SkillDefinition, 'invocation' | 'provider'> & {
   `ctx.skills.register(...)`（source `'runtime'`）。
 - `ctx.skills.list()`/`get(name)` 验证发现；大模型按 name 顺序加载两个 Skill
   （`scifork-research`、`pubmed-search`）。
-- 获取方式：`ctx.get('skills')`（可选服务）。
+- 获取方式：`inject: ['skills']` 硬依赖，`ctx.skills.register(...)` 直接访问。
 
 ### 6. argv-only Git（`ctx.subprocess`）
 
@@ -133,7 +134,7 @@ interface SubprocessSpawnSpec {
 // resolveExecutable(command, env?, signal?): Promise<string> 解析裸名/绝对路径
 ```
 
-获取方式：`ctx.get('subprocess')`。M0 只运行
+获取方式：`ctx.get('subprocess')`（可选服务；M0 只有 Git 适配器需要时读取）。M0 只运行
 `git rev-parse --show-toplevel`（argv 数组，无 `-c`、无 shell 字符串）。
 
 ### 7. 补充钉住（后续里程碑直接使用）
@@ -150,8 +151,9 @@ interface SubprocessSpawnSpec {
 
 ## Behavioral contract（spike 代码）
 
-1. Host `apply()` 只使用可选服务（`ctx.get`），任一缺失时跳过该部分且 bundle
-   仍可加载；所有注册都经 `ctx.effect` 挂 fiber，卸载清理。
+1. Host 插件把 `skills` 与 `webServer` 声明为硬依赖（`inject`），Cordis 在服务
+   就绪后激活 fiber、服务更新后重新激活；所有注册都经 `ctx.effect` 挂
+   fiber，卸载清理。目标 profile 是 DSH Web（两者恒有）。
 2. 注册 `GET /scifork/api/spike`（exact）返回固定 JSON `{ok, version}`；
    注册 `POST /scifork/api/launch`（exact）校验 loopback Origin/Host、
    JSON Content-Type、64 KiB 体积上限，返回 `{url:'/scifork/'}`。重复
@@ -181,11 +183,43 @@ interface SubprocessSpawnSpec {
 - [x] `dist/host`、`dist/client.js`、两个 SKILL.md 进入发布文件列表。
 - [x] 单元测试覆盖：argv 构造与拒绝、`rev-parse` 输出解析、Skill 目录加载、
       路由路径守卫、loopback Origin/Host 判断、JSON body 大小上限。
-- [ ] 一次性 profile 冒烟（需用户批准）：`dsh plugin --profile <tmp> add .`、
-      `dsh --profile <tmp> --dump-config` 恰好一个 `scifork` 行；浏览器加载后
-      shell.overlay 出现两个按钮；spike route 返回 200；两个 Skill 出现在
-      catalog 且可顺序加载；Simulate 按钮把文本写入对应 Session 并提交。
-- [ ] 本文件记录冒烟结果与全部契约差异。
+- [x] 一次性 profile 冒烟（2026-08-24 获用户批准，CLI + HTTP 部分）：
+      `dsh plugin --profile scifork-m0-smoke add .`、
+      `--dump-config` 恰好一个 `scifork` 行；spike/launch 路由行为全部符合
+      预期；client row 进入 boot graph 且 bundle 端点 200。结果见下节。
+- [ ] 浏览器 GUI 交互验证（留待下一步交互验证）：shell.overlay 出现两个按钮、
+      两个 Skill 在 catalog 中可顺序加载、Simulate 按钮把文本写入对应 Session
+      并提交。
+- [x] 本文件记录冒烟结果与全部契约差异。
+
+## Smoke results（2026-08-24，DSH 0.1.1-rc.2，一次性 profile `scifork-m0-smoke`）
+
+1. `dsh plugin --profile scifork-m0-smoke add .`：package 以
+   `link:E:/project/SciFork` 进入 profile（另需把
+   `@deepseek-ai/dsh-base`/`@deepseek-ai/dsh-web-app` 0.1.1-rc.2 装入
+   profile 并写入 `dsh.profile.bundles`；pnpm 原生构建在
+   `pnpm-workspace.yaml#allowBuilds` 放行后完成）。
+2. `dsh --profile scifork-m0-smoke --dump-config`：136 行 = web profile 的
+   135 行 + 恰好一个 `- id: scifork`。
+3. 启动 `dsh --profile scifork-m0-smoke --no-open --host 127.0.0.1 --port
+   3199`，HTTP 验证：
+   - `GET /scifork/api/spike` → 200 `{"ok":true,"stage":"m0"}`；
+   - `POST /scifork/api/launch`（loopback Origin，JSON）→ 200 `{"url":"/scifork/"}`；
+   - 非 loopback Origin → 403 `NOT_LOOPBACK`；非 JSON → 415；缺 sessionId → 400；
+   - root 页面 `__DSH_BOOT__` 含 `dsh-scifork` client row；
+     `/plugins/dsh-scifork/client.js` → 200（3399 字节）。
+4. 冒烟暴露并修复三个契约问题（均已带测试）：
+   - **服务就绪顺序**：`apply()` 里 `ctx.get('webServer'/'skills')` 在服务
+     provide 前返回 undefined。修复：插件导出
+     `inject = ['skills', 'webServer']`，Cordis 在服务就绪后激活 fiber。
+   - **client bundle 未入 boot graph**：client-modules 扫描用
+     `require.resolve('<pkg>/package.json')` 读元数据，而包 exports map 未
+     导出 `./package.json`。修复：exports 增加
+     `"./package.json": "./package.json"`。
+   - **Origin 守卫缺陷**：原实现以 OR 组合 Origin/Host 检查，loopback Host
+     会放过伪造 Origin。修复：`isAllowedLaunchRequest`（Host 必须 loopback，
+     Origin 存在时也必须 loopback）。
+5. 冒烟后删除一次性 profile 与临时产物，`web` profile 未受影响。
 
 ## Test plan
 
