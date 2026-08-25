@@ -17,6 +17,7 @@ import {
   type NodeData,
   type ResearchManifest,
   type ResultData,
+  utf8ByteLength,
 } from './schema.js'
 
 /**
@@ -108,10 +109,13 @@ function parseMarkdownEntity(
   } catch {
     return { diagnostics: [diag(path, 'invalid_entity', 'front matter is not valid YAML')] }
   }
+  if (parsed.data === null || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) {
+    return { diagnostics: [diag(path, 'invalid_entity', 'front matter must be a YAML object')] }
+  }
   const data = parsed.data as Record<string, unknown>
   // Hand-authored identifiers: trim PMIDs and normalize DOI prefixes.
   const publicationRef = data['publication_ref'] as Record<string, unknown> | undefined
-  if (publicationRef !== undefined && typeof publicationRef === 'object' && !Array.isArray(publicationRef)) {
+  if (publicationRef !== undefined && publicationRef !== null && typeof publicationRef === 'object' && !Array.isArray(publicationRef)) {
     if (typeof publicationRef['pmid'] === 'string') publicationRef['pmid'] = publicationRef['pmid'].trim()
     if (typeof publicationRef['doi'] === 'string') {
       const normalized = normalizeDoi(publicationRef['doi'])
@@ -132,7 +136,7 @@ function parseMarkdownEntity(
     diagnostics.push(diag(path, 'id_filename_mismatch', `entity id ${id} does not match file name`))
     return { diagnostics }
   }
-  if (body.length > BODY_MAX) {
+  if (utf8ByteLength(body) > BODY_MAX) {
     diagnostics.push(diag(path, 'invalid_entity', `body exceeds ${BODY_MAX} bytes`))
     return { diagnostics }
   }
@@ -196,6 +200,8 @@ export function parseProject(files: ReadonlyMap<string, string>, hash: HashFn): 
     }
     if (manifestJson === undefined) {
       diagnostics.push(diag(MANIFEST_FILE, 'invalid_manifest', 'research.json is not valid JSON'))
+    } else if (typeof manifestJson !== 'object' || manifestJson === null || Array.isArray(manifestJson)) {
+      diagnostics.push(diag(MANIFEST_FILE, 'invalid_manifest', 'research.json must contain a JSON object'))
     } else {
       const version = (manifestJson as Record<string, unknown>)['schema_version']
       if (typeof version === 'number' && version !== 1) {

@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, posix, win32 } from 'node:path'
+import { dirname, posix, win32 } from 'node:path'
 import { parseManifest, type ResearchManifest } from '../core/schema.js'
 import type { FsPort } from './contracts.js'
 
@@ -13,7 +13,7 @@ export interface ProjectLocatorDeps {
 }
 
 export type LocateResult =
-  | { ok: true; root: string; manifest: ResearchManifest }
+  | { ok: true; root: string; manifest: ResearchManifest | undefined }
   | {
       ok: false
       code:
@@ -30,7 +30,10 @@ function isAbsolutePath(path: string): boolean {
 }
 
 function normalizeForCompare(path: string): string {
-  const trimmed = path.replace(/[\\/]+$/, '')
+  // DSH fs targets on Windows use native separators while Git commonly emits
+  // forward slashes. Compare one separator form before applying case folding.
+  const slashPath = process.platform === 'win32' ? path.replaceAll('\\', '/') : path
+  const trimmed = slashPath.length > 1 ? slashPath.replace(/\/+$/, '') : slashPath
   return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed
 }
 
@@ -63,11 +66,39 @@ export async function locateProject(
       manifestTarget = undefined
     }
     if (manifestTarget !== undefined) {
+      let rootTarget
+      try {
+        rootTarget = await deps.fs.resolve(current, signal !== undefined ? { signal } : {})
+      } catch {
+        return {
+          ok: false,
+          code: 'PROJECT_NOT_INITIALIZED',
+          message: 'the project directory could not be resolved',
+        }
+      }
+      if (!deps.fs.contains(rootTarget, manifestTarget)) {
+        return {
+          ok: false,
+          code: 'INVALID_ENTITY',
+          message: 'research.json is outside the project root',
+        }
+      }
       let info
       try {
         info = await deps.fs.stat(manifestTarget, signal)
       } catch {
-        info = undefined
+        return {
+          ok: false,
+          code: 'INVALID_ENTITY',
+          message: 'research.json could not be inspected',
+        }
+      }
+      if (info !== undefined && info.type !== 'file') {
+        return {
+          ok: false,
+          code: 'INVALID_ENTITY',
+          message: 'research.json is not a regular file',
+        }
       }
       if (info?.type === 'file') {
         let content: string
@@ -95,17 +126,10 @@ export async function locateProject(
               message: `schema_version ${version} is not supported`,
             }
           }
-          return {
-            ok: false,
-            code: 'INVALID_ENTITY',
-            message: `research.json is invalid: ${parsed.issues.join('; ')}`,
-          }
         }
         let root: string
         try {
-          root = deps.fs.processPath(
-            await deps.fs.resolve(current, signal !== undefined ? { signal } : {}),
-          )
+          root = deps.fs.processPath(rootTarget)
         } catch {
           return {
             ok: false,
@@ -121,7 +145,10 @@ export async function locateProject(
             message: 'the research project lies inside an unrelated git repository',
           }
         }
-        return { ok: true, root, manifest: parsed.value }
+        // A malformed current-version marker still anchors the project. Core
+        // reports its diagnostic so reads can guide repair, while mutations
+        // remain blocked. A declared future version fails separately above.
+        return { ok: true, root, manifest: parsed.ok ? parsed.value : undefined }
       }
     }
     const parent = dirname(current)
@@ -140,10 +167,10 @@ export async function canInitProject(
   deps: ProjectLocatorDeps,
   sessionCwd: string | undefined,
   signal?: AbortSignal,
-): Promise<LocateResult | { ok: true; root: string; manifest: undefined }> {
+): Promise<LocateResult> {
   const located = await locateProject(deps, sessionCwd, signal)
   if (located.ok) {
-    return { ok: false, code: 'INVALID_ENTITY', message: `a research project already exists at ${located.root}` }
+    return { ok: false, code: 'INVALID_ENTITY', message: 'a research project already exists in this directory or an ancestor' }
   }
   if (located.code !== 'PROJECT_NOT_INITIALIZED') return located
   if (typeof sessionCwd !== 'string' || sessionCwd.length === 0 || !isAbsolutePath(sessionCwd)) {

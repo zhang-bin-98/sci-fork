@@ -5,7 +5,7 @@ import type { LoadedProject } from './parser.js'
 import { fileVersion, HASH_RE, type HashFn } from './revision.js'
 import {
   ASSERTION_MAX,
-  BODY_MAX,
+  BODY_SCHEMA,
   EDGE_ID_RE,
   ENDPOINT_ID_RE,
   EVIDENCE_ID_RE,
@@ -16,7 +16,9 @@ import {
   NODE_ID_RE,
   RESULT_ID_RE,
   EDGE_FILE_SCHEMA,
+  NON_EMPTY_BODY_SCHEMA,
   NODE_DATA_SCHEMA,
+  OBSERVED_AT_SCHEMA,
   entityFilePath,
   normalizeDoi,
   normalizePmid,
@@ -82,7 +84,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       assertion: z.string().min(1).max(ASSERTION_MAX),
       direction: DIRECTION_SCHEMA,
       limitations: LIMITATIONS_SCHEMA.optional(),
-      body: z.string().max(BODY_MAX).optional(),
+      body: BODY_SCHEMA.optional(),
     })
     .strict(),
   z
@@ -101,7 +103,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       nodeKind: NODE_KIND_SCHEMA,
       confidence: CONFIDENCE_SCHEMA,
       evidenceRefs: z.array(EVIDENCE_REF_COMMAND_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
-      body: z.string().min(1).max(BODY_MAX),
+      body: NON_EMPTY_BODY_SCHEMA,
     })
     .strict(),
   z
@@ -112,7 +114,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       nodeKind: NODE_KIND_SCHEMA.optional(),
       confidence: CONFIDENCE_SCHEMA.optional(),
       evidenceRefs: z.array(EVIDENCE_REF_COMMAND_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
-      body: z.string().min(1).max(BODY_MAX).optional(),
+      body: NON_EMPTY_BODY_SCHEMA.optional(),
     })
     .strict()
     .refine(
@@ -161,8 +163,8 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('create_result'),
       id: z.string().regex(RESULT_ID_RE, 'must be a res_<uuid> id'),
-      observedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD'),
-      body: z.string().min(1).max(BODY_MAX),
+      observedAt: OBSERVED_AT_SCHEMA,
+      body: NON_EMPTY_BODY_SCHEMA,
     })
     .strict(),
   z
@@ -171,8 +173,8 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       id: z.string().regex(RESULT_ID_RE, 'must be a res_<uuid> id'),
       expectedFileVersion: HASH_SCHEMA,
       status: z.enum(['draft', 'validated', 'superseded']).optional(),
-      observedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD').optional(),
-      body: z.string().min(1).max(BODY_MAX).optional(),
+      observedAt: OBSERVED_AT_SCHEMA.optional(),
+      body: NON_EMPTY_BODY_SCHEMA.optional(),
     })
     .strict()
     .refine(
@@ -503,27 +505,32 @@ function planUpdateEdge(project: LoadedProject, command: Extract<ResearchCommand
       ? { evidence_gap: edgeEntity.evidence_gap }
       : {}),
   }
+  const basis = command.basis ?? current.basis
   const shape: EdgeShape = {
     id: current.id,
     from: current.from,
     to: current.to,
     relation: command.relation ?? current.relation,
-    basis: command.basis ?? current.basis,
+    basis,
     ...(command.evidenceRefs !== undefined
       ? { evidence_refs: command.evidenceRefs }
       : current.evidence_refs !== undefined
         ? { evidence_refs: current.evidence_refs }
         : {}),
-    ...(command.provenance !== undefined
-      ? { provenance: command.provenance }
-      : current.provenance !== undefined
-        ? { provenance: current.provenance }
-        : {}),
-    ...(command.evidenceGap !== undefined
-      ? { evidence_gap: command.evidenceGap }
-      : current.evidence_gap !== undefined
-        ? { evidence_gap: current.evidence_gap }
-        : {}),
+    ...(basis === 'ai_inference'
+      ? {
+          ...(command.provenance !== undefined
+            ? { provenance: command.provenance }
+            : current.provenance !== undefined
+              ? { provenance: current.provenance }
+              : {}),
+          ...(command.evidenceGap !== undefined
+            ? { evidence_gap: command.evidenceGap }
+            : current.evidence_gap !== undefined
+              ? { evidence_gap: current.evidence_gap }
+              : {}),
+        }
+      : {}),
   }
   const edge = validateEdgeShape(project, shape, issues)
   if (edge === undefined) return undefined

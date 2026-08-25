@@ -5,6 +5,7 @@ import type { ResearchHostDeps } from '../../src/host/apply-command.js'
 import { FakeFs, FakeStorageDomainPort, FakeToolsPort, scriptedGit } from './fakes.js'
 import { TABLE_FOCUS, TABLE_UNDO, UI_STATE_DOMAIN, uiStateDomainSpec } from '../../src/host/ui-state.js'
 import type { ToolRunContext } from '../../src/host/contracts.js'
+import { projectRevision } from '../../src/core/revision.js'
 
 const sha256 = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex')
 
@@ -13,10 +14,22 @@ const UUID_B = 'bbbbbbbb-2222-4222-8222-222222222222'
 const NODE = `node_${UUID_B}`
 const EV = `ev_${UUID_B}`
 const RES = `res_${UUID_B}`
+const EDGE = `edge_${UUID_B}`
 const OLD_SHA = 'abcdef1234567890abcdef1234567890abcdef12'
 const NEW_SHA = 'fedcba0987654321fedcba0987654321fedcba09'
 
 const MANIFEST = JSON.stringify({ schema_version: 1, project_id: PROJECT_ID, name: 'Tools' })
+
+function revisionOf(entries: ReadonlyMap<string, string>): string {
+  return projectRevision(
+    new Map(
+      [...entries]
+        .filter(([path]) => path.startsWith('/proj/'))
+        .map(([path, content]) => [path.slice('/proj/'.length), content]),
+    ),
+    sha256,
+  )
+}
 
 const NODE_FILE = [
   '---',
@@ -44,7 +57,15 @@ const EV_FILE = [
   'note',
 ].join('\n') + '\n'
 
-function healthyGit() {
+const EDGE_FILE = JSON.stringify({
+  id: EDGE,
+  from: NODE,
+  to: `res_${UUID_B.replaceAll('b', 'c')}`,
+  relation: 'associated_with',
+  basis: 'experiment',
+})
+
+function healthyGit(statusOutput = '') {
   const { port } = scriptedGit((argv, cwd) => {
     const sub = argv[1]
     if (sub === 'symbolic-ref') return { stdout: 'main\n' }
@@ -53,16 +74,16 @@ function healthyGit() {
       return { stdout: `${OLD_SHA}\n` }
     }
     if (sub === 'ls-files') return { stdout: '' }
-    if (sub === 'status') return { stdout: '' }
+    if (sub === 'status') return { stdout: statusOutput }
     return { stdout: '' }
   })
   return { port }
 }
 
-async function host(fs: FakeFs, storage: FakeStorageDomainPort): Promise<ResearchHostDeps> {
+async function host(fs: FakeFs, storage: FakeStorageDomainPort, subprocess = healthyGit().port): Promise<ResearchHostDeps> {
   return {
     fs,
-    subprocess: healthyGit().port,
+    subprocess,
     storage: await storage.open(uiStateDomainSpec()),
     hash: sha256,
   }
@@ -75,11 +96,14 @@ function execFor(cwd = '/proj'): ToolRunContext {
   }
 }
 
-async function registered(entries: Record<string, string> = { '/proj/research.json': MANIFEST }) {
+async function registered(
+  entries: Record<string, string> = { '/proj/research.json': MANIFEST },
+  subprocess = healthyGit().port,
+) {
   const fs = new FakeFs(entries)
   const storage = new FakeStorageDomainPort()
   const tools = new FakeToolsPort()
-  const deps = await host(fs, storage)
+  const deps = await host(fs, storage, subprocess)
   const dispose = registerResearchTools({ ...deps, tools })
   const byName = new Map(tools.definitions.map((definition) => [definition.name, definition]))
   return { fs, storage, tools, dispose, byName, deps }
@@ -95,11 +119,19 @@ describe('registerResearchTools', () => {
     ])
     const read = tools.definitions.find((d) => d.name === 'research_graph_read')!
     expect(read.parameters).toMatchObject({ type: 'object', required: ['operation'] })
+    expect(read.output.schema).toEqual({})
     expect(read.timeoutMs).toBe(15000)
     expect(read.isConcurrencySafe?.({})).toBe(false)
     const apply = tools.definitions.find((d) => d.name === 'research_graph_apply')!
     expect(apply.timeoutMs).toBe(30000)
+    expect(apply.output.schema).toEqual({})
     expect(apply.parameters).toMatchObject({ required: ['command', 'expectedProjectRevision'] })
+    const command = (apply.parameters as { properties: { command: Record<string, unknown> } }).properties.command
+    expect(command).toMatchObject({ type: 'object', oneOf: expect.any(Array) })
+    expect((command.oneOf as Array<{ properties: { kind: { const: string } } }>).map((branch) => branch.properties.kind.const))
+      .toEqual(expect.arrayContaining(['create_node', 'update_edge', 'import_draft_item']))
+    const focus = tools.definitions.find((d) => d.name === 'research_graph_focus')!
+    expect(focus.output.schema).toEqual({})
     dispose()
     expect(tools.disposals).toHaveLength(3)
   })
@@ -141,6 +173,31 @@ describe('research_graph_read', () => {
     expect((value as { diagnosticCount: number }).diagnosticCount).toBeGreaterThan(0)
   })
 
+  it('reports an invalid manifest as a read-only project diagnostic', async () => {
+    const { byName } = await registered({ '/proj/research.json': '{ not json' })
+    const read = byName.get('research_graph_read')!
+    const value = await read.execute({ operation: 'summary' }, execFor())
+
+    expect(value).toMatchObject({
+      ok: true,
+      projectId: undefined,
+      readOnly: true,
+      diagnosticCount: 1,
+    })
+  })
+
+  it('reports Git read-only state when a managed path is dirty', async () => {
+    const dirtyGit = healthyGit(' M research.json\n')
+    const { byName } = await registered({ '/proj/research.json': MANIFEST }, dirtyGit.port)
+    const read = byName.get('research_graph_read')!
+    const value = await read.execute({ operation: 'summary' }, execFor())
+    expect(value).toMatchObject({
+      ok: true,
+      readOnly: true,
+      gitError: { code: 'READ_ONLY_CONFLICT', message: 'managed paths have uncommitted changes' },
+    })
+  })
+
   it('returns entities and neighborhoods', async () => {
     const { byName } = await registered({
       '/proj/research.json': MANIFEST,
@@ -157,6 +214,22 @@ describe('research_graph_read', () => {
     const edges = (neighborhood as { edges: unknown[] }).edges
     expect(edges).toHaveLength(1)
     expect(edges[0]).toMatchObject({ from: EV, to: NODE, source: 'evidence_ref' })
+  })
+
+  it('reads and focuses stored edges', async () => {
+    const { byName, storage } = await registered({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: NODE_FILE,
+      [`/proj/results/${RES}.md`]: `---\nid: ${RES}\nstatus: draft\nobserved_at: 2026-08-24\n---\nresult\n`,
+      [`/proj/edges/${EDGE}.json`]: EDGE_FILE,
+    })
+    const read = byName.get('research_graph_read')!
+    const entity = await read.execute({ operation: 'entity', entityId: EDGE }, execFor())
+    expect(entity).toMatchObject({ ok: true, entity: { type: 'edge', relation: 'associated_with', basis: 'experiment' } })
+    const focus = byName.get('research_graph_focus')!
+    const focused = await focus.execute({ focusEntityId: EDGE, pathIds: [EDGE] }, execFor())
+    expect(focused).toMatchObject({ ok: true, focus: { focusEntityId: EDGE, pathIds: [EDGE] } })
+    expect(storage.tableOf(UI_STATE_DOMAIN, TABLE_FOCUS)!.records.size).toBe(1)
   })
 
   it('finds entities by case-insensitive substring', async () => {
@@ -207,10 +280,7 @@ describe('research_graph_read', () => {
 describe('research_graph_apply', () => {
   it('applies a valid command', async () => {
     const { byName, fs } = await registered()
-    const files = [...fs.entries()].filter(([path]) => path.startsWith('/proj/'))
-    const revision = sha256(
-      files.map(([path, content]) => `${path.slice('/proj/'.length)}\n${sha256(content)}\n`).join(''),
-    )
+    const revision = revisionOf(fs.entries())
     const apply = byName.get('research_graph_apply')!
     const value = await apply.execute({
       command: {
@@ -227,10 +297,7 @@ describe('research_graph_apply', () => {
 
   it('rejects invalid commands and malformed command objects', async () => {
     const { byName, fs } = await registered()
-    const files = [...fs.entries()].filter(([path]) => path.startsWith('/proj/'))
-    const revision = sha256(
-      files.map(([path, content]) => `${path.slice('/proj/'.length)}\n${sha256(content)}\n`).join(''),
-    )
+    const revision = revisionOf(fs.entries())
     const apply = byName.get('research_graph_apply')!
     const invalid = await apply.execute({
       command: { kind: 'create_node', id: NODE, nodeKind: 'finding', confidence: 'low', body: 'x' },
@@ -278,5 +345,21 @@ describe('research_graph_focus', () => {
     expect(value).toMatchObject({ ok: true })
     const unknownPath = await focus.execute({ focusEntityId: NODE, pathIds: ['node_x'] }, execFor())
     expect(unknownPath).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
+  })
+
+  it('rejects malformed focus arrays instead of silently filtering them', async () => {
+    const { byName } = await registered({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: NODE_FILE,
+    })
+    const focus = byName.get('research_graph_focus')!
+    await expect(focus.execute({ focusEntityId: NODE, pathIds: [NODE, 42] }, execFor())).resolves.toMatchObject({
+      ok: false,
+      code: 'INVALID_ENTITY',
+    })
+    await expect(focus.execute({ focusEntityId: 42 }, execFor())).resolves.toMatchObject({
+      ok: false,
+      code: 'INVALID_ENTITY',
+    })
   })
 })

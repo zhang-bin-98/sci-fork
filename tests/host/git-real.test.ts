@@ -92,6 +92,46 @@ function makeRepo(): string {
 }
 
 describe.skipIf(!gitAvailable)('real git integration', () => {
+  it('reports GIT_UNAVAILABLE outside a repository', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'scifork-git-none-'))
+    const result = await gitPreflight(realGitPort(), root)
+    expect(result).toEqual({
+      ok: false,
+      code: 'GIT_UNAVAILABLE',
+      reason: 'the project is not in a git repository',
+    })
+  })
+
+  it('rejects unmerged entries outside managed paths', async () => {
+    const root = makeRepo()
+    const port = realGitPort()
+    writeFileSync(join(root, 'research.json'), '{"schema_version":1,"project_id":"a","name":"x"}\n')
+    await gitCheckpoint(port, root, initCheckpointMessage(), ['research.json'])
+    writeFileSync(join(root, 'other.txt'), 'base\n')
+    git(['add', 'other.txt'], root)
+    git(['commit', '-q', '-m', 'base unrelated file'], root)
+    const originalBranch = git(['branch', '--show-current'], root)
+
+    git(['checkout', '-q', '-b', 'conflicting-change'], root)
+    writeFileSync(join(root, 'other.txt'), 'branch\n')
+    git(['commit', '-q', '-am', 'branch change'], root)
+    git(['checkout', '-q', originalBranch], root)
+    writeFileSync(join(root, 'other.txt'), 'current\n')
+    git(['commit', '-q', '-am', 'current change'], root)
+    try {
+      execFileSync('git', ['merge', 'conflicting-change'], { cwd: root, stdio: 'ignore' })
+    } catch {
+      // The conflict is the state under test.
+    }
+
+    expect(git(['ls-files', '-u'], root)).toContain('other.txt')
+    await expect(gitPreflight(port, root)).resolves.toEqual({
+      ok: false,
+      code: 'GIT_STATE_UNSUPPORTED',
+      reason: 'the repository has unmerged entries',
+    })
+  })
+
   it('checkpoints untracked managed files and leaves unrelated staged files alone', async () => {
     const root = makeRepo()
     const port = realGitPort()

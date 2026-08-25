@@ -15,6 +15,19 @@ describe('fileVersion', () => {
 })
 
 describe('projectRevision', () => {
+  it('hashes each path and file-version record before hashing the project', () => {
+    const files = new Map([
+      ['research.json', '{}'],
+      ['nodes/node_a.md', 'aaa'],
+    ])
+    const records = [...files]
+      .sort(([pathA], [pathB]) => pathA.localeCompare(pathB))
+      .map(([path, content]) => sha256(`${path}\n${sha256(content)}\n`))
+      .join('')
+
+    expect(projectRevision(files, sha256)).toBe(sha256(records))
+  })
+
   it('is stable regardless of map insertion order', () => {
     const filesA = new Map([
       ['nodes/node_a.md', 'aaa'],

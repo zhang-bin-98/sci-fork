@@ -166,8 +166,10 @@ export function isFsStaleError(error: unknown): boolean {
 
 /**
  * dsh-tools/lib/types/index.d.ts + schema.d.ts + json-schema.d.ts —
- * ToolRuntime (`ctx.tools`). parameters is a JSON Schema object (the enforced
- * subset); output.schema may be annotation-only `{type:'json'}`.
+ * ToolRuntime (`ctx.tools`). parameters is a raw JSON Schema object (the
+ * enforced subset); an unconstrained output uses the raw annotation-only
+ * schema `{}`. The author-level `{ type: 'json' }` spelling is compiled by
+ * DSH's typed helper and must not be passed to `register` directly.
  */
 export interface ContentBlock {
   type: 'text'
@@ -175,7 +177,7 @@ export interface ContentBlock {
 }
 
 export interface ToolOutputDefinition {
-  schema: { type: 'json' } | Record<string, unknown>
+  schema: Record<string, unknown>
   render(args: unknown, value: unknown): ContentBlock[]
 }
 

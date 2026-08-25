@@ -309,6 +309,7 @@ describe('result data', () => {
     expect(parseResultData({ ...base, observed_at: '24.08.2026' }).ok).toBe(false)
     expect(parseResultData({ ...base, observed_at: '2026-8-24' }).ok).toBe(false)
     expect(parseResultData({ ...base, extra: 1 }).ok).toBe(false)
+    expect(parseResultData({ ...base, observed_at: '2026-02-31' }).ok).toBe(false)
   })
 })
 

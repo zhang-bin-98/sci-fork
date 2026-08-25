@@ -117,6 +117,21 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
       ? { type: 'result', status: result.status, observedAt: result.observed_at, body: result.body }
       : undefined
   }
+  if (type === 'edge') {
+    const edge = project.edges.get(entityId)
+    return edge !== undefined
+      ? {
+          type: 'edge',
+          from: edge.from,
+          to: edge.to,
+          relation: edge.relation,
+          basis: edge.basis,
+          evidenceRefs: edge.evidence_refs ?? [],
+          ...(edge.basis === 'ai_inference' && edge.provenance !== undefined ? { provenance: edge.provenance } : {}),
+          ...(edge.basis === 'ai_inference' && edge.evidence_gap !== undefined ? { evidenceGap: edge.evidence_gap } : {}),
+        }
+      : undefined
+  }
   return undefined
 }
 
@@ -128,9 +143,12 @@ async function executeRead(
   const info = execInfo(exec)
   const context = await loadProjectState(deps, info.sessionCwd, exec.signal)
   if (!('root' in context)) return errorValue(context)
-  const { project, manifest, branch, head, undo } = context
+  const { project, manifest, branch, head, undo, gitFailure } = context
   const operation = typeof args['operation'] === 'string' ? args['operation'] : ''
-  const readOnly = project.diagnostics.length > 0
+  const readOnly = project.diagnostics.length > 0 || gitFailure !== undefined
+  const gitError = gitFailure === undefined
+    ? {}
+    : { gitError: { code: gitFailure.code, message: gitFailure.reason } }
 
   if (operation === 'summary') {
     return {
@@ -149,6 +167,7 @@ async function executeRead(
       readOnly,
       branch,
       head,
+      ...gitError,
     }
   }
 
@@ -190,11 +209,13 @@ async function executeRead(
       ok: true,
       branch,
       head,
+      readOnly,
       lastCheckpointId: undo?.lastCheckpointId,
       previousCheckpointId: undo?.previousCheckpointId,
       forwardCheckpointId: undo?.forwardCheckpointId,
       backAvailable: undo !== undefined && undo.previousCheckpointId !== undefined && !readOnly,
       forwardAvailable: undo !== undefined && undo.forwardCheckpointId !== undefined && !readOnly,
+      ...gitError,
     }
   }
 
@@ -203,11 +224,127 @@ async function executeRead(
 
 // ---------------------------------------------------- apply
 
+function commandBranch(
+  kind: string,
+  properties: Record<string, unknown>,
+  required: string[],
+): Record<string, unknown> {
+  return {
+    type: 'object',
+    properties: { kind: { const: kind }, ...properties },
+    required: ['kind', ...required],
+    additionalProperties: false,
+  }
+}
+
+const ID = { type: 'string' }
+const VERSION = { type: 'string' }
+const EVIDENCE_REFS = { type: 'array', items: { type: 'object' } }
+const APPLY_COMMAND_SCHEMA = {
+  type: 'object',
+  oneOf: [
+    commandBranch(
+      'create_evidence_assertion',
+      {
+        id: ID,
+        publicationRef: { type: 'object' },
+        locator: { type: 'object' },
+        assertion: { type: 'string' },
+        direction: { type: 'string', enum: ['supports', 'contradicts', 'context'] },
+        limitations: { type: 'array', items: { type: 'string' } },
+        body: { type: 'string' },
+      },
+      ['id', 'locator', 'assertion', 'direction'],
+    ),
+    commandBranch(
+      'review_evidence_assertion',
+      {
+        id: ID,
+        expectedFileVersion: VERSION,
+        reviewStatus: { type: 'string', enum: ['reviewed', 'rejected'] },
+        limitations: { type: 'array', items: { type: 'string' } },
+      },
+      ['id', 'expectedFileVersion', 'reviewStatus'],
+    ),
+    commandBranch(
+      'create_node',
+      {
+        id: ID,
+        nodeKind: { type: 'string', enum: ['finding', 'hypothesis', 'prediction'] },
+        confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
+        evidenceRefs: EVIDENCE_REFS,
+        body: { type: 'string' },
+      },
+      ['id', 'nodeKind', 'confidence', 'body'],
+    ),
+    commandBranch(
+      'update_node',
+      {
+        id: ID,
+        expectedFileVersion: VERSION,
+        nodeKind: { type: 'string', enum: ['finding', 'hypothesis', 'prediction'] },
+        confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
+        evidenceRefs: EVIDENCE_REFS,
+        body: { type: 'string' },
+      },
+      ['id', 'expectedFileVersion'],
+    ),
+    commandBranch(
+      'create_edge',
+      {
+        id: ID,
+        from: ID,
+        to: ID,
+        relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with'] },
+        basis: { type: 'string', enum: ['literature', 'experiment', 'ai_inference'] },
+        evidenceRefs: EVIDENCE_REFS,
+        provenance: { type: 'string' },
+        evidenceGap: { type: 'string' },
+      },
+      ['id', 'from', 'to', 'relation', 'basis'],
+    ),
+    commandBranch(
+      'update_edge',
+      {
+        id: ID,
+        expectedFileVersion: VERSION,
+        relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with'] },
+        basis: { type: 'string', enum: ['literature', 'experiment', 'ai_inference'] },
+        evidenceRefs: EVIDENCE_REFS,
+        provenance: { type: 'string' },
+        evidenceGap: { type: 'string' },
+      },
+      ['id', 'expectedFileVersion'],
+    ),
+    commandBranch(
+      'create_result',
+      { id: ID, observedAt: { type: 'string' }, body: { type: 'string' } },
+      ['id', 'observedAt', 'body'],
+    ),
+    commandBranch(
+      'update_result',
+      {
+        id: ID,
+        expectedFileVersion: VERSION,
+        status: { type: 'string', enum: ['draft', 'validated', 'superseded'] },
+        observedAt: { type: 'string' },
+        body: { type: 'string' },
+      },
+      ['id', 'expectedFileVersion'],
+    ),
+    commandBranch(
+      'import_draft_item',
+      { id: ID, index: { type: 'integer' }, draft: { type: 'object' } },
+      ['id', 'index', 'draft'],
+    ),
+  ],
+}
+
 const APPLY_PARAMETERS = {
   type: 'object',
   properties: {
     command: {
-      type: 'object',
+      ...APPLY_COMMAND_SCHEMA,
       description:
         'One typed single-entity command. kind: create_evidence_assertion | review_evidence_assertion | ' +
         'create_node | update_node | create_edge | update_edge | create_result | update_result | import_draft_item. ' +
@@ -259,7 +396,7 @@ const FOCUS_PARAMETERS = {
   type: 'object',
   properties: {
     focusEntityId: {
-      type: 'string',
+      oneOf: [{ type: 'string' }, { type: 'null' }],
       description: 'entity id to focus; empty string clears the focus',
     },
     pathIds: { type: 'array', items: { type: 'string' }, description: 'ids along the path to the focus (<= 32)' },
@@ -279,14 +416,19 @@ async function executeFocus(
   if (info.sessionId === undefined || manifest?.project_id === undefined) {
     return { ok: false, code: 'SESSION_UNAVAILABLE', message: 'no session or project context', recoverable: false }
   }
-  const focusEntityId = typeof args['focusEntityId'] === 'string' ? args['focusEntityId'] : ''
+  if ('focusEntityId' in args && args['focusEntityId'] !== undefined && args['focusEntityId'] !== null && typeof args['focusEntityId'] !== 'string') {
+    return { ok: false, code: 'INVALID_ENTITY', message: 'focusEntityId must be a string or null', recoverable: true }
+  }
+  if ('pathIds' in args && args['pathIds'] !== undefined && (!Array.isArray(args['pathIds']) || args['pathIds'].some((entry) => typeof entry !== 'string'))) {
+    return { ok: false, code: 'INVALID_ENTITY', message: 'pathIds must be an array of strings', recoverable: true }
+  }
+  const focusEntityId = args['focusEntityId'] === null || args['focusEntityId'] === undefined ? '' : args['focusEntityId'] as string
   if (focusEntityId.length > 0) {
     if (entityPayload(project, focusEntityId) === undefined) {
       return { ok: false, code: 'INVALID_ENTITY', message: `entity ${focusEntityId} does not exist`, recoverable: true, entityId: focusEntityId }
     }
   }
-  const rawPath = Array.isArray(args['pathIds']) ? args['pathIds'] : []
-  const pathIds = rawPath.filter((entry): entry is string => typeof entry === 'string')
+  const pathIds = args['pathIds'] === undefined ? [] : args['pathIds'] as string[]
   for (const pathId of pathIds) {
     if (entityPayload(project, pathId) === undefined) {
       return { ok: false, code: 'INVALID_ENTITY', message: `path entity ${pathId} does not exist`, recoverable: true, entityId: pathId }
@@ -314,7 +456,7 @@ function readTool(deps: ResearchHostDeps): ToolDefinition {
       'Read the SciFork Research Graph for the current session project: summary, focus, entity, neighborhood, ' +
       'find, or checkpoint state. Read-only; never writes files or Git.',
     parameters: READ_PARAMETERS,
-    output: { schema: { type: 'json' }, render: renderJson },
+    output: { schema: {}, render: renderJson },
     execute: (args, exec) => executeRead(deps, (args ?? {}) as Record<string, unknown>, exec),
     timeoutMs: 15000,
     isConcurrencySafe: () => false,
@@ -329,7 +471,7 @@ function applyTool(deps: ResearchHostDeps): ToolDefinition {
       'Requires the current projectRevision. Model-proposed evidence stays candidate; only user-reviewed evidence ' +
       'supports Findings.',
     parameters: APPLY_PARAMETERS,
-    output: { schema: { type: 'json' }, render: renderJson },
+    output: { schema: {}, render: renderJson },
     execute: (args, exec) => executeApply(deps, (args ?? {}) as Record<string, unknown>, exec),
     timeoutMs: 30000,
     isConcurrencySafe: () => false,
@@ -343,7 +485,7 @@ function focusTool(deps: ResearchHostDeps): ToolDefinition {
       'Set or clear the Focus sidecar for the current session and project. Affects only UI/chat context; never ' +
       'writes research files or Git.',
     parameters: FOCUS_PARAMETERS,
-    output: { schema: { type: 'json' }, render: renderJson },
+    output: { schema: {}, render: renderJson },
     execute: (args, exec) => executeFocus(deps, (args ?? {}) as Record<string, unknown>, exec),
     timeoutMs: 15000,
     isConcurrencySafe: () => false,

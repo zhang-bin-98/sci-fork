@@ -43,6 +43,18 @@ export function parseRevParseToplevel(output: string): string | undefined {
   return trimmed
 }
 
+function comparablePath(path: string): string {
+  const slashPath = path.replaceAll('\\', '/')
+  const trimmed = slashPath.length > 1 ? slashPath.replace(/\/+$/, '') : slashPath
+  return win32.isAbsolute(path) || /^[A-Za-z]:\//.test(trimmed)
+    ? trimmed.toLowerCase()
+    : trimmed
+}
+
+function sameRepositoryRoot(actual: string, cwd: string): boolean {
+  return comparablePath(actual) === comparablePath(cwd)
+}
+
 /** One settled Git invocation. */
 export interface GitRunResult {
   exitCode: number
@@ -74,10 +86,15 @@ export async function runGit(
   }
   const handle = subprocess.spawn(spec)
   const outcome = await handle.done
+  const stdout = handle.collected.stdout?.readFrom(0)
+  const stderr = handle.collected.stderr?.readFrom(0)
+  if (stdout?.lossy === true || stderr?.lossy === true) {
+    throw new Error('scifork: git output was truncated')
+  }
   return {
     exitCode: outcome.exitCode ?? 128,
-    stdout: handle.collected.stdout?.readFrom(0).text ?? '',
-    stderr: handle.collected.stderr?.readFrom(0).text ?? '',
+    stdout: stdout?.text ?? '',
+    stderr: stderr?.text ?? '',
   }
 }
 
@@ -118,19 +135,24 @@ export function parsePorcelainStatus(output: string): { code: string; path: stri
   return entries
 }
 
+export type GitPreflightResult =
+  | { ok: true; branch: string; head: string }
+  | { ok: false; code: 'PROJECT_REPOSITORY_MISMATCH' | 'GIT_UNAVAILABLE' | 'GIT_STATE_UNSUPPORTED' | 'READ_ONLY_CONFLICT'; reason: string }
+
+export type GitInitPreflightResult =
+  | { ok: true; branch: string; head: string | undefined }
+  | { ok: false; code: 'PROJECT_REPOSITORY_MISMATCH' | 'GIT_UNAVAILABLE' | 'GIT_STATE_UNSUPPORTED' | 'READ_ONLY_CONFLICT'; reason: string }
+
 /**
- * Mutation preflight (architecture §11): an attached, resolvable HEAD on a
- * real branch, no unmerged entries, and a clean managed tree. The returned
- * branch and HEAD seed undo-state recording.
+ * Initialization preflight (architecture §11.1): require an attached branch,
+ * allow an unborn HEAD for a freshly initialized repository, and reject any
+ * unmerged entry or dirty managed path before init writes anything.
  */
-export async function gitPreflight(
+export async function gitInitPreflight(
   subprocess: SubprocessPort,
   cwd: string,
   signal?: AbortSignal,
-): Promise<
-  | { ok: true; branch: string; head: string }
-  | { ok: false; code: 'GIT_UNAVAILABLE' | 'GIT_STATE_UNSUPPORTED' | 'READ_ONLY_CONFLICT'; reason: string }
-> {
+): Promise<GitInitPreflightResult> {
   let symbolic: GitRunResult
   try {
     symbolic = await runGit(subprocess, ['symbolic-ref', '--quiet', '--short', 'HEAD'], cwd, signal)
@@ -146,20 +168,16 @@ export async function gitPreflight(
   let status: GitRunResult
   try {
     head = await runGit(subprocess, ['rev-parse', '--verify', 'HEAD'], cwd, signal)
-    unmerged = await runGit(subprocess, ['ls-files', '-u', '--', ...MANAGED_PATHS], cwd, signal)
+    unmerged = await runGit(subprocess, ['ls-files', '-u'], cwd, signal)
     status = await runGit(subprocess, ['status', '--porcelain', '--', ...MANAGED_PATHS], cwd, signal)
   } catch {
     return { ok: false, code: 'GIT_UNAVAILABLE', reason: 'git is not available' }
-  }
-  const headSha = head.stdout.trim()
-  if (head.exitCode !== 0 || headSha.length === 0) {
-    return { ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'HEAD cannot be resolved' }
   }
   if (unmerged.exitCode !== 0) {
     return { ok: false, code: 'GIT_UNAVAILABLE', reason: 'unmerged-entry check failed' }
   }
   if (unmerged.stdout.trim().length > 0) {
-    return { ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'managed paths have unmerged entries' }
+    return { ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'the repository has unmerged entries' }
   }
   if (status.exitCode !== 0) {
     return { ok: false, code: 'GIT_UNAVAILABLE', reason: 'managed-path status check failed' }
@@ -167,7 +185,44 @@ export async function gitPreflight(
   if (parsePorcelainStatus(status.stdout).length > 0) {
     return { ok: false, code: 'READ_ONLY_CONFLICT', reason: 'managed paths have uncommitted changes' }
   }
-  return { ok: true, branch, head: headSha }
+  const headSha = head.stdout.trim()
+  // A symbolic branch with no resolvable HEAD is the normal unborn state
+  // immediately after `git init`; it is the only no-commit state init accepts.
+  return { ok: true, branch, head: head.exitCode === 0 && headSha.length > 0 ? headSha : undefined }
+}
+
+/**
+ * Mutation preflight (architecture §11): an attached, resolvable HEAD on a
+ * real branch, no unmerged entries, and a clean managed tree. The returned
+ * branch and HEAD seed undo-state recording.
+ */
+export async function gitPreflight(
+  subprocess: SubprocessPort,
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<GitPreflightResult> {
+  try {
+    const repository = await runGit(subprocess, ['rev-parse', '--show-toplevel'], cwd, signal)
+    if (repository.exitCode !== 0) {
+      return { ok: false, code: 'GIT_UNAVAILABLE', reason: 'the project is not in a git repository' }
+    }
+    const repositoryRoot = parseRevParseToplevel(repository.stdout)
+    if (repositoryRoot === undefined) {
+      return { ok: false, code: 'GIT_UNAVAILABLE', reason: 'the project repository root could not be determined' }
+    }
+    if (!sameRepositoryRoot(repositoryRoot, cwd)) {
+      return { ok: false, code: 'PROJECT_REPOSITORY_MISMATCH', reason: 'the research project lies inside an unrelated git repository' }
+    }
+  } catch {
+    return { ok: false, code: 'GIT_UNAVAILABLE', reason: 'git is not available' }
+  }
+  const result = await gitInitPreflight(subprocess, cwd, signal)
+  if (!result.ok) return result
+  const head = result.head
+  if (head === undefined) {
+    return { ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'HEAD cannot be resolved' }
+  }
+  return { ok: true, branch: result.branch, head }
 }
 
 /**
@@ -196,7 +251,8 @@ export async function gitCheckpoint(
   message: string,
   paths: readonly string[],
   signal?: AbortSignal,
-): Promise<{ ok: true; head: string } | { ok: false; code: 'CHECKPOINT_FAILED' }> {
+): Promise<{ ok: true; head: string } | { ok: false; code: 'CHECKPOINT_FAILED'; committed?: boolean }> {
+  let committed = false
   try {
     const add = await runGit(subprocess, ['add', '--', ...paths], cwd, signal)
     if (add.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
@@ -207,12 +263,13 @@ export async function gitCheckpoint(
       signal,
     )
     if (commit.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
+    committed = true
     const head = await runGit(subprocess, ['rev-parse', 'HEAD'], cwd, signal)
     const headSha = head.stdout.trim()
-    if (head.exitCode !== 0 || headSha.length === 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
+    if (head.exitCode !== 0 || headSha.length === 0) return { ok: false, code: 'CHECKPOINT_FAILED', committed: true }
     return { ok: true, head: headSha }
   } catch {
-    return { ok: false, code: 'CHECKPOINT_FAILED' }
+    return committed ? { ok: false, code: 'CHECKPOINT_FAILED', committed: true } : { ok: false, code: 'CHECKPOINT_FAILED' }
   }
 }
 
@@ -249,8 +306,10 @@ export async function gitListManagedFiles(
  * Restore the managed tree to a checkpoint's state (architecture §11.3):
  * `git checkout <source> -- <source paths>` resurrects and reverts the paths
  * recorded in the source, and `git rm -f` removes managed files that exist
- * now but not in the source. The caller commits the restored state as a new
- * restore commit; history is never rewritten.
+ * now but not in the source. Those deletions are immediately unstaged so the
+ * caller's scoped checkpoint can stage them together with restored files. The
+ * caller commits the restored state as a new restore commit; history is never
+ * rewritten.
  */
 export async function gitRestoreManagedFrom(
   subprocess: SubprocessPort,
@@ -268,6 +327,10 @@ export async function gitRestoreManagedFrom(
     for (const path of removePaths) {
       const removed = await runGit(subprocess, ['rm', '-f', '-q', '--', path], cwd, signal)
       if (removed.exitCode !== 0) return false
+      // Keep the worktree deletion but leave staging to gitCheckpoint, whose
+      // explicit path list also preserves unrelated staged files.
+      const unstaged = await runGit(subprocess, ['restore', '--staged', '--', path], cwd, signal)
+      if (unstaged.exitCode !== 0) return false
     }
     return true
   } catch {
@@ -327,6 +390,21 @@ export async function gitCleanPath(
   }
 }
 
+/** Verify that one compensation target is absent from both index and worktree status. */
+export async function gitPathIsClean(
+  subprocess: SubprocessPort,
+  cwd: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  try {
+    const result = await runGit(subprocess, ['status', '--porcelain', '--', path], cwd, signal)
+    return result.exitCode === 0 && parsePorcelainStatus(result.stdout).length === 0
+  } catch {
+    return false
+  }
+}
+
 /** Plain `git init` in the project directory; never touches global config. */
 export async function gitInit(
   subprocess: SubprocessPort,
@@ -367,7 +445,7 @@ export function checkpointMessage(kind: string, entityId: string): string {
 }
 
 export function initCheckpointMessage(): string {
-  return 'scifork: init research project'
+  return 'scifork: init'
 }
 
 export function backMessage(checkpointId: string): string {

@@ -104,6 +104,40 @@ describe('undo records', () => {
     expect(table?.records.size).toBe(0)
   })
 
+  it('clears the prior branch record when loading another branch', async () => {
+    const storage = new FakeStorageDomainPort()
+    const domain = await storage.open(uiStateDomainSpec())
+    await writeUndo(domain, PROJECT, 'main', {
+      branch: 'main',
+      recordedHead: SHA,
+      lastCheckpointId: SHA,
+      previousCheckpointId: SHA_B,
+    })
+    expect(await loadUndoRecord(domain, PROJECT, 'feature', SHA_B)).toBeUndefined()
+    const table = storage.tableOf(UI_STATE_DOMAIN, 'undo')
+    expect(table?.records.size).toBe(0)
+  })
+
+  it('clears the prior branch record when writing on another branch', async () => {
+    const storage = new FakeStorageDomainPort()
+    const domain = await storage.open(uiStateDomainSpec())
+    await writeUndo(domain, PROJECT, 'main', {
+      branch: 'main',
+      recordedHead: SHA,
+      lastCheckpointId: SHA,
+      previousCheckpointId: SHA_B,
+    })
+    await writeUndo(domain, PROJECT, 'feature', {
+      branch: 'feature',
+      recordedHead: SHA_B,
+      lastCheckpointId: SHA_B,
+    })
+    const table = storage.tableOf(UI_STATE_DOMAIN, 'undo')
+    expect(table?.records.size).toBe(1)
+    expect(table?.records.has(`${PROJECT}:main`)).toBe(false)
+    expect(table?.records.has(`${PROJECT}:feature`)).toBe(true)
+  })
+
   it('returns undefined for unknown records without touching storage', async () => {
     const storage = new FakeStorageDomainPort()
     const domain = await storage.open(uiStateDomainSpec())

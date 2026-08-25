@@ -421,6 +421,38 @@ describe('planCommand: edges', () => {
     expect(updated.content).toContain('"relation": "associated_with"')
     expect(updated.content).toContain(`"from": "${NODE}"`)
   })
+
+  it('drops ai-inference-only fields when changing basis', () => {
+    const project = projectWithEndpoints()
+    const created = planCommand(project, {
+      kind: 'create_edge',
+      id: EDGE,
+      from: NODE,
+      to: NODE_B,
+      relation: 'causes',
+      basis: 'ai_inference',
+      provenance: 'model simulation',
+      evidenceGap: 'no direct measurement',
+    }, sha256)
+    if (!created.ok) throw new Error('create failed')
+    const withEdge = build([
+      nodeFile(NODE, 'hypothesis'),
+      nodeFile(NODE_B, 'prediction'),
+      resultFile(RES, 'validated'),
+      [`edges/${EDGE}.json`, created.content],
+    ])
+    const version = versionOf(withEdge.files, EDGE, 'edge')
+    const updated = planCommand(withEdge, {
+      kind: 'update_edge',
+      id: EDGE,
+      expectedFileVersion: version,
+      basis: 'experiment',
+    }, sha256)
+    expect(updated.ok).toBe(true)
+    if (!updated.ok) return
+    expect(updated.content).not.toContain('provenance')
+    expect(updated.content).not.toContain('evidence_gap')
+  })
 })
 
 describe('planCommand: results', () => {

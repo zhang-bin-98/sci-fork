@@ -21,13 +21,13 @@ export function fileVersion(content: string, hash: HashFn): string {
 }
 
 /**
- * Project revision: SHA-256 over all managed files sorted by relative path,
- * each line carrying `path` and that file's own SHA-256, so the revision
- * covers both content and membership without storing the graph on disk.
+ * Project revision: SHA-256 over per-file record hashes sorted by relative
+ * path. Each record carries `path` and that file's own SHA-256, so the
+ * revision covers both content and membership without storing the graph.
  */
 export function projectRevision(files: ReadonlyMap<string, string>, hash: HashFn): string {
-  const lines = [...files.entries()]
+  const records = [...files.entries()]
     .sort(([pathA], [pathB]) => (pathA < pathB ? -1 : pathA > pathB ? 1 : 0))
-    .map(([path, content]) => `${path}\n${hashOf(content, hash)}\n`)
-  return hashOf(lines.join(''), hash)
+    .map(([path, content]) => hashOf(`${path}\n${hashOf(content, hash)}\n`, hash))
+  return hashOf(records.join(''), hash)
 }

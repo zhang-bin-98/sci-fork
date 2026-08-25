@@ -46,11 +46,24 @@ describe('locateProject', () => {
     }
   })
 
-  it('rejects an invalid manifest', async () => {
+  it('anchors an invalid manifest for read-only diagnostics', async () => {
     const fs = new FakeFs({ '/proj/research.json': '{ not json' })
     const result = await locateProject(deps(fs), '/proj')
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.code).toBe('INVALID_ENTITY')
+    expect(result).toEqual({ ok: true, root: '/proj', manifest: undefined })
+  })
+
+  it('does not skip a non-file marker and bind to an ancestor project', async () => {
+    const fs = new FakeFs({ '/research.json': MANIFEST })
+    fs.addSpecial('/proj/research.json', 'directory')
+    const result = await locateProject(deps(fs), '/proj/deep')
+    expect(result).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
+  })
+
+  it('rejects a manifest target outside the session root', async () => {
+    const fs = new FakeFs({ '/outside/research.json': MANIFEST })
+    fs.addSpecial('/proj/research.json', 'file', '/outside/research.json')
+    const result = await locateProject(deps(fs), '/proj')
+    expect(result).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
   })
 
   it('distinguishes an unsupported schema version', async () => {
@@ -78,6 +91,28 @@ describe('locateProject', () => {
   it('treats a project inside its own repository top level as valid', async () => {
     const fs = new FakeFs({ '/proj/research.json': MANIFEST })
     const result = await locateProject(deps(fs, '/proj'), '/proj/nested')
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts equivalent Windows and Git path separators', async () => {
+    if (process.platform !== 'win32') return
+    const root = 'C:\\proj'
+    const manifestTarget = `${root}\\research.json`
+    const fs = {
+      resolve: async (path: string) => ({
+        targetKey: path === 'research.json' ? manifestTarget : root,
+        displayPath: path === 'research.json' ? manifestTarget : root,
+      }),
+      processPath: (target: { displayPath: string }) => target.displayPath,
+      stat: async (target: { displayPath: string }) =>
+        target.displayPath === manifestTarget ? { version: 1, type: 'file' as const } : { version: 0, type: 'directory' as const },
+      readText: async () => MANIFEST,
+      contains: () => true,
+    } as unknown as import('../../src/host/contracts.js').FsPort
+    const result = await locateProject(
+      { fs, gitToplevel: async () => 'C:/proj' },
+      root,
+    )
     expect(result.ok).toBe(true)
   })
 })

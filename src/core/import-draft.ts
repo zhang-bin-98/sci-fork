@@ -6,6 +6,7 @@ import {
   LOCATOR_SCHEMA,
   normalizeDoi,
   normalizePmid,
+  utf8ByteLength,
   type PublicationReference,
 } from './schema.js'
 
@@ -20,7 +21,7 @@ import {
 export const MAX_IMPORT_DRAFT_BYTES = 256 * 1024
 export const MAX_IMPORT_CANDIDATES = 50
 
-const isIsoTimestamp = (value: string): boolean => !Number.isNaN(Date.parse(value))
+const ISO_TIMESTAMP_SCHEMA = z.string().datetime({ offset: true })
 
 export const EVIDENCE_CANDIDATE_SCHEMA = z
   .object({
@@ -49,7 +50,7 @@ export const RESEARCH_IMPORT_DRAFT_SCHEMA = z
       .object({
         retrievalSkill: z.string().min(1).max(100),
         formatterSkill: z.literal('scifork-research'),
-        generatedAt: z.string().refine(isIsoTimestamp, 'generatedAt must be an ISO-8601 timestamp'),
+        generatedAt: ISO_TIMESTAMP_SCHEMA,
       })
       .strict(),
     evidenceCandidates: z.array(EVIDENCE_CANDIDATE_SCHEMA).max(MAX_IMPORT_CANDIDATES),
@@ -116,8 +117,6 @@ export type ImportDraftResult =
   | { ok: true; value: ValidatedImportDraft }
   | { ok: false; issues: ImportDraftIssue[] }
 
-const encoder = new TextEncoder()
-
 /**
  * Validate an untrusted draft end to end: schema, size cap, and per-candidate
  * admission. Total: never throws; invalid drafts report issues instead.
@@ -135,7 +134,7 @@ export function validateImportDraft(raw: unknown): ImportDraftResult {
     }
   }
   const draft = parsed.data
-  const serializedBytes = encoder.encode(JSON.stringify(draft)).length
+  const serializedBytes = utf8ByteLength(JSON.stringify(draft))
   if (serializedBytes > MAX_IMPORT_DRAFT_BYTES) {
     return {
       ok: false,

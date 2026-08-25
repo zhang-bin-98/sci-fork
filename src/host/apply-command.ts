@@ -6,7 +6,7 @@ import type { LoadedProject } from '../core/parser.js'
 import { planCommand, type ResearchCommand } from '../core/commands.js'
 import type { HashFn } from '../core/revision.js'
 import { MANIFEST_FILE, MANAGED_PATHS, type ResearchManifest } from '../core/schema.js'
-import type { FsPort, StorageDomain, SubprocessPort } from './contracts.js'
+import type { FsPort, FsTarget, StorageDomain, SubprocessPort } from './contracts.js'
 import {
   backMessage,
   checkpointMessage,
@@ -16,16 +16,19 @@ import {
   gitCleanPath,
   gitIdentityConfigured,
   gitInit,
+  gitInitPreflight,
   gitListManagedFiles,
+  gitPathIsClean,
   gitPreflight,
   gitRemovePath,
   gitRestoreManagedFrom,
   gitShowToplevel,
   initCheckpointMessage,
   managedCheckpointPaths,
+  type GitPreflightResult,
 } from './git-checkpoints.js'
 import { canInitProject, locateProject } from './project-locator.js'
-import { readManagedFiles, writeManagedFile } from './research-store.js'
+import { readManagedFileSnapshot, readManagedFiles, writeManagedFile } from './research-store.js'
 import {
   loadUndoRecord,
   MutationQueue,
@@ -76,6 +79,7 @@ interface ProjectContext {
   branch: string | undefined
   head: string | undefined
   undo: UndoRecord | undefined
+  gitFailure?: Extract<GitPreflightResult, { ok: false }>
 }
 
 const queue = new MutationQueue()
@@ -87,6 +91,17 @@ function fail(
   entityId?: string,
 ): SciForkFailure {
   return entityId !== undefined ? { ok: false, code, message, recoverable, entityId } : { ok: false, code, message, recoverable }
+}
+
+function sameManagedFiles(
+  actual: ReadonlyMap<string, string>,
+  expected: ReadonlyMap<string, string>,
+): boolean {
+  if (actual.size !== expected.size) return false
+  for (const [path, content] of expected) {
+    if (actual.get(path) !== content) return false
+  }
+  return true
 }
 
 /**
@@ -104,11 +119,24 @@ export async function loadProjectState(
     signal,
   )
   if (!located.ok) return fail(located.code, located.message, false)
-  const files = await readManagedFiles(deps.fs, located.root, signal)
+  let files: ReadonlyMap<string, string>
+  try {
+    files = await readManagedFiles(deps.fs, located.root, signal)
+  } catch {
+    return fail('INVALID_ENTITY', 'managed project files could not be read safely', false)
+  }
   const project = parseAndValidateProject(files, deps.hash)
   const preflight = await gitPreflight(deps.subprocess, located.root, signal)
   if (!preflight.ok) {
-    return { root: located.root, manifest: project.manifest, project, branch: undefined, head: undefined, undo: undefined }
+    return {
+      root: located.root,
+      manifest: project.manifest,
+      project,
+      branch: undefined,
+      head: undefined,
+      undo: undefined,
+      gitFailure: preflight,
+    }
   }
   const projectId = project.manifest?.project_id
   const undo = projectId !== undefined
@@ -124,25 +152,51 @@ export async function loadProjectState(
   }
 }
 
-function requireProjectId(context: ProjectContext, issues: SciForkFailure[]): string | undefined {
-  const projectId = context.manifest?.project_id
-  if (projectId === undefined) {
-    issues.push(fail('INVALID_ENTITY', 'the project manifest is missing or invalid', false))
-  }
-  return projectId
-}
-
 async function compensate(
+  fs: FsPort,
   subprocess: SubprocessPort,
   root: string,
-  plan: { path: string; writeKind: 'create' | 'update' },
+  plan: { path: string; writeKind: 'create' | 'update'; content: string },
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
+  // Never undo a write after another actor has changed its result.  Git
+  // checkout/rm are destructive, so an ownership check immediately before
+  // compensation is the last safe point available to this adapter.
+  let rootTarget: FsTarget
+  let target: FsTarget
+  try {
+    rootTarget = await fs.resolve(root, signal !== undefined ? { signal } : {})
+    target = await fs.resolve(plan.path, { cwd: root, ...(signal !== undefined ? { signal } : {}) })
+    if (!fs.contains(rootTarget, target)) return false
+    const info = await fs.stat(target, signal)
+    if (info === undefined) {
+      // A create that has already disappeared needs no destructive cleanup;
+      // only claim success when Git also sees the path as clean.
+      return plan.writeKind === 'create' && await gitPathIsClean(subprocess, root, plan.path, signal)
+    }
+    if (info.type !== 'file' || await fs.readText(target, signal) !== plan.content) return false
+  } catch {
+    return false
+  }
   if (plan.writeKind === 'create') {
-    await gitRemovePath(subprocess, root, plan.path, signal)
-    await gitCleanPath(subprocess, root, plan.path, signal)
+    const removed = await gitRemovePath(subprocess, root, plan.path, signal)
+    const cleaned = await gitCleanPath(subprocess, root, plan.path, signal)
+    if (!removed && !cleaned) return false
+    try {
+      if (!fs.contains(rootTarget, target) || await fs.stat(target, signal) !== undefined) return false
+    } catch {
+      return false
+    }
+    return gitPathIsClean(subprocess, root, plan.path, signal)
   } else {
-    await gitCheckoutPath(subprocess, root, plan.path, signal)
+    if (!await gitCheckoutPath(subprocess, root, plan.path, signal)) return false
+    try {
+      const restored = await fs.resolve(plan.path, { cwd: root, ...(signal !== undefined ? { signal } : {}) })
+      if (!fs.contains(rootTarget, restored) || await fs.stat(restored, signal) === undefined) return false
+    } catch {
+      return false
+    }
+    return gitPathIsClean(subprocess, root, plan.path, signal)
   }
 }
 
@@ -169,8 +223,13 @@ export async function applyCommand(deps: ResearchHostDeps, input: ApplyCommandIn
   )
   if (!located.ok) return fail(located.code, located.message, false)
   return queue.run(located.root, async (): Promise<ApplyOutcome> => {
-    const files = await readManagedFiles(deps.fs, located.root, input.signal)
-    const project = parseAndValidateProject(files, deps.hash)
+    let snapshot
+    try {
+      snapshot = await readManagedFileSnapshot(deps.fs, located.root, input.signal)
+    } catch {
+      return fail('INVALID_ENTITY', 'managed project files could not be read safely', false)
+    }
+    const project = parseAndValidateProject(snapshot.files, deps.hash)
     if (project.diagnostics.length > 0) {
       const first = project.diagnostics[0]!
       return fail('INVALID_ENTITY', `project is invalid: ${first.code} at ${first.path || 'project'}`, false)
@@ -195,35 +254,63 @@ export async function applyCommand(deps: ResearchHostDeps, input: ApplyCommandIn
       plan.content,
       plan.writeKind,
       input.signal,
+      snapshot.versions.get(plan.path),
     )
     if (!written.ok) {
       return fail(written.code, 'the target file changed; re-read the graph before applying')
     }
-    const afterFiles = await readManagedFiles(deps.fs, located.root, input.signal)
+    let afterFiles: ReadonlyMap<string, string>
+    try {
+      afterFiles = await readManagedFiles(deps.fs, located.root, input.signal)
+    } catch {
+      const rolledBack = await compensate(deps.fs, deps.subprocess, located.root, plan, input.signal)
+      return rolledBack
+        ? fail('INVALID_ENTITY', 'the written entity could not be re-read; the write was rolled back', false)
+        : fail('CHECKPOINT_FAILED', 'the written entity could not be re-read and rollback failed; manual recovery is required', false)
+    }
+    const expectedFiles = new Map(snapshot.files)
+    expectedFiles.set(plan.path, plan.content)
+    if (!sameManagedFiles(afterFiles, expectedFiles)) {
+      const rolledBack = await compensate(deps.fs, deps.subprocess, located.root, plan, input.signal)
+      return rolledBack
+        ? fail('STALE_REVISION', 'the project changed while the command was being applied; the target write was rolled back')
+        : fail('CHECKPOINT_FAILED', 'the project changed while the command was being applied and rollback failed; manual recovery is required', false)
+    }
     const after = parseAndValidateProject(afterFiles, deps.hash)
     if (after.diagnostics.length > 0) {
-      await compensate(deps.subprocess, located.root, plan, input.signal)
+      const rolledBack = await compensate(deps.fs, deps.subprocess, located.root, plan, input.signal)
       const first = after.diagnostics[0]!
-      return fail('INVALID_ENTITY', `the written entity left the project invalid (${first.code}); the write was rolled back`, false)
+      return rolledBack
+        ? fail('INVALID_ENTITY', `the written entity left the project invalid (${first.code}); the write was rolled back`, false)
+        : fail('CHECKPOINT_FAILED', `the written entity left the project invalid (${first.code}); rollback failed and manual recovery is required`, false)
     }
     const checkpoint = await gitCheckpoint(
       deps.subprocess,
       located.root,
       checkpointMessage(plan.kind, plan.entityId),
-      managedCheckpointPaths(after.files),
+      [plan.path],
       input.signal,
     )
     if (!checkpoint.ok) {
-      await compensate(deps.subprocess, located.root, plan, input.signal)
-      return fail('CHECKPOINT_FAILED', 'the git checkpoint failed and the file write was rolled back')
+      if (checkpoint.committed) {
+        return fail('CHECKPOINT_FAILED', 'the checkpoint commit completed but its new HEAD could not be confirmed; manual recovery is required', false)
+      }
+      const rolledBack = await compensate(deps.fs, deps.subprocess, located.root, plan, input.signal)
+      return rolledBack
+        ? fail('CHECKPOINT_FAILED', 'the git checkpoint failed and the file write was rolled back')
+        : fail('CHECKPOINT_FAILED', 'the git checkpoint failed and rollback failed; manual recovery is required', false)
     }
     const projectId = project.manifest!.project_id
-    await writeUndo(deps.storage, projectId, preflight.branch, {
-      branch: preflight.branch,
-      recordedHead: checkpoint.head,
-      lastCheckpointId: checkpoint.head,
-      previousCheckpointId: preflight.head,
-    })
+    try {
+      await writeUndo(deps.storage, projectId, preflight.branch, {
+        branch: preflight.branch,
+        recordedHead: checkpoint.head,
+        lastCheckpointId: checkpoint.head,
+        previousCheckpointId: preflight.head,
+      })
+    } catch {
+      return fail('CHECKPOINT_FAILED', 'the checkpoint was committed but undo state could not be recorded', false)
+    }
     return {
       ok: true,
       kind: plan.kind,
@@ -244,7 +331,7 @@ export type NavigationOutcome =
   | { ok: true; revision: string; checkpointId: string }
   | SciForkFailure
 
-async function navigate(
+async function navigateLocked(
   deps: ResearchHostDeps,
   input: NavigationInput,
   direction: 'back' | 'forward',
@@ -258,6 +345,8 @@ async function navigate(
     return fail('STALE_REVISION', 'the project changed; re-read the graph before navigating')
   }
   if (context.branch === undefined || context.head === undefined || context.manifest === undefined) {
+    const preflight = await gitPreflight(deps.subprocess, context.root, input.signal)
+    if (!preflight.ok) return fail(preflight.code, preflight.reason, preflight.code !== 'READ_ONLY_CONFLICT')
     return fail('GIT_STATE_UNSUPPORTED', 'the repository state cannot be resolved', false)
   }
   const record = context.undo
@@ -282,15 +371,77 @@ async function navigate(
     removePaths,
     input.signal,
   )
-  if (!restored) return fail('CHECKPOINT_FAILED', 'the checkpoint restore failed', false)
+  if (!restored) {
+    const restoredOriginal = await gitRestoreManagedFrom(
+      deps.subprocess,
+      context.root,
+      context.head,
+      [...context.project.files.keys()],
+      sourcePaths.filter((path) => !context.project.files.has(path)),
+      input.signal,
+    )
+    return restoredOriginal
+      ? fail('CHECKPOINT_FAILED', 'the checkpoint restore failed; the working tree was restored', false)
+      : fail('CHECKPOINT_FAILED', 'the checkpoint restore failed and the working tree could not be restored', false)
+  }
+
+  // Validate the restored working tree before creating a restore checkpoint.
+  // If parsing fails, put the previous managed state back and leave history
+  // untouched so the caller can retry after repairing the source checkpoint.
+  let restoredFiles: ReadonlyMap<string, string>
+  try {
+    restoredFiles = await readManagedFiles(deps.fs, context.root, input.signal)
+  } catch {
+    const restoredOriginal = await gitRestoreManagedFrom(
+      deps.subprocess,
+      context.root,
+      context.head,
+      [...context.project.files.keys()],
+      sourcePaths.filter((path) => !context.project.files.has(path)),
+      input.signal,
+    )
+    return restoredOriginal
+      ? fail('INVALID_ENTITY', 'the restored state could not be read safely', false)
+      : fail('CHECKPOINT_FAILED', 'the restored state could not be read safely and the original state could not be restored', false)
+  }
+  const restoredProject = parseAndValidateProject(restoredFiles, deps.hash)
+  if (restoredProject.diagnostics.length > 0) {
+    const restoredOriginal = await gitRestoreManagedFrom(
+      deps.subprocess,
+      context.root,
+      context.head,
+      [...context.project.files.keys()],
+      sourcePaths.filter((path) => !context.project.files.has(path)),
+      input.signal,
+    )
+    return restoredOriginal
+      ? fail('INVALID_ENTITY', 'the restored state is invalid; no restore checkpoint was created', false)
+      : fail('CHECKPOINT_FAILED', 'the restored state is invalid and the original state could not be restored', false)
+  }
+  const checkpointPaths = [...new Set([...sourcePaths, ...removePaths])]
   const checkpoint = await gitCheckpoint(
     deps.subprocess,
     context.root,
-    direction === 'back' ? backMessage(record.lastCheckpointId) : forwardMessage(source),
-    sourcePaths,
+    direction === 'back' ? backMessage(source) : forwardMessage(source),
+    checkpointPaths,
     input.signal,
   )
-  if (!checkpoint.ok) return fail('CHECKPOINT_FAILED', 'the restore checkpoint failed', false)
+  if (!checkpoint.ok) {
+    if (checkpoint.committed) {
+      return fail('CHECKPOINT_FAILED', 'the restore commit completed but its new HEAD could not be confirmed; manual recovery is required', false)
+    }
+    const restoredOriginal = await gitRestoreManagedFrom(
+      deps.subprocess,
+      context.root,
+      context.head,
+      [...context.project.files.keys()],
+      sourcePaths.filter((path) => !context.project.files.has(path)),
+      input.signal,
+    )
+    return restoredOriginal
+      ? fail('CHECKPOINT_FAILED', 'the restore checkpoint failed and the working tree was restored', false)
+      : fail('CHECKPOINT_FAILED', 'the restore checkpoint failed and the working tree could not be restored', false)
+  }
   const nextRecord: UndoRecord =
     direction === 'back'
       ? {
@@ -305,13 +456,26 @@ async function navigate(
           lastCheckpointId: checkpoint.head,
           previousCheckpointId: record.recordedHead,
         }
-  await writeUndo(deps.storage, context.manifest.project_id, record.branch, nextRecord)
-  const afterFiles = await readManagedFiles(deps.fs, context.root, input.signal)
-  const after = parseAndValidateProject(afterFiles, deps.hash)
-  if (after.diagnostics.length > 0) {
-    return fail('INVALID_ENTITY', 'the restored state is invalid; use git history to recover', false)
+  try {
+    await writeUndo(deps.storage, context.manifest.project_id, record.branch, nextRecord)
+  } catch {
+    return fail('CHECKPOINT_FAILED', 'the restore checkpoint was committed but undo state could not be recorded', false)
   }
-  return { ok: true, revision: after.projectRevision, checkpointId: checkpoint.head }
+  return { ok: true, revision: restoredProject.projectRevision, checkpointId: checkpoint.head }
+}
+
+async function navigate(
+  deps: ResearchHostDeps,
+  input: NavigationInput,
+  direction: 'back' | 'forward',
+): Promise<NavigationOutcome> {
+  const located = await locateProject(
+    { fs: deps.fs, gitToplevel: (cwd, sig) => gitShowToplevel(deps.subprocess, cwd, sig) },
+    input.sessionCwd,
+    input.signal,
+  )
+  if (!located.ok) return fail(located.code, located.message, false)
+  return queue.run(located.root, () => navigateLocked(deps, input, direction))
 }
 
 /** One-step Back: restore the previous checkpoint with a restore commit. */
@@ -368,41 +532,89 @@ export async function initProject(deps: InitProjectDeps, input: InitProjectInput
       return fail('GIT_UNAVAILABLE', 'git init failed', false)
     }
   }
+  const initPreflight = await gitInitPreflight(deps.subprocess, root, input.signal)
+  if (!initPreflight.ok) return fail(initPreflight.code, initPreflight.reason, false)
   if (!(await gitIdentityConfigured(deps.subprocess, root, input.signal))) {
     return fail('GIT_UNAVAILABLE', 'git identity (user.name and user.email) is not configured', false)
   }
   const projectId = randomUUID()
   const name = projectNameFor(root)
   const manifest: ResearchManifest = { schema_version: 1, project_id: projectId, name }
-  ;(deps.mkdirs ?? defaultMkdirs)(root)
+  const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`
+  try {
+    ;(deps.mkdirs ?? defaultMkdirs)(root)
+  } catch {
+    return fail('INVALID_ENTITY', 'managed project directories could not be created', false)
+  }
   const written = await writeManagedFile(
     deps.fs,
     root,
     MANIFEST_FILE,
-    `${JSON.stringify(manifest, null, 2)}\n`,
+    manifestContent,
     'create',
     input.signal,
   )
   if (!written.ok) {
     return fail('INVALID_ENTITY', 'research.json could not be written', false)
   }
+  let initSnapshot
+  try {
+    initSnapshot = await readManagedFileSnapshot(deps.fs, root, input.signal)
+  } catch {
+    const rolledBack = await compensate(
+      deps.fs,
+      deps.subprocess,
+      root,
+      { path: MANIFEST_FILE, writeKind: 'create', content: manifestContent },
+      input.signal,
+    )
+    return rolledBack
+      ? fail('INVALID_ENTITY', 'managed project files could not be read safely', false)
+      : fail('CHECKPOINT_FAILED', 'managed project files could not be read safely and initialization rollback failed', false)
+  }
+  const initProjectState = parseAndValidateProject(initSnapshot.files, deps.hash)
+  if (initProjectState.diagnostics.length > 0) {
+    const rolledBack = await compensate(
+      deps.fs,
+      deps.subprocess,
+      root,
+      { path: MANIFEST_FILE, writeKind: 'create', content: manifestContent },
+      input.signal,
+    )
+    return rolledBack
+      ? fail('INVALID_ENTITY', 'existing managed files are invalid; initialization was not completed', false)
+      : fail('CHECKPOINT_FAILED', 'existing managed files are invalid and initialization rollback failed', false)
+  }
   const checkpoint = await gitCheckpoint(
     deps.subprocess,
     root,
     initCheckpointMessage(),
-    [MANIFEST_FILE],
+    managedCheckpointPaths(initSnapshot.files),
     input.signal,
   )
   if (!checkpoint.ok) {
-    await gitCleanPath(deps.subprocess, root, MANIFEST_FILE, input.signal)
-    return fail('CHECKPOINT_FAILED', 'the baseline checkpoint failed and research.json was rolled back', false)
+    if (checkpoint.committed) {
+      return fail('CHECKPOINT_FAILED', 'the baseline commit completed but its new HEAD could not be confirmed; manual recovery is required', false)
+    }
+    const rolledBack = await compensate(
+      deps.fs,
+      deps.subprocess,
+      root,
+      { path: MANIFEST_FILE, writeKind: 'create', content: manifestContent },
+      input.signal,
+    )
+    return rolledBack
+      ? fail('CHECKPOINT_FAILED', 'the baseline checkpoint failed and research.json was rolled back', false)
+      : fail('CHECKPOINT_FAILED', 'the baseline checkpoint failed and initialization rollback failed', false)
   }
-  const preflight = await gitPreflight(deps.subprocess, root, input.signal)
-  if (!preflight.ok) return fail(preflight.code, preflight.reason, false)
-  await writeUndo(deps.storage, projectId, preflight.branch, {
-    branch: preflight.branch,
-    recordedHead: checkpoint.head,
-    lastCheckpointId: checkpoint.head,
-  })
+  try {
+    await writeUndo(deps.storage, projectId, initPreflight.branch, {
+      branch: initPreflight.branch,
+      recordedHead: checkpoint.head,
+      lastCheckpointId: checkpoint.head,
+    })
+  } catch {
+    return fail('CHECKPOINT_FAILED', 'the baseline checkpoint was committed but undo state could not be recorded', false)
+  }
   return { ok: true, root, projectId, name, checkpointId: checkpoint.head }
 }

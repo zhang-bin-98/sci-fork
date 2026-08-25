@@ -191,7 +191,7 @@ Core 不依赖 DSH、Node 文件 API、Git 或浏览器。
 
 ```ts
 interface ResearchProject {
-  manifest: ResearchManifest
+  manifest: ResearchManifest | undefined
   nodes: ReadonlyMap<string, ResearchNode>
   edges: ReadonlyMap<string, ResearchEdge>
   evidenceAssertions: ReadonlyMap<string, EvidenceAssertion>
@@ -200,6 +200,11 @@ interface ResearchProject {
   diagnostics: readonly Diagnostic[]
 }
 ```
+
+Core 遇到缺失或当前 schema 下非法的 `research.json` 时，`manifest` 为
+`undefined`，并通过非空 `diagnostics` 表示只读诊断；读取仍可用于修复提示，
+写入必须拒绝。明确声明不受支持的 schema 版本仍由 Host 拒绝，旧版本实现不猜测
+新格式。
 
 ### 6.1 命令
 
@@ -282,7 +287,8 @@ Research Import Draft 是瞬时交互对象，不写入 Research Project 或 Git
 查找规则：
 
 1. 从 session cwd 向上查找最近的 `research.json`。
-2. 解析真实路径并验证实体路径 containment。
+2. 解析真实路径并验证实体路径 containment；存在但格式非法的当前版本 marker
+   仍锚定项目根，由 Core 以只读诊断暴露给 DSH。
 3. 如果项目使用 Git，`git rev-parse --show-toplevel` 必须等于 Research Project 根。
 4. 不把研究子目录自动提交进意外的父级代码仓库。
 5. 项目未初始化时，只允许显式 `/research init` 创建结构。

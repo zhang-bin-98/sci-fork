@@ -1,7 +1,7 @@
 # SciFork M1: Core 与 Git
 
-> 状态：Complete；全部自动化检查通过
-> 日期：2026-08-24
+> 状态：Implementation complete；自动化检查与一次性 DSH profile smoke 均通过（未含真实模型 tool-call loop）
+> 日期：2026-08-25
 > 上位设计：[软件架构 v0.12](../scifork-software-architecture.md) §16 M1、[产品设计 v0.11](../scifork-product-design.md)
 > 钉住版本：DeepSeek Harness `0.1.1-rc.2`（沿用 M0 一次性 profile）
 
@@ -69,7 +69,9 @@ register(definition: ToolDefinition): () => void
 
 - `parameters` 是 dsh-tools 强制的 JSON Schema 子集（`type`/`properties`/
   `required`/`additionalProperties`/`items`/`enum`/`const`/`oneOf`/描述注解）。
-- `output.schema` 可为 annotation-only `{ type: 'json' }`（任意 JSON）。
+- `output.schema` 直接传给 `ctx.tools.register` 时必须是 raw JSON Schema；
+  任意 JSON 的 annotation-only 形式是 `{}`。`{ type: 'json' }` 只适用于
+  DSH typed helper 的 author-level schema，不能直接注册。
 - `render` 返回 `[{ type: 'text', text }]`。
 - 工具执行上下文：`exec.agent.id`（SessionId）、
   `exec.agent.session.header.cwd`（string | undefined）——项目根一律取自该
@@ -223,7 +225,7 @@ Core 不 import `node:`、DSH、浏览器 API；哈希由调用方注入
 
 ```ts
 interface ResearchProject {
-  manifest: ResearchManifest
+  manifest: ResearchManifest | undefined
   nodes: ReadonlyMap<string, ResearchNode>
   edges: ReadonlyMap<string, ResearchEdge>
   evidenceAssertions: ReadonlyMap<string, EvidenceAssertion>
@@ -232,6 +234,9 @@ interface ResearchProject {
   diagnostics: readonly Diagnostic[]
 }
 ```
+
+缺失或非法 `research.json` 时 `manifest` 为 `undefined`，同时会产生
+`diagnostics`；这类项目仍可读取，但必须按只读处理。
 
 内部 `LoadedProject extends ResearchProject { files: ReadonlyMap<string, string> }`
 供命令校验读取当前文件内容。
@@ -245,7 +250,7 @@ interface ResearchProject {
 | `parser.ts` | 文件映射 → LoadedProject（gray-matter 解析 front matter，js-yaml） |
 | `validator.ts` | 跨实体不变量 → diagnostics（引用解析、reviewed-only、Finding 门槛、重复/未知文件） |
 | `projection.ts` | ResearchProject → 可重建投影（实体 + 边，含 evidence_ref 投影边） |
-| `commands.ts` | ResearchCommand 判别联合的 zod schema、validateCommand、renderCommandFile |
+| `commands.ts` | ResearchCommand 判别联合的 zod schema、parseCommand、planCommand |
 | `import-draft.ts` | ResearchImportDraft schema、规范化与逐候选可导入判定 |
 
 ### 校验不变量（validator）
@@ -264,20 +269,20 @@ interface ResearchProject {
 
 | kind | 载荷（必填/可选） | 规则 |
 | --- | --- | --- |
-| `create_evidence_assertion` | id、publication_ref?、locator、assertion、direction、limitations?、body? | review_status 强制 candidate；id 不存在 |
-| `review_evidence_assertion` | id、expectedFileVersion、review_status: reviewed\|rejected、limitations? | 按状态机转移 |
-| `create_node` | id、kind、confidence、evidence_refs?、body | 创建 finding 须满足门槛 |
-| `update_node` | id、expectedFileVersion、kind?、confidence?、evidence_refs?、body?（至少一项） | 结果态满足门槛 |
-| `create_edge` | id、from、to、relation、basis、evidence_refs?、provenance?、evidence_gap? | 端点存在；basis 规则 |
-| `update_edge` | id、expectedFileVersion、relation?、basis?、evidence_refs?、provenance?、evidence_gap?（至少一项） | from/to 不可变 |
-| `create_result` | id、observed_at、body | status 强制 draft |
-| `update_result` | id、expectedFileVersion、status?、observed_at?、body?（至少一项） | 按状态机转移 |
-| `import_draft_item` | draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须可导入；转换为 candidate EA 的单实体命令 |
+| `create_evidence_assertion` | id、publicationRef?、locator、assertion、direction、limitations?、body? | 落盘 `review_status` 强制 candidate；id 不存在 |
+| `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: reviewed\|rejected、limitations? | 按状态机转移 |
+| `create_node` | id、nodeKind、confidence、evidenceRefs?、body | 创建 finding 须满足门槛 |
+| `update_node` | id、expectedFileVersion、nodeKind?、confidence?、evidenceRefs?、body?（至少一项） | 结果态满足门槛 |
+| `create_edge` | id、from、to、relation、basis、evidenceRefs?、provenance?、evidenceGap? | 端点存在；basis 规则 |
+| `update_edge` | id、expectedFileVersion、relation?、basis?、evidenceRefs?、provenance?、evidenceGap?（至少一项） | from/to 不可变 |
+| `create_result` | id、observedAt、body | 落盘 status 强制 draft |
+| `update_result` | id、expectedFileVersion、status?、observedAt?、body?（至少一项） | 按状态机转移 |
+| `import_draft_item` | id、draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须可导入；转换为 candidate EA 的单实体命令 |
 
 - Create*：目标 id 必须不存在；文件写入用 `createIfAbsent` intent。
 - Update*/review：必须携带 `expectedFileVersion`（目标文件当前 SHA-256），
   不符 → `STALE_TARGET`。
-- `renderCommandFile(project, command)` 输出 `{ path, content }`：相对路径由
+- `planCommand(project, command)` 输出 `{ path, content }`：相对路径由
   Core 从实体 id 构造（绝不接受调用方路径）。
 - `import_draft_item` 转换后的 EA：publication_ref、locator、assertion、
   direction、limitations 来自候选项；正文为空。
@@ -329,7 +334,9 @@ interface ProjectionEdge {
 1. `sessionCwd` 缺失或非绝对路径 → `SESSION_UNAVAILABLE`。
 2. 从 cwd 逐级向上查找 `research.json`；到达文件系统根停止。未找到 →
    `PROJECT_NOT_INITIALIZED`。
-3. 找到后读取并解析 manifest（`UNSUPPORTED_SCHEMA_VERSION`/`INVALID_ENTITY`）。
+3. 找到 regular-file marker 后即锚定项目根；当前版本 manifest 内容非法时由 Core
+   返回只读诊断，明确的未来 `schema_version` → `UNSUPPORTED_SCHEMA_VERSION`；
+   marker 非普通文件、不可读或 containment 失败 → `INVALID_ENTITY`。
 4. 若项目根在 Git 仓库中：`git rev-parse --show-toplevel` 必须等于项目根
    （比较时忽略大小写差异），否则 `PROJECT_REPOSITORY_MISMATCH`。无 Git 时
    允许只读操作；mutation 在检查点阶段报 `GIT_UNAVAILABLE`。
@@ -339,7 +346,7 @@ interface ProjectionEdge {
 ### 三个工具（tools.ts）
 
 全部输出 `{ ok: true, …payload }` 或 `{ ok: false, code, message, recoverable, hint?, entityId? }`
-（架构 §13 错误码；输出 schema `{ type:'json' }`）。Git/fs 调用转发
+（架构 §13 错误码；直接注册的 raw output schema 为 `{}`）。Git/fs 调用转发
 `exec.signal`；`research_graph_apply` 声明 `timeoutMs: 30000`，read/focus 声明
 `timeoutMs: 15000`。所有工具把 `isConcurrencySafe` 设为 false（mutation 经
 内存队列；读操作与写入并发时依赖 revision 校验）。
@@ -357,7 +364,7 @@ interface ProjectionEdge {
 
 | 命令 | 行为 |
 | --- | --- |
-| `/research init` | 在当前 session cwd 初始化：目录内及祖先无 research.json；cwd 无 Git 则 `git init`，有 Git 但 toplevel ≠ cwd 则 `PROJECT_REPOSITORY_MISMATCH`；git identity（user.name/user.email 任一缺失）→ 报错不写；写 research.json（project_id = `crypto.randomUUID()`，name = 目录 basename）、mkdir 四个受管目录、基线检查点（message `scifork: init`） |
+| `/research init` | 在当前 session cwd 初始化：目录内及祖先无 research.json；cwd 无 Git 则 `git init`，有 Git 但 toplevel ≠ cwd 则 `PROJECT_REPOSITORY_MISMATCH`；写入前要求 HEAD 在分支上，并拒绝 detached、unmerged 或受管路径 dirty（新建仓库的 unborn branch 例外）；git identity（user.name/user.email 任一缺失）→ 报错不写；写 research.json（project_id = `crypto.randomUUID()`，name = 目录 basename）、mkdir 四个受管目录、基线检查点（message `scifork: init`） |
 | `/research open` | 返回 Companion URL 文本（M2 替换为 Page Key 流程） |
 | `/research validate` | 解析 + 校验当前项目，报告 diagnostics 摘要与 revision |
 
@@ -368,25 +375,29 @@ interface ProjectionEdge {
 → 读取全部受管文件（ctx.fs listDir + readText）
 → parse + validate：诊断非空 → INVALID_ENTITY（只读）
 → expectedProjectRevision 校验 → STALE_REVISION
-→ git 前置检查（symbolic-ref 分支、ls-files -u 无未合并、
-  受管路径 status --porcelain 为空）→ GIT_STATE_UNSUPPORTED / READ_ONLY_CONFLICT
-→ Core validateCommand → INVALID_ENTITY
-→ Core renderCommandFile
+→ git 前置检查（项目处于 Git 仓库且 toplevel 等于项目根、symbolic-ref 分支、
+  全仓库 `ls-files -u` 无未合并、受管路径 status --porcelain 为空）
+  → GIT_STATE_UNSUPPORTED / READ_ONLY_CONFLICT
+→ Core parseCommand / planCommand → INVALID_ENTITY
 → ctx.fs writeText（createIfAbsent / replaceIfVersion + fileVersion 双保险）
-→ 重读该文件 + 全项目 parse + validate（仍非空 → 回滚 + INVALID_ENTITY）
-→ git add <受管路径> && git commit --only <受管路径> -m "scifork: <kind> <entityId>"
+→ 重读全部受管文件并要求等于“初始快照 + plan.path 新内容”（不等则回滚 + STALE_REVISION）
+→ git add <plan.path> && git commit --only <plan.path> -m "scifork: <kind> <entityId>"
 → 记录 undo 状态、返回 { ok, entityId, revision, checkpointId }
 ```
 
 - 同一 project root + branch 的 mutation 经 Host 内存队列串行（架构 §12.1）。
-- 检查点失败（CHECKPOINT_FAILED）→ 补偿回滚：更新类
-  `git checkout HEAD -- <path>`，创建类 `git rm -f -q -- <path>` 后
-  `git clean -f -- <path>`（argv-only、只作用于刚写入的受管路径），
-  失败不留下“Saved”假象。
+- 初始快照与写后文件集校验防止外部编辑被误纳入本次 mutation；不一致时仅补偿
+  本次目标写入，不写 undo 状态。跨进程 Git/编辑器在 preflight 与 commit 之间的
+  HEAD 变化仍属于下一阶段的边界风险。
+- 检查点失败（CHECKPOINT_FAILED）→ 补偿回滚：先确认目标仍保持本次写入内容；
+  若已被外部修改则不执行破坏性回滚并报告手工恢复。否则更新类执行
+  `git checkout HEAD -- <path>`，创建类执行 `git rm -f -q -- <path>` 后
+  `git clean -f -- <path>`（argv-only、只作用于刚写入的受管路径），并验证
+  DSH 文件视图与 Git 状态都已清理；失败不留下“Saved”假象。
 - commit 用 `--only <paths>`：不改变无关 staged files，绝不 `git add .`。
 - 真实 Git 验证的路径语义：`git commit --only` 的 pathspec 必须命中 index，
-  因此先 `git add -- <paths>` 再 `commit --only`；paths 由
-  `managedCheckpointPaths` 从当前受管文件集推导（跳过空目录）。
+  因此先 `git add -- <paths>` 再 `commit --only`；普通 mutation 的 paths 只取
+  Core 计划出的单实体 `plan.path`，初始化/恢复才按当前受管文件集精确列出。
 - 一步恢复用 `git ls-tree -r --name-only <ref> -- <受管路径>` 列出源检查点
   的受管文件，`git checkout <ref> -- <源文件>` 还原/复活，
   `git rm -f` 删除源中不存在的当前文件；不使用 `reset --hard`。
@@ -411,10 +422,10 @@ interface UndoRecord {
   清除 undo 记录（Back/Forward 禁用）并重新加载。
 - **Back**（HEAD === recordedHead、previousCheckpointId 存在、受管路径干净）：
   `git restore --source <previousCheckpointId> -- <受管路径>` → commit
-  `scifork: back <short>` → 新记录 `{ lastCheckpointId: R, forwardCheckpointId: 被撤回的 checkpoint }`。
+  `scifork: back to <short>` → 新记录 `{ lastCheckpointId: R, forwardCheckpointId: 被撤回的 checkpoint }`。
 - **Forward**（HEAD === recordedHead、forwardCheckpointId 存在）：
   `git restore --source <forwardCheckpointId> -- <受管路径>` → commit
-  `scifork: forward <short>` → 新记录 `{ previousCheckpointId: R, forwardCheckpointId 清除 }`。
+  `scifork: forward to <short>` → 新记录 `{ previousCheckpointId: R, forwardCheckpointId 清除 }`。
 - 任意新 mutation 重写记录 → Forward 清除。不使用 `reset --hard`、不移动
   branch ref、不调用 remote/merge/rebase。MVP 只维护一步（Back 后不可再 Back）。
 
@@ -455,38 +466,64 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
 - [x] `pnpm check`（typecheck + Vitest + build）全绿；`node --check index.js`
       与 `git diff --check` 干净。
 - [x] Core 测试覆盖：全部实体 schema 成败 fixture；Markdown round-trip 与
-      Publication Reference 规范化/PMID-DOI 一致提示；projectRevision/fileVersion；
+      Publication Reference 规范化/PMID-DOI 一致提示；projectRevision 精确公式/
+      fileVersion；
       Finding 支持门槛；Draft schema/标识/locator/上限/禁止字段；每条命令的
       validate/render 成败与单实体边界。
 - [x] Host 测试覆盖：Project Locator containment 与 Git root equality；三个
-      工具注册/卸载/参数上限/read 各 operation；mutation 流水线（fake fs +
+      工具注册/卸载/参数上限/read 各 operation；非法 manifest 只读诊断；
+      mutation 流水线（fake fs +
       fake subprocess）的 stale revision/target、只读冲突、检查点失败补偿；
-      checkpoint 只提交受管路径且不改变无关 staged files；一步 Back/Forward
-      与新 mutation 清除 Forward；init 的 git init/identity/基线检查点。
+      checkpoint 只提交受管路径且不改变无关 staged files；全仓库 unmerged
+      与单实体 checkpoint 路径；一步 Back/Forward
+      与新 mutation 清除 Forward；写后外部 managed 文件变化与目标回滚；
+      init 的 Git 状态预检（detached/unborn/dirty）
+      、git init/identity/基线检查点。
 - [x] undo/focus 记录经 storageDomain 契约测试（fake Domain）。
 - [x] 真实 Git 最小验证：临时仓库验证 pathspec commit 语义、无关 staged
-      files 不受影响、Back/Forward restore commit 流与新增文件移除。
-- [ ] 一次性 profile 冒烟（需用户批准）：工具可发现、`/research init` 在临时
-      目录完成、创建实体产生受管路径检查点、Back/Forward 一步恢复。
+      files 不受影响、非仓库错误分类、全仓库 unmerged 预检、Back/Forward
+      restore commit 流与新增文件移除。
+- [x] 一次性 profile 冒烟（用户已批准）：工具可发现、`/research init` 在临时
+      目录完成、`/research validate` 返回有效项目；另以同版本公开工具服务
+      smoke 验证创建实体检查点与 Back/Forward 一步恢复（未经过模型 prompt）。
 
-## Final results（2026-08-24）
+## Final results（2026-08-25）
 
-1. `pnpm typecheck` 干净；19 个测试文件、232 项 Vitest 全绿（Core 100 项、
-   Host 129 项、真实 Git 集成 3 项）；`pnpm build` 生成 `dist/host` 全部新
+1. `pnpm check` 干净；19 个测试文件、272 项 Vitest 全绿；`pnpm build` 生成 `dist/host` 全部新
    模块与 `dist/client.js`。
 2. 真实 Git 集成测试（系统 Git，临时仓库）确认：`git add + commit --only
    <paths>` 只提交受管路径且不动无关 staged files（含 unborn HEAD 根提交）；
-   `git restore`/`checkout <ref> -- <files>` 与 `git rm -f` 组合完成一步
-   Back/Forward，历史只追加 restore commit，rev-list 计数严格递增。
+   `git restore`/`checkout <ref> -- <files>` 与 `git rm -f` +
+   `git restore --staged` 组合完成一步 Back/Forward，历史只追加 restore
+   commit，rev-list 计数严格递增。
 3. 实现期间的契约修正（已回写本文档）：① `commit --only` pathspec 需先
    `git add`（pathspec 必须命中 index）；② restore 改为
    `ls-tree` 列文件 + `checkout <ref> -- <files>` + `git rm -f` 精确还原；
    ③ undo 记录的 commit id 接受 40–64 位小写 hex（SHA-1/SHA-256 仓库）；
    ④ front matter 解析/渲染统一使用 js-yaml v4（YAML 1.2）引擎，替换
-   gray-matter 内置的 js-yaml v3，保证 round-trip 不被 YAML 1.1 布尔规则改写。
+   gray-matter 内置的 js-yaml v3，保证 round-trip 不被 YAML 1.1 布尔规则改写；
+   ⑤ Windows 上 Git `/` 与 DSH fs `\\` 路径比较统一为同一分隔符；⑥ parser 对
+   `publication_ref: null`、非对象 front matter/`research.json` fail-closed 为诊断，
+   不抛异常；init 目录创建失败返回结构化错误；⑦ `projectRevision` 严格按逐文件
+   record hash 后再整体 hash 的公开公式计算。
 4. 环境说明：本会话 pnpm 依赖安装需 full-access 沙箱（esbuild 生命周期脚本
    spawn 子进程）；安装本身对仓库无影响（node_modules/.pnpm-store 均被
    gitignore）。
+5. 一次性 DSH `0.1.1-rc.2` profile smoke 通过：在仓库外 disposable 项目中，
+   SciFork bundle 正常启动，`commands/list` 发现 `/research`，`skill.list` 发现
+   两个 SciFork Skills，`/research init` 生成基线（message `scifork: init`），
+   `/research validate` 返回有效项目。另一次同版本的公开 `ctx.tools` 注册服务
+   smoke 已执行 `research_graph_apply`、Back、Forward，确认受管路径检查点与
+   restore commit；这些写入未经过模型 prompt（profile 无 API key），因此不把
+   smoke 解释为真实模型 tool-call loop 的证明。
+6. 初始化与 mutation 的 Git 预检已补齐：非 Git 目录的 mutation 返回
+   `GIT_UNAVAILABLE`；detached HEAD 在任何 `mkdir`/文件写入/commit
+   前返回 `GIT_STATE_UNSUPPORTED`；unborn branch 仍可创建首次 `scifork: init`
+   基线；全仓库 unmerged 与 managed path dirty 状态在写入前拒绝；初始化失败
+   会清理已暂存的 manifest。普通 mutation 的 checkpoint 只提交单个目标文件，
+   写后快照不一致会回滚并返回 `STALE_REVISION`。Locator 遇到最近的 malformed
+   当前版本 `research.json` 时锚定项目并提供只读诊断，遇到非常规/不可读 marker
+   仍 fail-closed；Git subprocess 输出标记为 lossy 时拒绝继续状态判断或 restore。
 
 ## Test plan
 

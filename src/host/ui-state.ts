@@ -60,7 +60,15 @@ export async function readFocus(
   projectId: string,
 ): Promise<FocusRecord | undefined> {
   const table = storage.table(TABLE_FOCUS)
-  return table.get(focusKey(sessionId, projectId)) as FocusRecord | undefined
+  const key = focusKey(sessionId, projectId)
+  const raw = table.get(key)
+  if (raw === undefined) return undefined
+  const parsed = FOCUS_RECORD_SCHEMA.safeParse(raw)
+  if (!parsed.success) {
+    await table.delete(key)
+    return undefined
+  }
+  return parsed.data
 }
 
 export async function writeFocus(
@@ -85,8 +93,18 @@ export async function loadUndoRecord(
 ): Promise<UndoRecord | undefined> {
   const table = storage.table(TABLE_UNDO)
   const key = undoKey(projectId, branch)
-  const record = table.get(key) as UndoRecord | undefined
-  if (record === undefined) return undefined
+  // A branch switch invalidates the one-step state from every other branch.
+  // Remove those records before reading the current key so a later switch
+  // back cannot resurrect stale Back/Forward controls.
+  await clearOtherUndoRecords(table, projectId, key)
+  const raw = table.get(key)
+  if (raw === undefined) return undefined
+  const parsed = UNDO_RECORD_SCHEMA.safeParse(raw)
+  if (!parsed.success) {
+    await table.delete(key)
+    return undefined
+  }
+  const record = parsed.data
   if (record.branch !== branch || record.recordedHead !== head) {
     await table.delete(key)
     return undefined
@@ -101,7 +119,20 @@ export async function writeUndo(
   record: UndoRecord,
 ): Promise<void> {
   const table = storage.table(TABLE_UNDO)
+  await clearOtherUndoRecords(table, projectId, undoKey(projectId, branch))
   await table.put(undoKey(projectId, branch), record)
+}
+
+async function clearOtherUndoRecords(
+  table: ReturnType<StorageDomain['table']>,
+  projectId: string,
+  currentKey: string,
+): Promise<void> {
+  const projectPrefix = `${projectId}:`
+  const staleKeys = [...table.entries()]
+    .map(([storedKey]) => storedKey)
+    .filter((storedKey) => storedKey.startsWith(projectPrefix) && storedKey !== currentKey)
+  for (const staleKey of staleKeys) await table.delete(staleKey)
 }
 
 /**

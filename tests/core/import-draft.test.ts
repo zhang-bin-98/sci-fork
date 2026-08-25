@@ -115,6 +115,19 @@ describe('validateImportDraft', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('rejects non-ISO and impossible generatedAt timestamps', () => {
+    for (const generatedAt of ['2026/08/24', '2026-02-30T10:00:00Z']) {
+      const result = validateImportDraft(draft({
+        producer: {
+          retrievalSkill: 'pubmed-search',
+          formatterSkill: 'scifork-research',
+          generatedAt,
+        },
+      }))
+      expect(result.ok).toBe(false)
+    }
+  })
+
   it('rejects candidate counts above the cap', () => {
     const candidates = Array.from({ length: MAX_IMPORT_CANDIDATES + 1 }, (_, i) => ({
       publicationRef: { pmid: String(10000000 + i) },

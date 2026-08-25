@@ -36,6 +36,39 @@ export const PROVENANCE_MAX = 2000
 export const BODY_MAX = 64 * 1024
 export const OBSERVED_AT_RE = /^\d{4}-\d{2}-\d{2}$/
 
+/** Count UTF-8 bytes without depending on a host-specific TextEncoder. */
+export function utf8ByteLength(value: string): number {
+  let bytes = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code <= 0x7f) bytes += 1
+    else if (code <= 0x7ff) bytes += 2
+    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1)
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4
+        index += 1
+      } else bytes += 3
+    } else bytes += 3
+  }
+  return bytes
+}
+
+function isCalendarDate(value: string): boolean {
+  if (!OBSERVED_AT_RE.test(value)) return false
+  const year = Number(value.slice(0, 4))
+  const month = Number(value.slice(5, 7))
+  const day = Number(value.slice(8, 10))
+  if (month < 1 || month > 12 || day < 1) return false
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return day <= daysInMonth[month - 1]!
+}
+
+export const OBSERVED_AT_SCHEMA = z.string().refine(isCalendarDate, 'must be a real YYYY-MM-DD calendar date')
+export const BODY_SCHEMA = z.string().refine((value) => utf8ByteLength(value) <= BODY_MAX, `must be at most ${BODY_MAX} UTF-8 bytes`)
+export const NON_EMPTY_BODY_SCHEMA = BODY_SCHEMA.refine((value) => value.trim().length > 0, 'must not be empty')
+
 // ------------------------------------------------------------------- types
 
 export type NodeKind = 'finding' | 'hypothesis' | 'prediction'
@@ -220,7 +253,7 @@ export const RESULT_DATA_SCHEMA = z
   .object({
     id: z.string().regex(RESULT_ID_RE, 'must be a res_<uuid> id'),
     status: z.enum(['draft', 'validated', 'superseded']),
-    observed_at: z.string().regex(OBSERVED_AT_RE, 'must be YYYY-MM-DD'),
+    observed_at: OBSERVED_AT_SCHEMA,
   })
   .strict()
 export type ResultData = z.infer<typeof RESULT_DATA_SCHEMA>

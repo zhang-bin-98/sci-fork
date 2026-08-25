@@ -161,6 +161,63 @@ describe('parseProject', () => {
     expect(project.nodes.size).toBe(0)
   })
 
+  it('reports a null publication reference without throwing', () => {
+    const ev = `ev_${UUID}`
+    const project = parseProject(new Map([
+      ['research.json', MANIFEST],
+      [`evidence/${ev}.md`, [
+        '---',
+        `id: ${ev}`,
+        'publication_ref: null',
+        'locator:',
+        '  kind: pubmed_abstract',
+        'assertion: "Claim."',
+        'direction: supports',
+        'review_status: candidate',
+        '---',
+        'Body.',
+      ].join('\n') + '\n'],
+    ]), sha256)
+    expect(project.diagnostics.some((d) => d.path === `evidence/${ev}.md` && d.code === 'invalid_entity')).toBe(true)
+    expect(project.evidenceAssertions.size).toBe(0)
+  })
+
+  it('reports a non-object manifest without throwing', () => {
+    const project = parseProject(new Map([
+      ['research.json', 'null'],
+    ]), sha256)
+    expect(project.manifest).toBeUndefined()
+    expect(project.diagnostics).toContainEqual({
+      path: 'research.json',
+      code: 'invalid_manifest',
+      message: 'research.json must contain a JSON object',
+    })
+  })
+
+  it('reports non-object front matter without throwing', () => {
+    const node = `node_${UUID}`
+    const project = parseProject(new Map([
+      ['research.json', MANIFEST],
+      [`nodes/${node}.md`, '---\n- item\n---\nBody.\n'],
+    ]), sha256)
+    expect(project.nodes.size).toBe(0)
+    expect(project.diagnostics).toContainEqual({
+      path: `nodes/${node}.md`,
+      code: 'invalid_entity',
+      message: 'front matter must be a YAML object',
+    })
+  })
+
+  it('enforces the body limit in UTF-8 bytes', () => {
+    const node = `node_${UUID}`
+    const body = '中'.repeat(22000)
+    const project = parseProject(new Map([
+      ['research.json', MANIFEST],
+      [`nodes/${node}.md`, nodeMd(node, body)],
+    ]), sha256)
+    expect(project.diagnostics.some((d) => d.message.includes('body exceeds'))).toBe(true)
+  })
+
   it('parses edge JSON files into edges', () => {
     const node = `node_${UUID}`
     const res = `res_${UUID}`

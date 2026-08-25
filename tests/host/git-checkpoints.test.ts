@@ -10,6 +10,7 @@ import {
   gitCleanPath,
   gitIdentityConfigured,
   gitInit,
+  gitInitPreflight,
   gitListManagedFiles,
   gitPreflight,
   gitRemovePath,
@@ -63,7 +64,7 @@ describe('parseRevParseToplevel', () => {
   })
 })
 
-function fakeSubprocess(opts: { exitCode?: number; stdout?: string }): SubprocessPort {
+function fakeSubprocess(opts: { exitCode?: number; stdout?: string; lossy?: boolean }): SubprocessPort {
   return {
     async resolveExecutable(command: string) {
       return command === 'git' ? 'C:\\git\\git.exe' : command
@@ -77,7 +78,7 @@ function fakeSubprocess(opts: { exitCode?: number; stdout?: string }): Subproces
         collected: {
           stdout: {
             readFrom() {
-              return { text: opts.stdout ?? '', nextOffset: 0, lossy: false }
+              return { text: opts.stdout ?? '', nextOffset: 0, lossy: opts.lossy === true }
             },
           },
         },
@@ -120,6 +121,14 @@ describe('gitShowToplevel', () => {
     const result = await gitShowToplevel(
       fakeSubprocess({ stdout: 'C:\\a\nC:\\b\n' }),
       '.',
+    )
+    expect(result).toBeUndefined()
+  })
+
+  it('fails closed when Git output is truncated by the subprocess collector', async () => {
+    const result = await gitShowToplevel(
+      fakeSubprocess({ stdout: 'C:\\proj\n', lossy: true }),
+      'C:\\proj',
     )
     expect(result).toBeUndefined()
   })
@@ -178,6 +187,7 @@ const HEAD_SHA = 'abcdef1234567890abcdef1234567890abcdef12'
 function healthyResponder(argv: readonly string[]): { exitCode?: number; stdout?: string } {
   const sub = argv[1]
   if (sub === 'symbolic-ref') return { stdout: 'main\n' }
+  if (sub === 'rev-parse' && argv.includes('--show-toplevel')) return { stdout: 'C:\\proj\n' }
   if (sub === 'rev-parse') return { stdout: `${HEAD_SHA}\n` }
   if (sub === 'ls-files') return { stdout: '' }
   if (sub === 'status') return { stdout: '' }
@@ -223,11 +233,56 @@ describe('gitPreflight', () => {
   })
 
   it('reports unmerged entries as GIT_STATE_UNSUPPORTED', async () => {
-    const { port } = scriptedGit((argv) =>
+    const { port, calls } = scriptedGit((argv) =>
       argv[1] === 'ls-files' ? { stdout: '100644 abc 1\tnodes/a.md\n' } : healthyResponder(argv),
     )
     const result = await gitPreflight(port, 'C:\\proj')
-    expect(result).toEqual({ ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'managed paths have unmerged entries' })
+    expect(result).toEqual({ ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'the repository has unmerged entries' })
+    expect(calls.find((call) => call[1] === 'ls-files')).toEqual([
+      'C:\\git\\git.exe', 'ls-files', '-u',
+    ])
+  })
+
+  it('reports a directory outside a Git repository as GIT_UNAVAILABLE', async () => {
+    const { port, calls } = scriptedGit((argv) => {
+      if (argv[1] === 'rev-parse' && argv.includes('--show-toplevel')) {
+        return { exitCode: 128, stdout: '' }
+      }
+      return healthyResponder(argv)
+    })
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({ ok: false, code: 'GIT_UNAVAILABLE', reason: 'the project is not in a git repository' })
+    expect(calls.some((call) => call[1] === 'symbolic-ref')).toBe(false)
+  })
+
+  it('fails closed when the repository root output is ambiguous', async () => {
+    const { port, calls } = scriptedGit((argv) => {
+      if (argv[1] === 'rev-parse' && argv.includes('--show-toplevel')) {
+        return { stdout: 'C:\\proj\nC:\\other\n' }
+      }
+      return healthyResponder(argv)
+    })
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({
+      ok: false,
+      code: 'GIT_UNAVAILABLE',
+      reason: 'the project repository root could not be determined',
+    })
+    expect(calls.some((call) => call[1] === 'symbolic-ref')).toBe(false)
+  })
+
+  it('rejects a repository whose top level differs from the project root', async () => {
+    const { port, calls } = scriptedGit((argv) => {
+      if (argv[1] === 'rev-parse' && argv.includes('--show-toplevel')) return { stdout: 'C:\\other\n' }
+      return healthyResponder(argv)
+    })
+    const result = await gitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({
+      ok: false,
+      code: 'PROJECT_REPOSITORY_MISMATCH',
+      reason: 'the research project lies inside an unrelated git repository',
+    })
+    expect(calls.some((call) => call[1] === 'symbolic-ref')).toBe(false)
   })
 
   it('reports GIT_UNAVAILABLE when git cannot run', async () => {
@@ -242,6 +297,29 @@ describe('gitPreflight', () => {
     const result = await gitPreflight(port, 'C:\\proj')
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.code).toBe('GIT_UNAVAILABLE')
+  })
+})
+
+describe('gitInitPreflight', () => {
+  it('allows an attached unborn branch with clean managed paths', async () => {
+    const { port } = scriptedGit((argv) => {
+      if (argv[1] === 'symbolic-ref') return { stdout: 'main\n' }
+      if (argv[1] === 'rev-parse') return { exitCode: 128, stdout: '' }
+      if (argv[1] === 'ls-files') return { stdout: '' }
+      if (argv[1] === 'status') return { stdout: '' }
+      return { stdout: '' }
+    })
+    const result = await gitInitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({ ok: true, branch: 'main', head: undefined })
+  })
+
+  it('rejects detached HEAD before checking managed paths', async () => {
+    const { port, calls } = scriptedGit((argv) =>
+      argv[1] === 'symbolic-ref' ? { exitCode: 1, stdout: '' } : { stdout: '' },
+    )
+    const result = await gitInitPreflight(port, 'C:\\proj')
+    expect(result).toEqual({ ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'HEAD is detached or unborn' })
+    expect(calls).toHaveLength(1)
   })
 })
 
@@ -271,6 +349,21 @@ describe('gitCheckpoint', () => {
     const result = await gitCheckpoint(port, 'C:\\proj', 'scifork: x', ['research.json'])
     expect(result).toEqual({ ok: false, code: 'CHECKPOINT_FAILED' })
   })
+
+  it('marks a checkpoint committed when reading the new HEAD fails', async () => {
+    let committed = false
+    const { port } = scriptedGit((argv) => {
+      if (argv[1] === 'commit') {
+        committed = true
+        return { stdout: '' }
+      }
+      if (argv[1] === 'rev-parse' && committed) return { exitCode: 128, stdout: '' }
+      return healthyResponder(argv)
+    })
+    const result = await gitCheckpoint(port, 'C:\\proj', 'scifork: x', ['research.json'])
+    expect(result).toEqual({ ok: false, code: 'CHECKPOINT_FAILED', committed: true })
+  })
+
 })
 
 describe('managedCheckpointPaths', () => {
@@ -313,6 +406,7 @@ describe('gitListManagedFiles and gitRestoreManagedFrom', () => {
       'C:\\git\\git.exe', 'checkout', HEAD_SHA, '--', 'research.json', 'nodes/a.md',
     ])
     expect(calls[1]).toEqual(['C:\\git\\git.exe', 'rm', '-f', '-q', '--', 'nodes/removed.md'])
+    expect(calls[2]).toEqual(['C:\\git\\git.exe', 'restore', '--staged', '--', 'nodes/removed.md'])
   })
 })
 
@@ -358,7 +452,7 @@ describe('gitInit and gitIdentityConfigured', () => {
 describe('checkpoint messages', () => {
   it('builds stable subjects without research content', () => {
     expect(checkpointMessage('create_node', 'node_abc')).toBe('scifork: create_node node_abc')
-    expect(initCheckpointMessage()).toBe('scifork: init research project')
+    expect(initCheckpointMessage()).toBe('scifork: init')
     expect(backMessage(HEAD_SHA)).toBe('scifork: back to abcdef123456')
     expect(forwardMessage(HEAD_SHA)).toBe('scifork: forward to abcdef123456')
   })

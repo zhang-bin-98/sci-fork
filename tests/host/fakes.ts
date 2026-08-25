@@ -24,6 +24,7 @@ import type {
 export class FakeFs implements FsPort {
   private readonly files = new Map<string, { content: string; version: number }>()
   private readonly dirs = new Set<string>(['/'])
+  private readonly specialEntries = new Map<string, { type: 'directory' | 'other' | 'file'; targetPath: string }>()
   private versionCounter = 1
 
   constructor(entries: Record<string, string> = {}) {
@@ -53,7 +54,9 @@ export class FakeFs implements FsPort {
 
   resolve(path: string, opts?: { cwd?: string }): Promise<FsTarget> {
     const resolved = this.normalize(path, opts?.cwd)
-    return Promise.resolve({ targetKey: `key:${resolved}`, displayPath: resolved })
+    const special = this.specialEntries.get(resolved)
+    const targetPath = special?.targetPath ?? resolved
+    return Promise.resolve({ targetKey: `key:${targetPath}`, displayPath: targetPath })
   }
 
   processPath(target: FsTarget): string {
@@ -68,10 +71,15 @@ export class FakeFs implements FsPort {
     if (this.dirs.has(target.displayPath)) {
       return Promise.resolve({ version: 0, type: 'directory' })
     }
+    const special = this.specialEntries.get(target.displayPath)
+    if (special !== undefined) return Promise.resolve({ version: 0, type: special.type })
     return Promise.resolve(undefined)
   }
 
   listDir(target: FsTarget): Promise<FsDirEntry[]> {
+    if (this.failListDirPaths.has(target.displayPath)) {
+      return Promise.reject(Object.assign(new Error('permission denied'), { code: 'FS_PERMISSION_DENIED' }))
+    }
     const prefix = target.displayPath === '/' ? '/' : `${target.displayPath}/`
     const names = new Set<string>()
     for (const path of this.files.keys()) {
@@ -87,6 +95,12 @@ export class FakeFs implements FsPort {
         if (name !== undefined && name !== '') names.add(name)
       }
     }
+    for (const path of this.specialEntries.keys()) {
+      if (path.startsWith(prefix)) {
+        const rest = path.slice(prefix.length)
+        names.add(rest.split('/')[0] ?? '')
+      }
+    }
     return Promise.resolve(
       [...names]
         .filter((name) => name !== '')
@@ -95,11 +109,12 @@ export class FakeFs implements FsPort {
           const path = `${prefix}${name}`
           const isFile = this.files.has(path)
           const isDir = this.dirs.has(path)
+          const special = this.specialEntries.get(path)
           const file = isFile ? this.files.get(path) : undefined
           return {
             name,
-            type: isFile ? 'file' : isDir ? 'directory' : 'other',
-            target: { targetKey: `key:${path}`, displayPath: path },
+            type: isFile ? 'file' : isDir ? 'directory' : special?.type ?? 'other',
+            target: { targetKey: `key:${special?.targetPath ?? path}`, displayPath: special?.targetPath ?? path },
             ...(file !== undefined ? { version: file.version, size: file.content.length } : {}),
           }
         }),
@@ -107,10 +122,12 @@ export class FakeFs implements FsPort {
   }
 
   readText(target: FsTarget): Promise<string> {
+    this.onBeforeReadText?.(target.displayPath)
     const file = this.files.get(target.displayPath)
     if (file === undefined) {
       return Promise.reject(Object.assign(new Error('not found'), { code: 'FS_NOT_FOUND' }))
     }
+    this.onAfterReadText?.(target.displayPath)
     return Promise.resolve(file.content)
   }
 
@@ -137,6 +154,27 @@ export class FakeFs implements FsPort {
 
   /** Hook run synchronously before every guarded write (race simulation). */
   onBeforeWrite?: (path: string) => void
+
+  /** Hook run before a read, used to model an external edit during rollback. */
+  onBeforeReadText?: (path: string) => void
+
+  /** Hook after a read, used to model an external edit between snapshot and write. */
+  onAfterReadText?: (path: string) => void
+
+  /** Paths for which listDir should fail with a non-not-found error. */
+  readonly failListDirPaths = new Set<string>()
+
+  /** Add a directory, special entry, or symlink-like file for containment tests. */
+  addSpecial(path: string, type: 'directory' | 'other' | 'file', targetPath = path): void {
+    this.specialEntries.set(path, { type, targetPath })
+    const segments = path.split('/').slice(1, -1)
+    let current = ''
+    for (const segment of segments) {
+      current += `/${segment}`
+      this.dirs.add(current)
+    }
+    if (type === 'directory') this.dirs.add(path)
+  }
 
   /** Simulate an external writer replacing a file. */
   writeExternal(path: string, content: string): void {
