@@ -8,7 +8,7 @@ import {
   type ResearchHostDeps,
   type SciForkFailure,
 } from './apply-command.js'
-import type { ContentBlock, ToolsPort, ToolDefinition, ToolRunContext } from './contracts.js'
+import type { ContentBlock, StorageDomain, ToolsPort, ToolDefinition, ToolRunContext } from './contracts.js'
 import { readFocus, writeFocus, type FocusRecord } from './ui-state.js'
 
 /**
@@ -20,6 +20,7 @@ import { readFocus, writeFocus, type FocusRecord } from './ui-state.js'
 
 export interface ResearchToolsDeps extends ResearchHostDeps {
   tools: ToolsPort
+  storage: StorageDomain
 }
 
 interface ToolExecInfo {
@@ -136,14 +137,14 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
 }
 
 async function executeRead(
-  deps: ResearchHostDeps,
+  deps: ResearchToolsDeps,
   args: Record<string, unknown>,
   exec: ToolRunContext,
 ): Promise<Record<string, unknown>> {
   const info = execInfo(exec)
   const context = await loadProjectState(deps, info.sessionCwd, exec.signal)
   if (!('root' in context)) return errorValue(context)
-  const { project, manifest, branch, head, undo, gitFailure } = context
+  const { project, manifest, branch, head, gitFailure } = context
   const operation = typeof args['operation'] === 'string' ? args['operation'] : ''
   const readOnly = project.diagnostics.length > 0 || gitFailure !== undefined
   const gitError = gitFailure === undefined
@@ -210,11 +211,6 @@ async function executeRead(
       branch,
       head,
       readOnly,
-      lastCheckpointId: undo?.lastCheckpointId,
-      previousCheckpointId: undo?.previousCheckpointId,
-      forwardCheckpointId: undo?.forwardCheckpointId,
-      backAvailable: undo !== undefined && undo.previousCheckpointId !== undefined && !readOnly,
-      forwardAvailable: undo !== undefined && undo.forwardCheckpointId !== undefined && !readOnly,
       ...gitError,
     }
   }
@@ -374,7 +370,6 @@ async function executeApply(
   }
   const expectedProjectRevision = typeof args['expectedProjectRevision'] === 'string' ? args['expectedProjectRevision'] : ''
   const result = await applyCommand(deps, {
-    sessionId: info.sessionId ?? '',
     sessionCwd: info.sessionCwd,
     command: parsed.value,
     expectedProjectRevision,
@@ -405,7 +400,7 @@ const FOCUS_PARAMETERS = {
 }
 
 async function executeFocus(
-  deps: ResearchHostDeps,
+  deps: ResearchToolsDeps,
   args: Record<string, unknown>,
   exec: ToolRunContext,
 ): Promise<Record<string, unknown>> {
@@ -449,7 +444,7 @@ async function executeFocus(
 
 // ---------------------------------------------------- registration
 
-function readTool(deps: ResearchHostDeps): ToolDefinition {
+function readTool(deps: ResearchToolsDeps): ToolDefinition {
   return {
     name: 'research_graph_read',
     description:
@@ -478,7 +473,7 @@ function applyTool(deps: ResearchHostDeps): ToolDefinition {
   }
 }
 
-function focusTool(deps: ResearchHostDeps): ToolDefinition {
+function focusTool(deps: ResearchToolsDeps): ToolDefinition {
   return {
     name: 'research_graph_focus',
     description:

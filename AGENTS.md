@@ -164,8 +164,9 @@ Keep the two Git contexts distinct:
 
 - **SciFork runtime:** operate on the user's current branch, checkpoint only
   managed research paths, and never manage branches, remotes, PRs, merge, or
-  rebase. Runtime Back/Forward creates restore commits and never uses
-  `reset --hard`.
+  rebase. SciFork does not provide Back/Forward or destructive rollback;
+  checkpoint failures preserve the written file and return structured
+  diagnostics. History recovery belongs to DSH Chat or the user.
 - **Repository development:** use work branches and explicit merge commits under
   the rules below.
 

@@ -155,7 +155,7 @@ export class FakeFs implements FsPort {
   /** Hook run synchronously before every guarded write (race simulation). */
   onBeforeWrite?: (path: string) => void
 
-  /** Hook run before a read, used to model an external edit during rollback. */
+  /** Hook run before a read, used to model an external edit during a pipeline. */
   onBeforeReadText?: (path: string) => void
 
   /** Hook after a read, used to model an external edit between snapshot and write. */

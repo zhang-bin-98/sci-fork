@@ -65,7 +65,7 @@ export async function apply(ctx: Context): Promise<void> {
     void storage.close()
   })
 
-  const researchDeps = { fs, subprocess, storage, hash: sha256 }
-  ctx.effect(() => registerResearchTools({ ...researchDeps, tools }))
+  const researchDeps = { fs, subprocess, hash: sha256 }
+  ctx.effect(() => registerResearchTools({ ...researchDeps, storage, tools }))
   ctx.effect(() => registerResearchCommands({ ...researchDeps, commands }))
 }

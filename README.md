@@ -23,8 +23,9 @@ validation with the Finding support threshold, rebuildable projection, typed
 single-entity commands, and Research Import Draft validation), plus the Host
 Project Locator, the three model tools (`research_graph_read`,
 `research_graph_apply`, `research_graph_focus`), the `/research init | open |
-validate` commands, Focus/undo storage domains, and current-branch checkpoints
-with one-step Back/Forward. Implementation continues by milestone: M2
+validate` commands, Focus storage, and current-branch managed-file checkpoints.
+Git history recovery remains the responsibility of DSH Chat or the user.
+Implementation continues by milestone: M2
 Companion, M3 Research.
 
 All M0 gates pass: automated checks, clean-package assembly, real DSH
@@ -55,8 +56,9 @@ The lean MVP design has these boundaries:
 - The model may use another retrieval or PDF Skill instead, then load
   `SciFork Research` to format the current results as a `Research Import Draft`.
   SciFork validates the Draft; research-team data remains a Result.
-- Git uses the current branch, managed-path checkpoints, and one-step
-  Back/Forward. Branches and remotes remain the user's or DSH's responsibility.
+- Git uses the current branch for a minimal managed-path commit attempt.
+  SciFork does not own undo/redo or history recovery; branches and remotes remain
+  the user's or DSH's responsibility.
 - `DSH-better-sidebar v0.15.2` is a fixed implementation reference, never a
   dependency, peer dependency, profile entry, or runtime provider.
 

@@ -16,7 +16,8 @@ MVP 采用以下决策：
 6. DSH Bridge 只提供 Open action 和 Simulate 自动提交。
 7. 页面只有一套响应式布局。
 8. Page Key 直接绑定 session/project，不再做两阶段 token exchange。
-9. Git 使用当前分支，每次 mutation 创建受管路径检查点，只支持一步 Back/Forward。
+9. Git 使用当前分支，每次 mutation 仅尝试创建受管路径提交；SciFork 不维护
+   undo/redo 或历史恢复状态。
 10. MVP 发布一个 SciFork 专用的 `SciFork Research` Skill，以及一个通用的 `pubmed-search` 检索 Skill。
 11. 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
 12. 文献 Evidence 直接保存 PMID/DOI，不建立 Source 实体；任何检索结果都必须经过 Draft 格式化与 SciFork 校验。
@@ -29,7 +30,7 @@ MVP 采用以下决策：
 
 - `ctx.tools.register()`：注册模型工具。
 - `ctx.fs`：受工作区约束的文件访问。
-- `ctx.storageDomain`：保存 Focus、Page Key binding 和一步恢复状态。
+- `ctx.storageDomain`：保存 Focus 和 Page Key binding；不保存 Git undo/redo 状态。
 - `ctx.webServer.register()`：注册 `/scifork/*` 同源 exact/prefix 路由。
 - `ctx.subprocess`：用 argv 数组调用本地 Git。
 - `ctx.skills`：贡献 package-owned `SciFork Research` 和 `pubmed-search` 两个 Skill，由大模型按步骤加载。
@@ -319,17 +320,16 @@ research_graph_focus
 
 不增加 branch、merge、timeline、search 或 import 专用命令；这些行为通过已有工具或 Chat 完成。
 
-### 7.4 Focus 与一步恢复状态
+### 7.4 Focus 状态
 
-DSH storage domain：
+DSH storage domain 只保存 Focus：
 
 ```text
 scifork_ui_state_v1
-├── focus key: <sessionId>:<projectId>
-└── undo key:  <projectId>:<branch>
+└── focus key: <sessionId>:<projectId>
 ```
 
-Focus 保存 `focusEntityId` 和当前路径。Undo 状态只保存最近一次可 Forward 的 checkpoint ID 和记录它时的 HEAD。
+Focus 保存 `focusEntityId` 和当前路径。Git 历史状态由 DSH 或用户通过 Git 管理。
 
 不保存多级导航栈、窗口模式或 Graph 坐标。
 
@@ -345,8 +345,6 @@ Host 使用 `ctx.webServer.register()` 注册：
 /scifork/api/snapshot  read projection
 /scifork/api/entity    read Details
 /scifork/api/focus     update Focus
-/scifork/api/back      one-step Back
-/scifork/api/forward   one-step Forward
 ```
 
 所有 JSON API 使用 POST。Host 通过 Cordis effect 注册路由，并在 bundle 卸载时调用 disposer。
@@ -378,8 +376,6 @@ interface CompanionApi {
   snapshot(sinceProjectRevision?: string): Promise<SnapshotResponse>
   entity(entityId: string): Promise<EntityDocument>
   setFocus(entityId: string): Promise<FocusState>
-  back(expectedProjectRevision: string): Promise<NavigationResult>
-  forward(expectedProjectRevision: string): Promise<NavigationResult>
 }
 ```
 
@@ -517,35 +513,23 @@ detached HEAD、unmerged entries 或 Git root 与项目根不一致时拒绝 mut
 - 不改变不相关 staged files。
 - mutation 前若受管路径已有外部 dirty change，则返回 stale/只读诊断。
 
-### 11.3 一步 Back / Forward
+### 11.3 Git 历史边界
 
-Back 只在当前 HEAD 仍是最近 SciFork checkpoint 时启用：
-
-```text
-A ─ B        current
-    ↓ Back
-A ─ B ─ R(A)
-          ↓ Forward
-A ─ B ─ R(A) ─ R(B)
-```
-
-- Back 恢复上一个 SciFork 状态并创建 restore commit。
-- Host 只保存刚被撤回的 checkpoint ID。
-- Forward 重新应用该 checkpoint并创建 restore commit。
-- 任意新 mutation、branch change 或 external HEAD change 清除 Forward。
-- 不支持多级 undo/redo，不维护 actionGroup 或 session 独立栈。
-- 任意历史恢复由 DSH Git 操作完成；SciFork 检测变化后重新加载。
-
-不使用 `reset --hard`，不移动 branch ref，不调用 remote、merge 或 rebase。
+SciFork 不提供 Back/Forward，不维护 checkpoint 栈、undo storage 或恢复状态机。
+它只在 mutation 成功后，尝试用 argv-only Git 为受管路径创建一次当前分支提交。
+提交失败返回 `CHECKPOINT_FAILED` 诊断，不执行复杂的破坏性补偿；若提交状态不
+确定，返回需要人工检查的不可恢复诊断。历史恢复、分支、远端、merge、rebase
+和冲突解决由 DSH Chat 或用户完成。SciFork 只在后续读取时检测外部 HEAD/分支
+变化并重新解析项目。
 
 ## 12. 一致性与安全
 
 ### 12.1 并发
 
-- 同一 project root + branch 的 mutation 经过一个 Host 内存队列。
+- 同一 project root 的 mutation 经过一个 Host 内存队列。
 - 写前验证 `expectedProjectRevision`；更新已有实体时再验证 `expectedFileVersion`。
 - 一个窗口成功写入后，其他窗口的旧请求返回 `STALE_REVISION`。
-- branch 或 HEAD 外部变化会清除一步恢复状态并触发重新解析。
+- branch 或 HEAD 外部变化触发重新解析；不维护恢复状态。
 - unmerged entries 或 schema 错误使 Graph 只读。
 
 不设计分布式锁、数据库事务或跨进程协调。MVP 假设一个本地 DSH Host 进程拥有项目。
@@ -644,9 +628,9 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - 三个工具注册、卸载与参数上限。
 - 两个 packaged Skill 的发现、加载与卸载。
 - PubMed helper 的完整查询、300 条分页、lookup、空结果、超时和无效响应 fixture。
-- checkpoint 只提交受管路径且不改变无关 staged files。
+- checkpoint 只提交受管路径且不改变无关 staged files；失败只返回结构化诊断。
 - 当前分支初始化，不创建或切换分支。
-- 一步 Back/Forward、新 mutation 清除 Forward。
+- 不提供 SciFork-owned Back/Forward；历史恢复由 DSH Chat 或用户完成。
 - conflict、external dirty 和 stale revision 进入只读或拒绝写入。
 
 ### 15.3 Companion / Bridge
@@ -680,8 +664,7 @@ fresh DSH profile
 → repeat with one alternative retrieval/PDF Skill
 → load scifork-research and import one formatted Draft item
 → create validated Result and support Edge
-→ Back
-→ Forward
+→ ask the corresponding DSH Chat for Git history recovery
 → reload Companion
 → uninstall bundle
 → Research Project and DSH Session remain readable
@@ -705,7 +688,7 @@ fresh DSH profile
 - schema、parser、validator、projection。
 - typed commands 与 Research Import Draft validator。
 - Project Locator、三个工具。
-- 当前分支 checkpoint 和一步 Back/Forward。
+- 当前分支受管路径 checkpoint 与失败诊断，不包含 SciFork-owned 历史恢复。
 
 ### M2：Companion
 
@@ -734,7 +717,7 @@ fresh DSH profile
 | 两窗口 stale write | project queue + expectedProjectRevision |
 | PubMed 限流或格式变化 | 300 条分页、官方速率、POST/History、超时和响应校验 |
 | 检索 Skill 输出不可信 | 大模型再加载格式化 Skill，Draft 边界、PMID/DOI、locator、用户选择 |
-| Git 外部变化或冲突 | 当前分支检测、清除 Forward、只读模式 |
+| Git 外部变化或冲突 | 当前分支检测、结构化诊断、只读模式 |
 | Markdown 注入 | raw HTML off、CSP、路径 containment |
 | 敏感数据进入 Git | README/SECURITY 提示，绝不自动远端同步 |
 
@@ -750,7 +733,7 @@ fresh DSH profile
 - `SciFork Research` 与 `pubmed-search` 两个 Skill 可被发现、顺序加载和卸载。
 - PubMed Skill 支持完整查询、单批 300 条分页与 PMID/DOI lookup。
 - 大模型能先使用任一检索 Skill，再使用 `scifork-research` 格式化 Research Import Draft。
-- 当前分支自动 checkpoint，一步 Back/Forward 保留历史。
+- 当前分支自动尝试受管路径 checkpoint；Git 历史恢复由 DSH Chat 或用户完成。
 - 不实现自动分支、远端 Git、多级 timeline、自动 MeSH 扩展、PubTator、全文、缓存或 RAG。
 - 冲突、stale write 和无效 Draft 由 SciFork 明确提示；PubMed 失败由检索 Skill 明确显示。
 - 卸载后 Research Project 与 DSH Session 仍可读取。

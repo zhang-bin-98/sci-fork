@@ -53,5 +53,5 @@ A qualitative assessment of support strength (`low`, `moderate`, or `high`), not
 _Avoid_: Probability, confidence score
 
 **Research Checkpoint**:
-An auditable saved state created after a successful scientific operation or restoration.
+An auditable saved state created after a successful SciFork scientific operation.
 _Avoid_: Save, snapshot file

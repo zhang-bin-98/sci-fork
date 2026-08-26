@@ -48,7 +48,7 @@ async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation)
     if (!('root' in context)) {
       return { kind: 'error', text: `${context.code}: ${context.message}` }
     }
-    const { project, branch, head, undo } = context
+    const { project, branch, head } = context
     const diagnostics = project.diagnostics
     const lines: string[] = []
     if (diagnostics.length === 0) {
@@ -67,9 +67,6 @@ async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation)
     lines.push(`revision: ${project.projectRevision}`)
     if (branch !== undefined && head !== undefined) {
       lines.push(`branch: ${branch}, head: ${head.slice(0, 12)}`)
-    }
-    if (undo !== undefined) {
-      lines.push(`checkpoint: ${undo.lastCheckpointId.slice(0, 12)}`)
     }
     return { kind: 'success', text: lines.join('\n') }
   }

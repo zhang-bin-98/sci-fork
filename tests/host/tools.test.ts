@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { registerResearchTools } from '../../src/host/tools.js'
-import type { ResearchHostDeps } from '../../src/host/apply-command.js'
+import type { ResearchToolsDeps } from '../../src/host/tools.js'
 import { FakeFs, FakeStorageDomainPort, FakeToolsPort, scriptedGit } from './fakes.js'
-import { TABLE_FOCUS, TABLE_UNDO, UI_STATE_DOMAIN, uiStateDomainSpec } from '../../src/host/ui-state.js'
+import { TABLE_FOCUS, UI_STATE_DOMAIN, uiStateDomainSpec } from '../../src/host/ui-state.js'
 import type { ToolRunContext } from '../../src/host/contracts.js'
 import { projectRevision } from '../../src/core/revision.js'
 
@@ -80,7 +80,11 @@ function healthyGit(statusOutput = '') {
   return { port }
 }
 
-async function host(fs: FakeFs, storage: FakeStorageDomainPort, subprocess = healthyGit().port): Promise<ResearchHostDeps> {
+async function host(
+  fs: FakeFs,
+  storage: FakeStorageDomainPort,
+  subprocess = healthyGit().port,
+): Promise<Omit<ResearchToolsDeps, 'tools'>> {
   return {
     fs,
     subprocess,
@@ -244,17 +248,11 @@ describe('research_graph_read', () => {
     expect(none).toMatchObject({ ok: true, matches: [] })
   })
 
-  it('reports checkpoint state from the undo record', async () => {
-    const { byName, storage } = await registered({
+  it('reports only the current Git checkpoint state', async () => {
+    const { byName } = await registered({
       '/proj/research.json': MANIFEST,
       [`/proj/nodes/${NODE}.md`]: NODE_FILE,
       [`/proj/evidence/${EV}.md`]: EV_FILE,
-    })
-    storage.tableOf(UI_STATE_DOMAIN, TABLE_UNDO)!.records.set(`${PROJECT_ID}:main`, {
-      branch: 'main',
-      recordedHead: OLD_SHA,
-      lastCheckpointId: NEW_SHA,
-      previousCheckpointId: OLD_SHA,
     })
     const read = byName.get('research_graph_read')!
     const value = await read.execute({ operation: 'checkpoint' }, execFor())
@@ -262,10 +260,10 @@ describe('research_graph_read', () => {
       ok: true,
       branch: 'main',
       head: OLD_SHA,
-      lastCheckpointId: NEW_SHA,
-      backAvailable: true,
-      forwardAvailable: false,
     })
+    expect(value).not.toHaveProperty('lastCheckpointId')
+    expect(value).not.toHaveProperty('backAvailable')
+    expect(value).not.toHaveProperty('forwardAvailable')
   })
 
   it('returns SESSION_UNAVAILABLE without a session cwd', async () => {

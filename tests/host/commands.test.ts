@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { registerResearchCommands } from '../../src/host/commands.js'
 import type { ResearchHostDeps } from '../../src/host/apply-command.js'
-import { FakeCommandsPort, FakeFs, FakeStorageDomainPort, scriptedGit } from './fakes.js'
-import { uiStateDomainSpec } from '../../src/host/ui-state.js'
+import { FakeCommandsPort, FakeFs, scriptedGit } from './fakes.js'
 import type { CommandInvocation } from '../../src/host/contracts.js'
 
 const sha256 = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex')
@@ -30,17 +29,15 @@ function initGit() {
 
 async function registered(entries: Record<string, string> = {}) {
   const fs = new FakeFs(entries)
-  const storage = new FakeStorageDomainPort()
   const commands = new FakeCommandsPort()
   const deps: ResearchHostDeps & { commands: FakeCommandsPort; mkdirs?: (root: string) => void } = {
     fs,
     subprocess: initGit(),
-    storage: await storage.open(uiStateDomainSpec()),
     hash: sha256,
     commands,
   }
   const dispose = registerResearchCommands(deps)
-  return { fs, storage, commands, dispose, deps }
+  return { fs, commands, dispose, deps }
 }
 
 function invocation(cwd: string | undefined, rawInput: string): CommandInvocation {

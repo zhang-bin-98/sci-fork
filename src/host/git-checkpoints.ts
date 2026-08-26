@@ -1,21 +1,17 @@
 import { posix, win32 } from 'node:path'
 import type { SubprocessPort } from './contracts.js'
-import { MANIFEST_FILE, MANAGED_PATHS } from '../core/schema.js'
+import { MANAGED_PATHS } from '../core/schema.js'
 
 /** Fixed executable name resolved through the provider's scrubbed PATH. */
 export const GIT_EXECUTABLE = 'git'
 
-/** Termination grace for Git probes (SIGTERM → SIGKILL escalation window). */
+/** Termination grace for Git probes (SIGTERM -> SIGKILL escalation window). */
 export const GIT_GRACE_MS = 5000
 
 /** Cap for collected stdout/stderr on Git probes. */
 const GIT_OUTPUT_LIMIT = 64 * 1024
 
-/**
- * Build one argv-only Git spec. Git is always invoked as a program with
- * explicit arguments; no shell string, no `-c`, no option injection from
- * research content.
- */
+/** Build one argv-only Git invocation; research content never becomes a shell string. */
 export function buildGitArgv(
   gitExecutable: string,
   args: readonly string[],
@@ -29,10 +25,7 @@ export function buildGitArgv(
   return { argv: [gitExecutable, ...args], cwd }
 }
 
-/**
- * Parse `git rev-parse --show-toplevel` output: exactly one absolute path.
- * Anything else (empty, multiple lines) is not a usable answer.
- */
+/** Parse `git rev-parse --show-toplevel`: exactly one absolute path. */
 export function parseRevParseToplevel(output: string): string | undefined {
   const trimmed = output.trim()
   if (
@@ -55,18 +48,13 @@ function sameRepositoryRoot(actual: string, cwd: string): boolean {
   return comparablePath(actual) === comparablePath(cwd)
 }
 
-/** One settled Git invocation. */
 export interface GitRunResult {
   exitCode: number
   stdout: string
   stderr: string
 }
 
-/**
- * Run git with explicit argv and collect bounded output. Throws when the
- * executable cannot be resolved or the spawn fails (callers map that to
- * GIT_UNAVAILABLE).
- */
+/** Run one bounded, argv-only Git invocation through the DSH subprocess service. */
 export async function runGit(
   subprocess: SubprocessPort,
   args: readonly string[],
@@ -98,11 +86,7 @@ export async function runGit(
   }
 }
 
-/**
- * Run `git rev-parse --show-toplevel` in `cwd` through the DSH subprocess
- * service. Returns the repository top-level directory, or undefined when the
- * directory is not a repository or the output is ambiguous.
- */
+/** Return the repository top level, or undefined for an unusable Git answer. */
 export async function gitShowToplevel(
   subprocess: SubprocessPort,
   cwd: string,
@@ -117,10 +101,7 @@ export async function gitShowToplevel(
   }
 }
 
-/**
- * Parse `git status --porcelain` lines into `{code, path}` pairs, keeping
- * only the destination path of rename pairs.
- */
+/** Parse Git porcelain status, retaining the destination of rename pairs. */
 export function parsePorcelainStatus(output: string): { code: string; path: string }[] {
   const entries: { code: string; path: string }[] = []
   for (const rawLine of output.split('\n')) {
@@ -144,9 +125,8 @@ export type GitInitPreflightResult =
   | { ok: false; code: 'PROJECT_REPOSITORY_MISMATCH' | 'GIT_UNAVAILABLE' | 'GIT_STATE_UNSUPPORTED' | 'READ_ONLY_CONFLICT'; reason: string }
 
 /**
- * Initialization preflight (architecture §11.1): require an attached branch,
- * allow an unborn HEAD for a freshly initialized repository, and reject any
- * unmerged entry or dirty managed path before init writes anything.
+ * Initialization preflight: require an attached branch, allow an unborn HEAD,
+ * and reject unmerged entries or dirty managed paths before writing.
  */
 export async function gitInitPreflight(
   subprocess: SubprocessPort,
@@ -163,6 +143,7 @@ export async function gitInitPreflight(
   if (symbolic.exitCode !== 0 || branch.length === 0) {
     return { ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'HEAD is detached or unborn' }
   }
+
   let head: GitRunResult
   let unmerged: GitRunResult
   let status: GitRunResult
@@ -186,16 +167,10 @@ export async function gitInitPreflight(
     return { ok: false, code: 'READ_ONLY_CONFLICT', reason: 'managed paths have uncommitted changes' }
   }
   const headSha = head.stdout.trim()
-  // A symbolic branch with no resolvable HEAD is the normal unborn state
-  // immediately after `git init`; it is the only no-commit state init accepts.
   return { ok: true, branch, head: head.exitCode === 0 && headSha.length > 0 ? headSha : undefined }
 }
 
-/**
- * Mutation preflight (architecture §11): an attached, resolvable HEAD on a
- * real branch, no unmerged entries, and a clean managed tree. The returned
- * branch and HEAD seed undo-state recording.
- */
+/** Mutation preflight: project-root repository, attached branch, resolvable HEAD, and clean managed paths. */
 export async function gitPreflight(
   subprocess: SubprocessPort,
   cwd: string,
@@ -216,34 +191,19 @@ export async function gitPreflight(
   } catch {
     return { ok: false, code: 'GIT_UNAVAILABLE', reason: 'git is not available' }
   }
+
   const result = await gitInitPreflight(subprocess, cwd, signal)
   if (!result.ok) return result
-  const head = result.head
-  if (head === undefined) {
+  if (result.head === undefined) {
     return { ok: false, code: 'GIT_STATE_UNSUPPORTED', reason: 'HEAD cannot be resolved' }
   }
-  return { ok: true, branch: result.branch, head }
+  return { ok: true, branch: result.branch, head: result.head }
 }
 
 /**
- * Managed paths present in a file set, for pathspec operations. Git pathspec
- * commits fail on non-matching paths, so only existing paths are named
- * (empty managed directories are skipped; `git add` tolerates them).
- */
-export function managedCheckpointPaths(files: ReadonlyMap<string, string>): string[] {
-  const paths: string[] = []
-  if (files.has(MANIFEST_FILE)) paths.push(MANIFEST_FILE)
-  for (const dir of MANAGED_PATHS.slice(1)) {
-    if ([...files.keys()].some((path) => path.startsWith(`${dir}/`))) paths.push(dir)
-  }
-  return paths
-}
-
-/**
- * Commit exactly the managed paths present in `paths` (architecture §11.2).
- * The files are staged first so the pathspec resolves on an unborn HEAD, then
- * `commit --only <paths>` commits them through a temporary index: unrelated
- * staged files stay staged and never enter the commit. Returns the new HEAD.
+ * Commit exactly the supplied managed pathspecs. Staging happens first so a
+ * pathspec also works on an unborn repository; `commit --only` preserves any
+ * unrelated staged work. No rollback is attempted when this operation fails.
  */
 export async function gitCheckpoint(
   subprocess: SubprocessPort,
@@ -256,152 +216,19 @@ export async function gitCheckpoint(
   try {
     const add = await runGit(subprocess, ['add', '--', ...paths], cwd, signal)
     if (add.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
-    const commit = await runGit(
-      subprocess,
-      ['commit', '--only', '-m', message, '--', ...paths],
-      cwd,
-      signal,
-    )
+    const commit = await runGit(subprocess, ['commit', '--only', '-m', message, '--', ...paths], cwd, signal)
     if (commit.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
     committed = true
     const head = await runGit(subprocess, ['rev-parse', 'HEAD'], cwd, signal)
     const headSha = head.stdout.trim()
-    if (head.exitCode !== 0 || headSha.length === 0) return { ok: false, code: 'CHECKPOINT_FAILED', committed: true }
+    if (head.exitCode !== 0 || headSha.length === 0) {
+      return { ok: false, code: 'CHECKPOINT_FAILED', committed: true }
+    }
     return { ok: true, head: headSha }
   } catch {
-    return committed ? { ok: false, code: 'CHECKPOINT_FAILED', committed: true } : { ok: false, code: 'CHECKPOINT_FAILED' }
-  }
-}
-
-/**
- * List the managed files recorded in one commit, relative to the repo root.
- * `ls-tree` is run per managed path so a missing directory simply yields
- * nothing; undefined means the listing failed.
- */
-export async function gitListManagedFiles(
-  subprocess: SubprocessPort,
-  cwd: string,
-  ref: string,
-  signal?: AbortSignal,
-): Promise<string[] | undefined> {
-  try {
-    const files: string[] = []
-    for (const path of MANAGED_PATHS) {
-      const result = await runGit(subprocess, ['ls-tree', '-r', '--name-only', ref, '--', path], cwd, signal)
-      if (result.exitCode !== 0) return undefined
-      for (const line of result.stdout.split('\n')) {
-        const trimmed = line.trim()
-        if (trimmed === MANIFEST_FILE || MANAGED_PATHS.slice(1).some((dir) => trimmed.startsWith(`${dir}/`))) {
-          files.push(trimmed)
-        }
-      }
-    }
-    return files
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * Restore the managed tree to a checkpoint's state (architecture §11.3):
- * `git checkout <source> -- <source paths>` resurrects and reverts the paths
- * recorded in the source, and `git rm -f` removes managed files that exist
- * now but not in the source. Those deletions are immediately unstaged so the
- * caller's scoped checkpoint can stage them together with restored files. The
- * caller commits the restored state as a new restore commit; history is never
- * rewritten.
- */
-export async function gitRestoreManagedFrom(
-  subprocess: SubprocessPort,
-  cwd: string,
-  source: string,
-  sourcePaths: readonly string[],
-  removePaths: readonly string[],
-  signal?: AbortSignal,
-): Promise<boolean> {
-  try {
-    if (sourcePaths.length > 0) {
-      const checkout = await runGit(subprocess, ['checkout', source, '--', ...sourcePaths], cwd, signal)
-      if (checkout.exitCode !== 0) return false
-    }
-    for (const path of removePaths) {
-      const removed = await runGit(subprocess, ['rm', '-f', '-q', '--', path], cwd, signal)
-      if (removed.exitCode !== 0) return false
-      // Keep the worktree deletion but leave staging to gitCheckpoint, whose
-      // explicit path list also preserves unrelated staged files.
-      const unstaged = await runGit(subprocess, ['restore', '--staged', '--', path], cwd, signal)
-      if (unstaged.exitCode !== 0) return false
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * Compensation for a failed update checkpoint: restore one tracked path from
- * the committed HEAD, regardless of what a partially failed checkpoint left
- * in the index.
- */
-export async function gitCheckoutPath(
-  subprocess: SubprocessPort,
-  cwd: string,
-  path: string,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  try {
-    const result = await runGit(subprocess, ['checkout', 'HEAD', '--', path], cwd, signal)
-    return result.exitCode === 0
-  } catch {
-    return false
-  }
-}
-
-/**
- * Compensation for a failed create checkpoint: drop one path that a partial
- * checkpoint may have staged (`git rm -f`) and clean it if still untracked.
- */
-export async function gitRemovePath(
-  subprocess: SubprocessPort,
-  cwd: string,
-  path: string,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  try {
-    const result = await runGit(subprocess, ['rm', '-f', '-q', '--', path], cwd, signal)
-    return result.exitCode === 0
-  } catch {
-    return false
-  }
-}
-
-/** Compensation fallback: remove one untracked path. */
-export async function gitCleanPath(
-  subprocess: SubprocessPort,
-  cwd: string,
-  path: string,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  try {
-    const result = await runGit(subprocess, ['clean', '-f', '--', path], cwd, signal)
-    return result.exitCode === 0
-  } catch {
-    return false
-  }
-}
-
-/** Verify that one compensation target is absent from both index and worktree status. */
-export async function gitPathIsClean(
-  subprocess: SubprocessPort,
-  cwd: string,
-  path: string,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  try {
-    const result = await runGit(subprocess, ['status', '--porcelain', '--', path], cwd, signal)
-    return result.exitCode === 0 && parsePorcelainStatus(result.stdout).length === 0
-  } catch {
-    return false
+    return committed
+      ? { ok: false, code: 'CHECKPOINT_FAILED', committed: true }
+      : { ok: false, code: 'CHECKPOINT_FAILED' }
   }
 }
 
@@ -428,12 +255,7 @@ export async function gitIdentityConfigured(
   try {
     const name = await runGit(subprocess, ['config', '--get', 'user.name'], cwd, signal)
     const email = await runGit(subprocess, ['config', '--get', 'user.email'], cwd, signal)
-    return (
-      name.exitCode === 0 &&
-      name.stdout.trim().length > 0 &&
-      email.exitCode === 0 &&
-      email.stdout.trim().length > 0
-    )
+    return name.exitCode === 0 && name.stdout.trim().length > 0 && email.exitCode === 0 && email.stdout.trim().length > 0
   } catch {
     return false
   }
@@ -446,12 +268,4 @@ export function checkpointMessage(kind: string, entityId: string): string {
 
 export function initCheckpointMessage(): string {
   return 'scifork: init'
-}
-
-export function backMessage(checkpointId: string): string {
-  return `scifork: back to ${checkpointId.slice(0, 12)}`
-}
-
-export function forwardMessage(checkpointId: string): string {
-  return `scifork: forward to ${checkpointId.slice(0, 12)}`
 }

@@ -1,7 +1,8 @@
 # SciFork M1: Core 与 Git
 
-> 状态：Implementation complete；自动化检查与一次性 DSH profile smoke 均通过（未含真实模型 tool-call loop）
-> 日期：2026-08-25
+> 状态：Implementation complete；方案 B 自动化检查通过。此前的一次性 DSH profile smoke
+> 已完成，方案 B 精简后未重跑 profile（未含真实模型 tool-call loop）
+> 日期：2026-08-25；方案 B 更新：2026-08-27
 > 上位设计：[软件架构 v0.12](../scifork-software-architecture.md) §16 M1、[产品设计 v0.11](../scifork-product-design.md)
 > 钉住版本：DeepSeek Harness `0.1.1-rc.2`（沿用 M0 一次性 profile）
 
@@ -20,8 +21,8 @@ commands），使 M2 Companion 与 M3 Research 可以直接消费。
 2. 实现 Host：Project Locator、`research_graph_read` / `research_graph_apply` /
    `research_graph_focus` 三个模型工具、`/research init` / `/research open` /
    `/research validate` 三个人类命令。
-3. 实现当前分支 checkpoint 与一步 Back/Forward，满足架构 §11 的全部约束。
-4. 用 DSH `storageDomain` 保存 Focus 与一步恢复状态。
+3. 实现当前分支受管路径的最小 checkpoint 尝试与失败诊断。
+4. 用 DSH `storageDomain` 保存 Focus，不保存 Git undo/redo 状态。
 5. 全量 TDD，`pnpm check` 全绿。
 
 ## Non-goals
@@ -33,6 +34,7 @@ commands），使 M2 Companion 与 M3 Research 可以直接消费。
 - 不引入架构 §14 之外的运行时依赖（新增 zod、gray-matter、js-yaml，均已在
   §14 批准）。
 - 不在本仓库运行生产 profile 冒烟；冒烟只针对一次性 profile 且需用户批准。
+- 不实现 SciFork-owned Back/Forward、undo/redo 栈或 Git 恢复状态机；历史恢复交给 DSH Chat 或用户。
 
 ## 文档修正（2026-08-24 用户确认）
 
@@ -102,8 +104,8 @@ contains(parent, child): boolean
 - 所有项目文件内容读写经 `ctx.fs`（受 DSH 观察/沙箱策略约束），不使用裸
   `node:fs` 读写文件内容；仅 init 时用 `node:fs` mkdir 物化四个空目录。
 - `FsError` 码 `FS_STALE_VERSION`/`FS_NOT_OBSERVED` 映射为 `STALE_TARGET`。
-- 无 delete/rename 能力：补偿回滚用 scoped Git（`git clean -f -- <path>` /
-  `git checkout -- <path>`），见 §检查点。
+- 无 delete/rename 能力；M1 不据此引入 Git 补偿删除或恢复路径。检查点失败时
+  保留写入并返回结构化诊断，由 DSH Chat 或用户处理。
 
 ### 4. `ctx.commands`（dsh-commands/lib/types/index.d.ts、types.d.ts）
 
@@ -353,7 +355,7 @@ interface ProjectionEdge {
 
 | 工具 | 参数 | 行为 |
 | --- | --- | --- |
-| `research_graph_read` | operation: summary\|focus\|entity\|neighborhood\|find\|checkpoint、entityId?、query?、limit?（1..50） | 只读；返回投影/实体/邻域（一层）/焦点/检查点状态 |
+| `research_graph_read` | operation: summary\|focus\|entity\|neighborhood\|find\|checkpoint、entityId?、query?、limit?（1..50） | 只读；返回投影/实体/邻域（一层）/焦点/当前 Git 状态 |
 | `research_graph_apply` | command（判别联合 JSON Schema 描述 + Core 校验）、expectedProjectRevision | mutation 流水线（见下） |
 | `research_graph_focus` | focusEntityId?: string \| null、pathIds?: string[]（≤32 项，每项必须存在） | 只写 focus sidecar，不写科研文件/Git |
 
@@ -380,54 +382,29 @@ interface ProjectionEdge {
   → GIT_STATE_UNSUPPORTED / READ_ONLY_CONFLICT
 → Core parseCommand / planCommand → INVALID_ENTITY
 → ctx.fs writeText（createIfAbsent / replaceIfVersion + fileVersion 双保险）
-→ 重读全部受管文件并要求等于“初始快照 + plan.path 新内容”（不等则回滚 + STALE_REVISION）
+→ 重读全部受管文件并要求等于“初始快照 + plan.path 新内容”（不等则返回 STALE_REVISION 诊断，不做破坏性回滚）
 → git add <plan.path> && git commit --only <plan.path> -m "scifork: <kind> <entityId>"
-→ 记录 undo 状态、返回 { ok, entityId, revision, checkpointId }
+→ 返回 { ok, entityId, revision, checkpointId }
 ```
 
-- 同一 project root + branch 的 mutation 经 Host 内存队列串行（架构 §12.1）。
-- 初始快照与写后文件集校验防止外部编辑被误纳入本次 mutation；不一致时仅补偿
-  本次目标写入，不写 undo 状态。跨进程 Git/编辑器在 preflight 与 commit 之间的
-  HEAD 变化仍属于下一阶段的边界风险。
-- 检查点失败（CHECKPOINT_FAILED）→ 补偿回滚：先确认目标仍保持本次写入内容；
-  若已被外部修改则不执行破坏性回滚并报告手工恢复。否则更新类执行
-  `git checkout HEAD -- <path>`，创建类执行 `git rm -f -q -- <path>` 后
-  `git clean -f -- <path>`（argv-only、只作用于刚写入的受管路径），并验证
-  DSH 文件视图与 Git 状态都已清理；失败不留下“Saved”假象。
+- 同一 project root 的 mutation 经 Host 内存队列串行（架构 §12.1）。
+- 初始快照与写后文件集校验防止外部编辑被误纳入本次 mutation；不一致时返回
+  `STALE_REVISION`，保留文件写入并让 DSH Chat/用户重新读取和决定如何处理。
+  跨进程 Git/编辑器在 preflight 与 commit 之间的 HEAD 变化属于诊断边界。
+- 检查点失败（`CHECKPOINT_FAILED`）只报告提交失败或提交状态不确定，不执行
+  `git checkout`、`git rm`、`git clean` 等破坏性补偿；需要恢复时交给 DSH Chat
+  或用户使用 Git。
 - commit 用 `--only <paths>`：不改变无关 staged files，绝不 `git add .`。
 - 真实 Git 验证的路径语义：`git commit --only` 的 pathspec 必须命中 index，
   因此先 `git add -- <paths>` 再 `commit --only`；普通 mutation 的 paths 只取
-  Core 计划出的单实体 `plan.path`，初始化/恢复才按当前受管文件集精确列出。
-- 一步恢复用 `git ls-tree -r --name-only <ref> -- <受管路径>` 列出源检查点
-  的受管文件，`git checkout <ref> -- <源文件>` 还原/复活，
-  `git rm -f` 删除源中不存在的当前文件；不使用 `reset --hard`。
+  Core 计划出的单实体 `plan.path`，初始化只提交 `research.json`。
 
-### Git 检查点与一步 Back/Forward（git-checkpoints.ts、ui-state.ts）
+### Git 检查点边界（git-checkpoints.ts）
 
-undo 域记录（storageDomain 表 `undo`，key `<projectId>:<branch>`）：
-
-```ts
-interface UndoRecord {
-  branch: string
-  recordedHead: string
-  lastCheckpointId: string
-  previousCheckpointId?: string    // Back 目标（无 → Back 禁用）
-  forwardCheckpointId?: string     // Forward 目标（无 → Forward 禁用）
-}
-```
-
-- 每次成功 checkpoint 后写入：
-  `{ branch, recordedHead: newHead, lastCheckpointId: newHead, previousCheckpointId: oldHead }`。
-- 状态一致性检查（每次操作前）：branch 变化或 `HEAD !== recordedHead` →
-  清除 undo 记录（Back/Forward 禁用）并重新加载。
-- **Back**（HEAD === recordedHead、previousCheckpointId 存在、受管路径干净）：
-  `git restore --source <previousCheckpointId> -- <受管路径>` → commit
-  `scifork: back to <short>` → 新记录 `{ lastCheckpointId: R, forwardCheckpointId: 被撤回的 checkpoint }`。
-- **Forward**（HEAD === recordedHead、forwardCheckpointId 存在）：
-  `git restore --source <forwardCheckpointId> -- <受管路径>` → commit
-  `scifork: forward to <short>` → 新记录 `{ previousCheckpointId: R, forwardCheckpointId 清除 }`。
-- 任意新 mutation 重写记录 → Forward 清除。不使用 `reset --hard`、不移动
-  branch ref、不调用 remote/merge/rebase。MVP 只维护一步（Back 后不可再 Back）。
+SciFork 不提供 Back/Forward，不维护 checkpoint 栈、undo storage 或恢复状态机。
+每次成功 mutation 只尝试用 argv-only Git 为受管路径创建一次当前分支提交；
+提交失败返回 `CHECKPOINT_FAILED` 诊断，不执行复杂的破坏性补偿。历史恢复、
+分支、远端、merge、rebase 和冲突解决由 DSH Chat 或用户完成。
 
 ### Focus 与存储（ui-state.ts）
 
@@ -435,7 +412,6 @@ storageDomain 域 `scifork_ui_state_v1`，version 1，表：
 
 ```ts
 focus: key `<sessionId>:<projectId>` → { focusEntityId: string, pathIds: string[] }
-undo:  key `<projectId>:<branch>`    → UndoRecord
 ```
 
 - open 在 apply 内 await 完成后激活；close 挂 `ctx.effect` disposer。
@@ -473,57 +449,54 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
 - [x] Host 测试覆盖：Project Locator containment 与 Git root equality；三个
       工具注册/卸载/参数上限/read 各 operation；非法 manifest 只读诊断；
       mutation 流水线（fake fs +
-      fake subprocess）的 stale revision/target、只读冲突、检查点失败补偿；
+      fake subprocess）的 stale revision/target、只读冲突、检查点失败诊断；
       checkpoint 只提交受管路径且不改变无关 staged files；全仓库 unmerged
-      与单实体 checkpoint 路径；一步 Back/Forward
-      与新 mutation 清除 Forward；写后外部 managed 文件变化与目标回滚；
+      与单实体 checkpoint 路径；写后外部 managed 文件变化的 stale 诊断；
       init 的 Git 状态预检（detached/unborn/dirty）
       、git init/identity/基线检查点。
-- [x] undo/focus 记录经 storageDomain 契约测试（fake Domain）。
+- [x] Focus 记录经 storageDomain 契约测试（fake Domain）；Git undo/redo 不进入存储。
 - [x] 真实 Git 最小验证：临时仓库验证 pathspec commit 语义、无关 staged
-      files 不受影响、非仓库错误分类、全仓库 unmerged 预检、Back/Forward
-      restore commit 流与新增文件移除。
-- [x] 一次性 profile 冒烟（用户已批准）：工具可发现、`/research init` 在临时
-      目录完成、`/research validate` 返回有效项目；另以同版本公开工具服务
-      smoke 验证创建实体检查点与 Back/Forward 一步恢复（未经过模型 prompt）。
+      files 不受影响、非仓库错误分类和全仓库 unmerged 预检；历史恢复不属于 M1。
+- [x] 一次性 profile 冒烟（用户已批准、方案 B 前执行）：工具可发现、
+      `/research init` 在临时目录完成、`/research validate` 返回有效项目；另以
+      同版本公开工具服务 smoke 验证创建实体检查点（未经过模型 prompt）。
+      该记录只证明当时的 DSH 公开契约兼容性，不证明方案 B 的检查点失败诊断；
+      方案 B 精简后未重跑 profile。
 
-## Final results（2026-08-25）
+## Final results（方案 B，2026-08-27）
 
-1. `pnpm check` 干净；19 个测试文件、272 项 Vitest 全绿；`pnpm build` 生成 `dist/host` 全部新
-   模块与 `dist/client.js`。
+1. 方案 B 精简后 `pnpm check` 干净；19 个测试文件、233 项 Vitest 全绿，
+   `pnpm build` 已重新生成 Host 与 `dist/client.js`。
 2. 真实 Git 集成测试（系统 Git，临时仓库）确认：`git add + commit --only
    <paths>` 只提交受管路径且不动无关 staged files（含 unborn HEAD 根提交）；
-   `git restore`/`checkout <ref> -- <files>` 与 `git rm -f` +
-   `git restore --staged` 组合完成一步 Back/Forward，历史只追加 restore
-   commit，rev-list 计数严格递增。
+   历史恢复不由 SciFork 执行。
 3. 实现期间的契约修正（已回写本文档）：① `commit --only` pathspec 需先
-   `git add`（pathspec 必须命中 index）；② restore 改为
-   `ls-tree` 列文件 + `checkout <ref> -- <files>` + `git rm -f` 精确还原；
-   ③ undo 记录的 commit id 接受 40–64 位小写 hex（SHA-1/SHA-256 仓库）；
-   ④ front matter 解析/渲染统一使用 js-yaml v4（YAML 1.2）引擎，替换
+   `git add`（pathspec 必须命中 index）；② front matter 解析/渲染统一使用
+   js-yaml v4（YAML 1.2）引擎，替换
    gray-matter 内置的 js-yaml v3，保证 round-trip 不被 YAML 1.1 布尔规则改写；
-   ⑤ Windows 上 Git `/` 与 DSH fs `\\` 路径比较统一为同一分隔符；⑥ parser 对
+   ③ Windows 上 Git `/` 与 DSH fs `\\` 路径比较统一为同一分隔符；④ parser 对
    `publication_ref: null`、非对象 front matter/`research.json` fail-closed 为诊断，
-   不抛异常；init 目录创建失败返回结构化错误；⑦ `projectRevision` 严格按逐文件
+   不抛异常；init 目录创建失败返回结构化错误；⑤ `projectRevision` 严格按逐文件
    record hash 后再整体 hash 的公开公式计算。
 4. 环境说明：本会话 pnpm 依赖安装需 full-access 沙箱（esbuild 生命周期脚本
    spawn 子进程）；安装本身对仓库无影响（node_modules/.pnpm-store 均被
    gitignore）。
-5. 一次性 DSH `0.1.1-rc.2` profile smoke 通过：在仓库外 disposable 项目中，
+5. 方案 B 前的一次性 DSH `0.1.1-rc.2` profile smoke 通过：在仓库外 disposable 项目中，
    SciFork bundle 正常启动，`commands/list` 发现 `/research`，`skill.list` 发现
    两个 SciFork Skills，`/research init` 生成基线（message `scifork: init`），
    `/research validate` 返回有效项目。另一次同版本的公开 `ctx.tools` 注册服务
-   smoke 已执行 `research_graph_apply`、Back、Forward，确认受管路径检查点与
-   restore commit；这些写入未经过模型 prompt（profile 无 API key），因此不把
-   smoke 解释为真实模型 tool-call loop 的证明。
+   smoke 已执行 `research_graph_apply` 并创建受管路径检查点；它还覆盖了当时存在、
+   现已删除的 Back/Forward，因此不把那部分结果作为当前验收证据。这些写入未经过
+   模型 prompt（profile 无 API key）。方案 B 精简后未重跑 profile；当前检查点失败
+   诊断由 Host 自动化测试验证。
 6. 初始化与 mutation 的 Git 预检已补齐：非 Git 目录的 mutation 返回
    `GIT_UNAVAILABLE`；detached HEAD 在任何 `mkdir`/文件写入/commit
    前返回 `GIT_STATE_UNSUPPORTED`；unborn branch 仍可创建首次 `scifork: init`
    基线；全仓库 unmerged 与 managed path dirty 状态在写入前拒绝；初始化失败
-   会清理已暂存的 manifest。普通 mutation 的 checkpoint 只提交单个目标文件，
-   写后快照不一致会回滚并返回 `STALE_REVISION`。Locator 遇到最近的 malformed
+   会保留文件并返回结构化失败。普通 mutation 的 checkpoint 只提交单个目标文件，
+   写后快照不一致返回 `STALE_REVISION`，不做破坏性回滚。Locator 遇到最近的 malformed
    当前版本 `research.json` 时锚定项目并提供只读诊断，遇到非常规/不可读 marker
-   仍 fail-closed；Git subprocess 输出标记为 lossy 时拒绝继续状态判断或 restore。
+   仍 fail-closed；Git subprocess 输出标记为 lossy 时拒绝继续状态判断或提交。
 
 ## Test plan
 
@@ -531,5 +504,6 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
 - Host 单元/集成：`tests/host/*.test.ts`，用结构性 fake Fs/Subprocess/Storage
   端口驱动完整流水线，不做网络或真实 Git 依赖。
 - 真实 Git 最小验证：`tests/host/git-real.test.ts` 在临时目录用系统 Git
-  执行 init/checkpoint/back/forward 的 argv 行为（无 Git 时自动跳过）。
-- 冒烟：一次性 DSH profile，验证工具/命令/检查点，结果写入本文档。
+  执行 init/checkpoint 的 argv 行为（无 Git 时自动跳过）。
+- 冒烟：方案 B 前已执行一次性 DSH profile，验证工具/命令/检查点并将结果写入本文档；
+  方案 B 精简后未重跑 profile。
