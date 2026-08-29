@@ -368,6 +368,12 @@ function staticHandler(assets: CompanionAssets): WebRoute['handler'] {
     }
 
     const target = req.url
+    if (target === ROUTE_COMPANION) {
+      res.statusCode = 308
+      res.setHeader('location', `${ROUTE_COMPANION}/`)
+      res.end()
+      return
+    }
     if (target === undefined || target.includes('?') || target.includes('#') || target.includes('%')) {
       sendStaticError(res, 404, 'Asset not found.')
       return

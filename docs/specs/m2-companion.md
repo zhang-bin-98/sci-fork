@@ -111,6 +111,9 @@ POST   /scifork/api/entity      read one managed entity document
 POST   /scifork/api/focus       update Focus sidecar
 ```
 
+An exact request for the bare `/scifork` path returns HTTP `308` with
+`Location: /scifork/`; the slash form is the canonical Companion entry.
+
 The M0 `/scifork/api/spike` route is removed; M1 real Git tests supersede its
 runtime probe. Exact API routes remain registered separately from the static
 prefix.
