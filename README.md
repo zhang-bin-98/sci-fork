@@ -15,8 +15,18 @@ introduced the first toolchain: pnpm, TypeScript strict, and Vitest, with
 esbuild for the browser client bundle. The spike code exercises bundle
 load/unload, `/scifork/api/*` web routes with disposers, the two packaged
 Skills, the `shell.overlay` Open action, the scoped `SessionInput.setDraft +
-submit` path, and argv-only Git probes. Implementation continues by milestone:
-M1 Core+Git, M2 Companion, M3 Research.
+submit` path, and argv-only Git probes.
+
+M1 (Core + Git) is implemented ([M1 spec](docs/specs/m1-core-git.md)): the
+pure-TypeScript Core (strict schemas, front-matter parser, cross-entity
+validation with the Finding support threshold, rebuildable projection, typed
+single-entity commands, and Research Import Draft validation), plus the Host
+Project Locator, the three model tools (`research_graph_read`,
+`research_graph_apply`, `research_graph_focus`), the `/research init | open |
+validate` commands, Focus storage, and current-branch managed-file checkpoints.
+Git history recovery remains the responsibility of DSH Chat or the user.
+Implementation continues by milestone: M2
+Companion, M3 Research.
 
 All M0 gates pass: automated checks, clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, and the
@@ -46,8 +56,9 @@ The lean MVP design has these boundaries:
 - The model may use another retrieval or PDF Skill instead, then load
   `SciFork Research` to format the current results as a `Research Import Draft`.
   SciFork validates the Draft; research-team data remains a Result.
-- Git uses the current branch, managed-path checkpoints, and one-step
-  Back/Forward. Branches and remotes remain the user's or DSH's responsibility.
+- Git uses the current branch for a minimal managed-path commit attempt.
+  SciFork does not own undo/redo or history recovery; branches and remotes remain
+  the user's or DSH's responsibility.
 - `DSH-better-sidebar v0.15.2` is a fixed implementation reference, never a
   dependency, peer dependency, profile entry, or runtime provider.
 

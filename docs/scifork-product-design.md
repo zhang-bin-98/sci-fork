@@ -27,7 +27,7 @@ MVP 边界：
 - SciFork 只保留一个统一的 `SciFork Research` Skill；PubMed 是独立、可替换的通用检索 Skill。
 - PubMed Skill 支持完整查询语法、单批最多 300 条元数据、分页和 PMID/DOI 查找。
 - 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
-- Git 只负责当前分支的本地检查点和一步 Back/Forward，不替用户管理分支或远端。
+- Git 只负责当前分支受管文件的最小本地提交尝试；历史恢复、分支和远端操作交给 DSH 或用户。
 
 ## 2. 核心原则
 
@@ -64,9 +64,12 @@ Result
 
 文献标识只是 Evidence Assertion 的出处，不是独立科研实体。团队产生的数据由 Result 表达。只有 reviewed Evidence Assertion 或 validated Result 能满足 Finding 的支持门槛。
 
-### 2.4 Git 只做本地检查点
+### 2.4 Git 只做最小本地提交边界
 
-SciFork 在当前分支上为成功科研修改创建本地检查点。它不自动创建 `main`、个人分支或 PR，也不实现 push、pull、merge、rebase。
+SciFork 在当前分支上为成功科研修改尝试创建一次只包含受管文件的本地提交。
+它不拥有 Git 历史、undo/redo 或恢复状态；提交失败只返回结构化诊断，不执行
+复杂的破坏性补偿。历史恢复、分支、远端、PR、合并、rebase 和冲突解决交给
+DSH 或用户。
 
 ## 3. Companion 页面
 
@@ -75,11 +78,12 @@ SciFork 在当前分支上为成功科研修改创建本地检查点。它不自
 │ DeepSeek Harness Web         │  │ SciFork Graph Companion      │
 │ Sessions / Chat / Tools      │  │ Focus graph + Details        │
 │                              │  │                              │
-│ [Open Research Graph]        │  │ Back Forward Simulate Details│
+│ [Open Research Graph]        │  │ Simulate Details             │
 └──────────────────────────────┘  └──────────────────────────────┘
 ```
 
-页面只包含以 Focus 为中心的局部图、当前路径和一层邻居、只读 Details，以及 `Back`、`Forward`、`Simulate`、`Details` 四个英语操作。
+页面只包含以 Focus 为中心的局部图、当前路径和一层邻居、只读 Details，以及
+`Simulate`、`Details` 两个英语操作。Git 历史恢复通过对应 DSH Chat 完成。
 
 页面按宽度自动调整：
 
@@ -88,12 +92,11 @@ SciFork 在当前分支上为成功科研修改创建本地检查点。它不自
 - 不提供 Compact/Workspace 模式开关。
 - 不保存第二套布局状态或节点坐标。
 
-### Back / Forward
+### Git 历史
 
-- **Back**：恢复上一个 SciFork 检查点，并创建新的恢复检查点。
-- **Forward**：仅在刚完成 Back 且尚未发生新写入时可用。
-- MVP 只保证一步撤销与一步重做，不维护多级 forward stack。
-- 任意历史浏览和恢复交给 DSH Chat 或现有 Git 工具。
+SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复历史时，
+直接在 DSH Chat 中请求 Git 操作或使用现有 Git 工具；SciFork 在后续读取时
+检测外部 HEAD 或分支变化并重新解析项目。
 
 ### Simulate
 
@@ -204,7 +207,6 @@ Node：
 ---
 id: node_<uuid>
 kind: hypothesis
-status: plausible
 confidence: moderate
 evidence_refs:
   - id: ev_<uuid>
@@ -221,7 +223,7 @@ publication_ref:
   pmid: "12345678"
   doi: "10.xxxx/example"
 locator:
-  kind: abstract
+  kind: pubmed_abstract
 assertion: "..."
 direction: supports
 review_status: reviewed
@@ -377,9 +379,8 @@ interface ResearchImportDraft {
 - 不使用 `git add .`，不改变全局 Git 配置。
 - 不自动创建、保护或切换分支。
 - 不调用任何远端命令。
-- Back/Forward 通过新的 restore commit 保留历史，不使用 `reset --hard`。
-- MVP 只维护一步 Forward；新 mutation 后立即清除。
-- 分支变化后清除一步恢复状态并重新加载 Graph。
+- SciFork 不执行历史恢复，也不使用 `reset --hard`、移动 branch ref、remote、merge 或 rebase。
+- 分支或 HEAD 变化后重新加载 Graph，并由 DSH Chat 或用户处理历史状态。
 - 当前分支有 unmerged entries 或受管文件校验失败时进入只读状态。
 
 ## 11. 页面认证
@@ -419,7 +420,8 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 | 默认 PubMed 检索与 PMID/DOI 查找 | PubMed Search Skill |
 | 替代数据库检索或 PDF 解析 | 其他检索 Skill |
 | Research Import Draft 校验与持久化 | SciFork Core + Host |
-| 本地检查点与一步恢复 | SciFork Host |
+| 受管文件的最小本地提交尝试 | SciFork Host |
+| Git 历史恢复与多步 undo/redo | DSH / 用户 |
 | 分支、远端、PR、合并和冲突解决 | DSH / 用户 |
 
 ## 13. MVP 明确不做
@@ -431,7 +433,7 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 - 把 SciFork Research 拆成多套 Skill，或让 Skill 直接调用另一个 Skill。
 - 自动 MeSH 扩展、PubTator、全文下载、缓存或 RAG。
 - 外部 Skill 直接写 Research Project。
-- 多级 undo/redo、Timeline Panel 或 Graph 搜索框。
+- SciFork-owned undo/redo、Timeline Panel 或 Graph 搜索框。
 - 独立后端、额外端口、登录系统或云同步。
 - 自动 Git 分支策略、PR 或远端同步。
 
@@ -451,7 +453,7 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 11. 对应 DSH Chat 自动开始或进入 Queue
 12. 用户确认新的 Hypothesis、Prediction 或 Result
 13. SciFork 写入文件并创建本地检查点
-14. 用户用 Back/Forward 验证一步恢复
+14. 用户在需要时通过 DSH Chat 或现有 Git 工具恢复历史
 ```
 
 ## 15. MVP 完成标准
@@ -464,8 +466,8 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 - 统一 SciFork Research Skill 能完成检索建议、Draft 格式化、推演和批判。
 - PubMed Search Skill 能执行完整查询、按 300 条分页并按 PMID/DOI 查找，且不会伪造记录。
 - 大模型能先使用任一检索 Skill，再使用 SciFork Research 格式化 Draft；检索 Skill 不能绕过校验写仓库。
-- 每次有效修改形成受管路径本地检查点。
-- Back/Forward 完成一步恢复且不改写 Git 历史。
+- 每次有效修改都尝试形成受管路径本地检查点；失败时返回诊断并交给 DSH Chat 或用户处理。
+- SciFork 不提供 Back/Forward；Git 历史恢复由 DSH Chat 或用户完成。
 - 冲突或陈旧版本不会覆盖外部修改。
 - 卸载后 Research Project 文件仍完整可读。
 

@@ -11,9 +11,10 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
     "types": ["node"],
     "outDir": "dist"
   },
-  "include": ["src/host", "src/core", "tests/host", "scripts"]
+  "include": ["src/host", "src/core", "tests/host", "tests/core", "scripts"]
 }

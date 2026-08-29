@@ -1,28 +1,47 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { createHash } from 'node:crypto'
 import { dirname } from 'node:path'
-import type { SkillsPort, SubprocessPort, WebServerPort } from './contracts.js'
+import type {
+  CommandsPort,
+  FsPort,
+  SkillsPort,
+  StorageDomainPort,
+  SubprocessPort,
+  ToolsPort,
+  WebServerPort,
+} from './contracts.js'
+import { registerResearchCommands } from './commands.js'
 import { gitShowToplevel } from './git-checkpoints.js'
 import { findSkillsRoot, loadPackagedSkills } from './skills.js'
+import { registerResearchTools } from './tools.js'
+import { uiStateDomainSpec } from './ui-state.js'
 import { sciforkRoutes } from './web-routes.js'
 
 export const name = 'scifork'
 
 /**
- * Hard dependencies: Cordis waits for all three services before applying the
+ * Hard dependencies: Cordis waits for all seven services before applying the
  * fiber (and re-applies after service updates). The SciFork bundle targets
- * the DSH Web profile, which provides all three.
+ * the DSH Web profile, which provides all of them.
  */
-export const inject = ['skills', 'webServer', 'subprocess'] as const
+export const inject = ['skills', 'webServer', 'subprocess', 'fs', 'storageDomain', 'tools', 'commands'] as const
+
+const sha256 = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex')
 
 /**
- * M0 compatibility spike entry point. Every registration rides `ctx.effect`
- * so bundle unload removes it.
+ * Host entry point. Every registration rides `ctx.effect` so bundle unload
+ * removes it; the ui-state storage domain is opened once and closed through
+ * its own effect disposer.
  */
-export function apply(ctx: Context): void {
-  // inject guarantees all three services exist before activation.
+export async function apply(ctx: Context): Promise<void> {
+  // inject guarantees all seven services exist before activation.
   const skills = ctx.get('skills') as SkillsPort
   const webServer = ctx.get('webServer') as WebServerPort
   const subprocess = ctx.get('subprocess') as SubprocessPort
+  const fs = ctx.get('fs') as FsPort
+  const storageDomain = ctx.get('storageDomain') as StorageDomainPort
+  const tools = ctx.get('tools') as ToolsPort
+  const commands = ctx.get('commands') as CommandsPort
   if (webServer.host !== '127.0.0.1') {
     throw new Error('scifork: DSH Web must listen on 127.0.0.1')
   }
@@ -40,4 +59,13 @@ export function apply(ctx: Context): void {
   for (const route of sciforkRoutes({ gitProbe })) {
     ctx.effect(() => webServer.register(route))
   }
+
+  const storage = await storageDomain.open(uiStateDomainSpec())
+  ctx.effect(() => () => {
+    void storage.close()
+  })
+
+  const researchDeps = { fs, subprocess, hash: sha256 }
+  ctx.effect(() => registerResearchTools({ ...researchDeps, storage, tools }))
+  ctx.effect(() => registerResearchCommands({ ...researchDeps, commands }))
 }

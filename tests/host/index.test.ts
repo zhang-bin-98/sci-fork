@@ -8,6 +8,8 @@ import type {
   WebRoute,
   WebServerPort,
 } from '../../src/host/contracts.js'
+import { FakeCommandsPort, FakeFs, FakeStorageDomainPort, FakeToolsPort } from './fakes.js'
+import { UI_STATE_DOMAIN, uiStateDomainSpec } from '../../src/host/ui-state.js'
 
 function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
   const disposers: Array<() => void> = []
@@ -54,12 +56,20 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
       }
     },
   }
+  const fs = new FakeFs({})
+  const storageDomain = new FakeStorageDomainPort()
+  const tools = new FakeToolsPort()
+  const commands = new FakeCommandsPort()
   return {
     ctx: {
       get(key: string) {
         if (key === 'skills') return skills
         if (key === 'webServer') return webServer
         if (key === 'subprocess') return subprocess
+        if (key === 'fs') return fs
+        if (key === 'storageDomain') return storageDomain
+        if (key === 'tools') return tools
+        if (key === 'commands') return commands
         return undefined
       },
       effect(callback: () => () => void) {
@@ -72,6 +82,9 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
     registeredSkills,
     registeredRoutes,
     spawnedGit,
+    storageDomain,
+    tools,
+    commands,
   }
 }
 
@@ -80,21 +93,21 @@ describe('host apply', () => {
     expect(name).toBe('scifork')
   })
 
-  it('declares skills, webServer, and subprocess as hard dependencies', () => {
-    expect([...inject]).toEqual(['skills', 'webServer', 'subprocess'])
+  it('declares the seven host services as hard dependencies', () => {
+    expect([...inject]).toEqual(['skills', 'webServer', 'subprocess', 'fs', 'storageDomain', 'tools', 'commands'])
   })
 
-  it('fails closed before registration when DSH Web listens on all interfaces', () => {
+  it('fails closed before registration when DSH Web listens on all interfaces', async () => {
     const fake = fakeContext('0.0.0.0')
-    expect(() => apply(fake.ctx as never)).toThrow(/127\.0\.0\.1/)
+    await expect(apply(fake.ctx as never)).rejects.toThrow(/127\.0\.0\.1/)
     expect(fake.registeredSkills).toHaveLength(0)
     expect(fake.registeredRoutes).toHaveLength(0)
+    expect(fake.tools.definitions).toHaveLength(0)
   })
 
-  it('registers both packaged skills and the API routes', () => {
+  it('registers skills, routes, the ui-state domain, tools, and commands', async () => {
     const fake = fakeContext()
-    apply(fake.ctx as never)
-    expect(fake.registeredSkills).toHaveLength(2)
+    await apply(fake.ctx as never)
     expect(fake.registeredSkills.map((register) => register().name)).toEqual([
       'scifork-research',
       'pubmed-search',
@@ -103,15 +116,18 @@ describe('host apply', () => {
       '/scifork/api/spike',
       '/scifork/api/launch',
     ])
-    for (const route of fake.registeredRoutes) {
-      expect(route.kind).toBe('exact')
-    }
+    expect(fake.storageDomain.openedSpecs).toEqual([uiStateDomainSpec()])
+    expect(fake.tools.definitions.map((definition) => definition.name).sort()).toEqual([
+      'research_graph_apply',
+      'research_graph_focus',
+      'research_graph_read',
+    ])
+    expect(fake.commands.definitions.map((definition) => definition.name)).toEqual(['research'])
   })
-
 
   it('wires the spike route to an argv-only Git subprocess probe', async () => {
     const fake = fakeContext()
-    apply(fake.ctx as never)
+    await apply(fake.ctx as never)
     const route = fake.registeredRoutes.find((candidate) => candidate.path.endsWith('/spike'))
     if (route === undefined) throw new Error('spike route was not registered')
     let body = ''
@@ -133,10 +149,22 @@ describe('host apply', () => {
     expect(JSON.parse(body)).toEqual({ ok: true, stage: 'm0' })
     expect(body).not.toContain('C:\\repo')
   })
-  it('keeps every registration disposable for unload', () => {
+
+  it('keeps every registration disposable for unload', async () => {
     const fake = fakeContext()
-    apply(fake.ctx as never)
-    expect(fake.disposers).toHaveLength(4)
+    await apply(fake.ctx as never)
+    // 2 skills + 2 routes + 1 domain close + 1 tools + 1 commands
+    expect(fake.disposers).toHaveLength(7)
     for (const dispose of fake.disposers) dispose()
+    expect(fake.storageDomain.closedCount).toBe(1)
+    expect(fake.tools.disposals).toHaveLength(3)
+    expect(fake.commands.disposals).toHaveLength(1)
+  })
+
+  it('opens the pinned domain name exactly once', async () => {
+    const fake = fakeContext()
+    await apply(fake.ctx as never)
+    expect(fake.storageDomain.openedSpecs).toHaveLength(1)
+    expect((fake.storageDomain.openedSpecs[0] as { name: string }).name).toBe(UI_STATE_DOMAIN)
   })
 })
