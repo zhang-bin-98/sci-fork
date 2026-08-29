@@ -264,3 +264,22 @@ export interface CommandDefinition {
 export interface CommandsPort {
   register(definition: CommandDefinition): () => void
 }
+
+/**
+ * dsh-session/lib/types/index.d.ts - live SessionStore subset pinned for M2.
+ * The immutable header cwd is the only project-location input accepted by the
+ * Companion launch flow.
+ */
+export interface SessionPort {
+  readonly id: string
+  readonly header: { readonly cwd?: string }
+}
+
+export interface SessionsPort {
+  get(id: string): SessionPort | undefined
+}
+
+/** dsh-session public event augmentation used to revoke Session-bound keys. */
+export interface SessionLifecyclePort {
+  on(name: 'session/disposed', listener: (session: SessionPort) => void): unknown
+}

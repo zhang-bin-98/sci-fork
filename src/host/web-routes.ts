@@ -1,65 +1,122 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Readable } from 'node:stream'
-import type { ServerResponse } from 'node:http'
-import { COMPANION_URL, ROUTE_LAUNCH, ROUTE_SPIKE } from '../shared/routes.js'
+import type { CompanionFailure } from '../shared/companion-contract.js'
+import { isPageKey } from '../shared/page-key.js'
+import {
+  ROUTE_COMPANION,
+  ROUTE_ENTITY,
+  ROUTE_FOCUS,
+  ROUTE_LAUNCH,
+  ROUTE_SNAPSHOT,
+} from '../shared/routes.js'
+import type { CompanionApiPort } from './companion-service.js'
 import type { WebRoute } from './contracts.js'
 
-export { COMPANION_URL, ROUTE_LAUNCH, ROUTE_SPIKE }
-
-/** Upper bound for JSON API request bodies. */
+/** Upper bound for all Companion JSON request bodies. */
 export const JSON_BODY_LIMIT = 64 * 1024
-export interface SciforkRouteDependencies {
-  gitProbe(): Promise<boolean>
+export const PAGE_KEY_HEADER = 'x-scifork-page-key'
+
+export const COMPANION_ASSET_MANIFEST = {
+  'index.html': 'text/html; charset=utf-8',
+  'app.js': 'text/javascript; charset=utf-8',
+  'styles.css': 'text/css; charset=utf-8',
+} as const
+
+export type CompanionAssetName = keyof typeof COMPANION_ASSET_MANIFEST
+
+export interface CompanionAssets {
+  read(name: CompanionAssetName): Uint8Array
 }
 
+export const STATIC_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "connect-src 'self'",
+  "img-src 'none'",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ')
+
+export interface SciforkRouteDependencies {
+  api: CompanionApiPort
+  assets: CompanionAssets
+}
+
+interface AdmittedJsonRequest {
+  body: unknown
+  pageKey?: string
+}
+
+interface LaunchRequest {
+  sessionId: string
+}
+
+interface SnapshotRequest {
+  sinceProjectRevision?: string
+}
+
+interface EntityRequest {
+  entityId: string
+}
+
+type RouteApiResponse = { readonly ok: true } | CompanionFailure
+
+const STATIC_PATHS: Readonly<Record<string, CompanionAssetName>> = {
+  [ROUTE_COMPANION]: 'index.html',
+  [`${ROUTE_COMPANION}/`]: 'index.html',
+  [`${ROUTE_COMPANION}/index.html`]: 'index.html',
+  [`${ROUTE_COMPANION}/app.js`]: 'app.js',
+  [`${ROUTE_COMPANION}/styles.css`]: 'styles.css',
+}
+
+const PAGE_KEY_INVALID: CompanionFailure = {
+  ok: false,
+  code: 'PAGE_KEY_INVALID',
+  message: 'Reopen the Companion from DSH.',
+  recoverable: true,
+}
 
 /** Registered route paths must be absolute and carry no trailing slash. */
 export function isAbsoluteNoTrailingSlash(path: string): boolean {
   return path.startsWith('/') && path.length > 1 && !path.endsWith('/')
 }
 
-/**
- * v0.1 runs loopback-only. Accept the three loopback hostnames (with or
- * without port); reject everything else, including 0.0.0.0.
- */
+function isValidPort(value: string | undefined): boolean {
+  if (value === undefined || value.length === 0) return true
+  if (!/^\d+$/u.test(value)) return false
+  return Number(value) <= 65_535
+}
+
+/** Accept only the loopback Host spellings supported by the pinned DSH server. */
 export function isLoopbackHost(host: string | undefined): boolean {
   if (!host) return false
   const normalized = host.toLowerCase()
-  const name = normalized.startsWith('[')
-    ? /^\[(.+)\](?::\d+)?$/.exec(normalized)?.[1] ?? ''
-    : normalized.replace(/:\d+$/, '')
-  return name === '127.0.0.1' || name === '::1' || name === 'localhost'
+  if (normalized === '127.0.0.1' || normalized === 'localhost' || normalized === '::1') {
+    return true
+  }
+  const ipv4OrName = /^(127\.0\.0\.1|localhost):(\d+)$/u.exec(normalized)
+  if (ipv4OrName !== null) return isValidPort(ipv4OrName[2])
+  const ipv6 = /^\[::1\](?::(\d+))?$/u.exec(normalized)
+  return ipv6 !== null && isValidPort(ipv6[1])
 }
 
-/** Socket peer addresses must be numeric loopback addresses. */
+/** Socket peers must be numeric loopback addresses; hostnames are not resolved. */
 export function isLoopbackAddress(address: string | undefined): boolean {
   if (!address) return false
   const normalized = address.toLowerCase()
   return (
-    normalized === '127.0.0.1' ||
-    normalized === '::1' ||
-    normalized === '::ffff:127.0.0.1'
+    normalized === '127.0.0.1'
+    || normalized === '::1'
+    || normalized === '::ffff:127.0.0.1'
   )
 }
 
-/** An Origin header is acceptable only when it names an HTTP(S) loopback host. */
-export function isLoopbackOrigin(origin: string | undefined): boolean {
-  if (!origin) return false
-  try {
-    const parsed = new URL(origin)
-    return (
-      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
-      isLoopbackHost(parsed.host)
-    )
-  } catch {
-    return false
-  }
-}
-
-/**
- * Launch requests require all three boundaries: a loopback Host, a numeric
- * loopback socket peer, and a mandatory HTTP Origin that exactly matches Host.
- */
-export function isAllowedLaunchRequest(
+/** Require a numeric loopback peer and an HTTP Origin exactly matching Host. */
+export function isAllowedJsonRequest(
   origin: string | undefined,
   host: string | undefined,
   remoteAddress: string | undefined,
@@ -69,11 +126,11 @@ export function isAllowedLaunchRequest(
   }
   try {
     const parsed = new URL(origin)
-    const expectedOrigin = new URL('http://' + host).origin
+    const expectedOrigin = new URL(`http://${host}`).origin
     return (
-      parsed.protocol === 'http:' &&
-      parsed.origin === expectedOrigin &&
-      origin.toLowerCase() === parsed.origin.toLowerCase()
+      parsed.protocol === 'http:'
+      && parsed.origin === expectedOrigin
+      && origin.toLowerCase() === parsed.origin.toLowerCase()
     )
   } catch {
     return false
@@ -88,7 +145,7 @@ export function isJsonContentType(contentType: string | undefined): boolean {
   return mediaType.toLowerCase() === 'application/json'
 }
 
-/** Bounded error used by the API handlers. */
+/** Bounded protocol error used while reading request bodies. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -96,14 +153,11 @@ export class ApiError extends Error {
     message: string,
   ) {
     super(message)
+    this.name = 'ApiError'
   }
 }
 
-/**
- * Collect a request body up to limit bytes and parse it as JSON. On overflow,
- * reject immediately while keeping a data listener attached to discard the
- * remaining body; the handler can send 413 without first destroying the socket.
- */
+/** Read and parse a JSON body while enforcing its byte limit. */
 export function readJsonBody(req: Readable, limit: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -123,11 +177,11 @@ export function readJsonBody(req: Readable, limit: number): Promise<unknown> {
         : typeof chunk === 'string'
           ? Buffer.from(chunk)
           : Buffer.from(chunk as Uint8Array)
-      total += buffer.length
+      total += buffer.byteLength
       if (total > limit) {
         settled = true
         chunks.length = 0
-        reject(new ApiError(413, 'BODY_TOO_LARGE', 'request body exceeds the size limit'))
+        reject(new ApiError(413, 'BODY_TOO_LARGE', 'Request body exceeds the size limit.'))
         return
       }
       chunks.push(buffer)
@@ -139,20 +193,20 @@ export function readJsonBody(req: Readable, limit: number): Promise<unknown> {
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
       } catch {
-        reject(new ApiError(400, 'INVALID_JSON', 'request body is not valid JSON'))
+        reject(new ApiError(400, 'INVALID_JSON', 'Request body is not valid JSON.'))
       }
     }
     const onError = (): void => {
       cleanup()
       if (settled) return
       settled = true
-      reject(new ApiError(400, 'BODY_READ_FAILED', 'request body could not be read'))
+      reject(new ApiError(400, 'BODY_READ_FAILED', 'Request body could not be read.'))
     }
     const onClose = (): void => {
       cleanup()
       if (settled) return
       settled = true
-      reject(new ApiError(400, 'INCOMPLETE_BODY', 'request body ended unexpectedly'))
+      reject(new ApiError(400, 'INCOMPLETE_BODY', 'Request body ended unexpectedly.'))
     }
 
     req.on('data', onData)
@@ -162,94 +216,247 @@ export function readJsonBody(req: Readable, limit: number): Promise<unknown> {
   })
 }
 
-/** Write one JSON response with the standard content type. */
+/** Write one bounded JSON response with the common API hardening headers. */
 export function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  const encoded = JSON.stringify(body)
   res.statusCode = status
   res.setHeader('content-type', 'application/json; charset=utf-8')
-  res.end(JSON.stringify(body))
+  res.setHeader('cache-control', 'no-store')
+  res.setHeader('x-content-type-options', 'nosniff')
+  res.end(encoded)
 }
 
-function sendGitProbeUnavailable(res: ServerResponse): void {
-  sendJson(res, 503, {
-    code: 'GIT_PROBE_FAILED',
-    message: 'Git probe unavailable',
-  })
+function protocolFailure(code: string, message: string, recoverable = true): CompanionFailure {
+  return { ok: false, code, message, recoverable }
 }
 
-/** The M0 route table; handlers stay thin over the tested helpers. */
-export function sciforkRoutes({
-  gitProbe,
-}: SciforkRouteDependencies): readonly WebRoute[] {
+function sendPageKeyInvalid(res: ServerResponse): void {
+  sendJson(res, 401, PAGE_KEY_INVALID)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
+  const allowed = new Set([...required, ...optional])
+  const keys = Object.keys(value)
+  return required.every((key) => Object.hasOwn(value, key))
+    && keys.every((key) => allowed.has(key))
+}
+
+function parseLaunchRequest(value: unknown): LaunchRequest | undefined {
+  if (!isRecord(value) || !hasExactKeys(value, ['sessionId'])) return undefined
+  return typeof value.sessionId === 'string' && value.sessionId.length > 0
+    ? { sessionId: value.sessionId }
+    : undefined
+}
+
+function parseSnapshotRequest(value: unknown): SnapshotRequest | undefined {
+  if (!isRecord(value) || !hasExactKeys(value, [], ['sinceProjectRevision'])) {
+    return undefined
+  }
+  if (value.sinceProjectRevision === undefined) return {}
+  return typeof value.sinceProjectRevision === 'string'
+    ? { sinceProjectRevision: value.sinceProjectRevision }
+    : undefined
+}
+
+function parseEntityRequest(value: unknown): EntityRequest | undefined {
+  if (!isRecord(value) || !hasExactKeys(value, ['entityId'])) return undefined
+  return typeof value.entityId === 'string' && value.entityId.length > 0
+    ? { entityId: value.entityId }
+    : undefined
+}
+
+async function admitJsonRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  expectedPath: string,
+  pageKeyRequired: boolean,
+): Promise<AdmittedJsonRequest | undefined> {
+  if (req.method !== 'POST') {
+    res.setHeader('allow', 'POST')
+    sendJson(res, 405, protocolFailure('METHOD_NOT_ALLOWED', 'POST is required.'))
+    return undefined
+  }
+  if (!isAllowedJsonRequest(req.headers.origin, req.headers.host, req.socket.remoteAddress)) {
+    sendJson(res, 403, protocolFailure('NOT_SAME_ORIGIN', 'A loopback same-origin request is required.'))
+    return undefined
+  }
+  if (!isJsonContentType(req.headers['content-type'])) {
+    sendJson(res, 415, protocolFailure('UNSUPPORTED_MEDIA', 'An application/json body is required.'))
+    return undefined
+  }
+
+  let pageKey: string | undefined
+  if (pageKeyRequired) {
+    const header = req.headers[PAGE_KEY_HEADER]
+    if (!isPageKey(header)) {
+      sendPageKeyInvalid(res)
+      return undefined
+    }
+    pageKey = header
+  }
+
+  if (req.url !== expectedPath) {
+    sendJson(res, 400, protocolFailure('INVALID_REQUEST', 'The request target is invalid.'))
+    return undefined
+  }
+
+  try {
+    const body = await readJsonBody(req, JSON_BODY_LIMIT)
+    return pageKey === undefined ? { body } : { body, pageKey }
+  } catch (error) {
+    const apiError = error instanceof ApiError
+      ? error
+      : new ApiError(400, 'BAD_REQUEST', 'Request body could not be read.')
+    sendJson(res, apiError.status, protocolFailure(apiError.code, apiError.message))
+    return undefined
+  }
+}
+
+async function sendApiResult(
+  res: ServerResponse,
+  execute: () => Promise<RouteApiResponse>,
+): Promise<void> {
+  try {
+    const result = await execute()
+    if (!result.ok && result.code === 'PAGE_KEY_INVALID') {
+      sendPageKeyInvalid(res)
+      return
+    }
+    sendJson(res, 200, result)
+  } catch {
+    sendJson(
+      res,
+      500,
+      protocolFailure('INTERNAL_ERROR', 'The Companion request could not be completed.'),
+    )
+  }
+}
+
+function setStaticHeaders(res: ServerResponse): void {
+  res.setHeader('content-security-policy', STATIC_CONTENT_SECURITY_POLICY)
+  res.setHeader('x-content-type-options', 'nosniff')
+  res.setHeader('referrer-policy', 'no-referrer')
+  res.setHeader('x-frame-options', 'DENY')
+  res.setHeader('cache-control', 'no-store')
+}
+
+function sendStaticError(res: ServerResponse, status: number, message: string): void {
+  res.statusCode = status
+  res.setHeader('content-type', 'text/plain; charset=utf-8')
+  res.end(message)
+}
+
+function staticHandler(assets: CompanionAssets): WebRoute['handler'] {
+  return (req, res) => {
+    setStaticHeaders(res)
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('allow', 'GET, HEAD')
+      sendStaticError(res, 405, 'Method not allowed.')
+      return
+    }
+    if (!isLoopbackHost(req.headers.host) || !isLoopbackAddress(req.socket.remoteAddress)) {
+      sendStaticError(res, 403, 'Loopback access is required.')
+      return
+    }
+
+    const target = req.url
+    if (target === undefined || target.includes('?') || target.includes('#') || target.includes('%')) {
+      sendStaticError(res, 404, 'Asset not found.')
+      return
+    }
+    const assetName = STATIC_PATHS[target]
+    if (assetName === undefined) {
+      sendStaticError(res, 404, 'Asset not found.')
+      return
+    }
+
+    let body: Uint8Array
+    try {
+      body = assets.read(assetName)
+    } catch {
+      sendStaticError(res, 503, 'Companion assets are unavailable.')
+      return
+    }
+    res.statusCode = 200
+    res.setHeader('content-type', COMPANION_ASSET_MANIFEST[assetName])
+    res.setHeader('content-length', body.byteLength)
+    res.end(req.method === 'HEAD' ? undefined : body)
+  }
+}
+
+/** M2 static shell and JSON API route table. */
+export function sciforkRoutes({ api, assets }: SciforkRouteDependencies): readonly WebRoute[] {
   return [
     {
-      kind: 'exact',
-      path: ROUTE_SPIKE,
-      handler: async (req, res) => {
-        if (req.method !== 'GET') {
-          sendJson(res, 405, { code: 'METHOD_NOT_ALLOWED', message: 'GET only' })
-          return
-        }
-        try {
-          if (!(await gitProbe())) {
-            sendGitProbeUnavailable(res)
-            return
-          }
-        } catch {
-          sendGitProbeUnavailable(res)
-          return
-        }
-        sendJson(res, 200, { ok: true, stage: 'm0' })
-      },
+      kind: 'prefix',
+      path: ROUTE_COMPANION,
+      handler: staticHandler(assets),
     },
     {
       kind: 'exact',
       path: ROUTE_LAUNCH,
       handler: async (req, res) => {
-        if (req.method !== 'POST') {
-          sendJson(res, 405, { code: 'METHOD_NOT_ALLOWED', message: 'POST only' })
+        const admitted = await admitJsonRequest(req, res, ROUTE_LAUNCH, false)
+        if (admitted === undefined) return
+        const body = parseLaunchRequest(admitted.body)
+        if (body === undefined) {
+          sendJson(res, 400, protocolFailure('INVALID_REQUEST', 'A valid sessionId is required.'))
           return
         }
-        if (
-          !isAllowedLaunchRequest(
-            req.headers.origin,
-            req.headers.host,
-            req.socket.remoteAddress,
-          )
-        ) {
-          sendJson(res, 403, {
-            code: 'NOT_SAME_ORIGIN',
-            message: 'loopback same-origin request required',
-          })
+        await sendApiResult(res, () => api.launch(body.sessionId))
+      },
+    },
+    {
+      kind: 'exact',
+      path: ROUTE_SNAPSHOT,
+      handler: async (req, res) => {
+        const admitted = await admitJsonRequest(req, res, ROUTE_SNAPSHOT, true)
+        if (admitted === undefined || admitted.pageKey === undefined) return
+        const body = parseSnapshotRequest(admitted.body)
+        if (body === undefined) {
+          sendJson(res, 400, protocolFailure('INVALID_REQUEST', 'The snapshot request is invalid.'))
           return
         }
-        if (!isJsonContentType(req.headers['content-type'])) {
-          sendJson(res, 415, { code: 'UNSUPPORTED_MEDIA', message: 'JSON body required' })
+        const { pageKey } = admitted
+        await sendApiResult(res, () => api.snapshot(pageKey, body.sinceProjectRevision))
+      },
+    },
+    {
+      kind: 'exact',
+      path: ROUTE_ENTITY,
+      handler: async (req, res) => {
+        const admitted = await admitJsonRequest(req, res, ROUTE_ENTITY, true)
+        if (admitted === undefined || admitted.pageKey === undefined) return
+        const body = parseEntityRequest(admitted.body)
+        if (body === undefined) {
+          sendJson(res, 400, protocolFailure('INVALID_REQUEST', 'A valid entityId is required.'))
           return
         }
-        try {
-          const body = await readJsonBody(req, JSON_BODY_LIMIT)
-          if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-            sendJson(res, 400, { code: 'INVALID_REQUEST', message: 'sessionId required' })
-            return
-          }
-          const sessionId = (body as Record<string, unknown>).sessionId
-          if (typeof sessionId !== 'string' || !sessionId) {
-            sendJson(res, 400, { code: 'INVALID_REQUEST', message: 'sessionId required' })
-            return
-          }
-          // M0 spike: fixed URL. M2 replaces this with a 256-bit Page Key
-          // bound to the session, delivered via the fragment handshake.
-          sendJson(res, 200, { url: COMPANION_URL })
-        } catch (error) {
-          const apiError =
-            error instanceof ApiError
-              ? error
-              : new ApiError(400, 'BAD_REQUEST', 'request body could not be read')
-          sendJson(res, apiError.status, {
-            code: apiError.code,
-            message: apiError.message,
-          })
+        const { pageKey } = admitted
+        await sendApiResult(res, () => api.entity(pageKey, body.entityId))
+      },
+    },
+    {
+      kind: 'exact',
+      path: ROUTE_FOCUS,
+      handler: async (req, res) => {
+        const admitted = await admitJsonRequest(req, res, ROUTE_FOCUS, true)
+        if (admitted === undefined || admitted.pageKey === undefined) return
+        const body = parseEntityRequest(admitted.body)
+        if (body === undefined) {
+          sendJson(res, 400, protocolFailure('INVALID_REQUEST', 'A valid entityId is required.'))
+          return
         }
+        const { pageKey } = admitted
+        await sendApiResult(res, () => api.setFocus(pageKey, body.entityId))
       },
     },
   ]
