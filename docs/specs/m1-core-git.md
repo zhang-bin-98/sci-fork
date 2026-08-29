@@ -1,8 +1,7 @@
 # SciFork M1: Core 与 Git
 
-> 状态：Implementation complete；方案 B 自动化检查通过。此前的一次性 DSH profile smoke
-> 已完成，方案 B 精简后未重跑 profile（未含真实模型 tool-call loop）
-> 日期：2026-08-25；方案 B 更新：2026-08-27
+> 状态：Implementation complete；方案 B 自动化检查与一次性 DSH profile smoke 均通过（未含真实模型 tool-call loop）
+> 日期：2026-08-29；方案 B 更新：2026-08-27
 > 上位设计：[软件架构 v0.12](../scifork-software-architecture.md) §16 M1、[产品设计 v0.11](../scifork-product-design.md)
 > 钉住版本：DeepSeek Harness `0.1.1-rc.2`（沿用 M0 一次性 profile）
 
@@ -457,11 +456,11 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
 - [x] Focus 记录经 storageDomain 契约测试（fake Domain）；Git undo/redo 不进入存储。
 - [x] 真实 Git 最小验证：临时仓库验证 pathspec commit 语义、无关 staged
       files 不受影响、非仓库错误分类和全仓库 unmerged 预检；历史恢复不属于 M1。
-- [x] 一次性 profile 冒烟（用户已批准、方案 B 前执行）：工具可发现、
-      `/research init` 在临时目录完成、`/research validate` 返回有效项目；另以
-      同版本公开工具服务 smoke 验证创建实体检查点（未经过模型 prompt）。
-      该记录只证明当时的 DSH 公开契约兼容性，不证明方案 B 的检查点失败诊断；
-      方案 B 精简后未重跑 profile。
+- [x] 一次性 profile 冒烟（用户已批准；方案 B 精简后于 2026-08-29 重跑）：
+      工具/命令/Skill 可发现，`/research init` 在临时目录完成，
+      `/research validate` 返回有效项目；公开 `ctx.tools` 服务执行一次
+      `research_graph_read` 与一次 `research_graph_apply`，创建单个 Result
+      并生成当前分支检查点。未经过模型 prompt，不覆盖历史恢复或失败诊断。
 
 ## Final results（方案 B，2026-08-27）
 
@@ -481,14 +480,13 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
 4. 环境说明：本会话 pnpm 依赖安装需 full-access 沙箱（esbuild 生命周期脚本
    spawn 子进程）；安装本身对仓库无影响（node_modules/.pnpm-store 均被
    gitignore）。
-5. 方案 B 前的一次性 DSH `0.1.1-rc.2` profile smoke 通过：在仓库外 disposable 项目中，
-   SciFork bundle 正常启动，`commands/list` 发现 `/research`，`skill.list` 发现
-   两个 SciFork Skills，`/research init` 生成基线（message `scifork: init`），
-   `/research validate` 返回有效项目。另一次同版本的公开 `ctx.tools` 注册服务
-   smoke 已执行 `research_graph_apply` 并创建受管路径检查点；它还覆盖了当时存在、
-   现已删除的 Back/Forward，因此不把那部分结果作为当前验收证据。这些写入未经过
-   模型 prompt（profile 无 API key）。方案 B 精简后未重跑 profile；当前检查点失败
-   诊断由 Host 自动化测试验证。
+5. 方案 B 精简后的一次性 DSH `0.1.1-rc.2` profile smoke（2026-08-29）通过：在仓库外
+   disposable 项目中，SciFork bundle 正常启动，`commands/list` 发现 `/research`，
+   `skill.list` 发现两个 SciFork Skills，`/research init` 生成基线（message
+   `scifork: init`），`/research validate` 返回有效项目。公开 `ctx.tools` 注册服务
+   随后执行 `research_graph_read` 与 `research_graph_apply`，创建单个 Result 并生成
+   当前分支受管路径检查点。写入未经过模型 prompt（profile 无 API key）；历史恢复和
+   检查点失败诊断仍由方案 B 的 Host 自动化测试覆盖。
 6. 初始化与 mutation 的 Git 预检已补齐：非 Git 目录的 mutation 返回
    `GIT_UNAVAILABLE`；detached HEAD 在任何 `mkdir`/文件写入/commit
    前返回 `GIT_STATE_UNSUPPORTED`；unborn branch 仍可创建首次 `scifork: init`
@@ -505,5 +503,5 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
   端口驱动完整流水线，不做网络或真实 Git 依赖。
 - 真实 Git 最小验证：`tests/host/git-real.test.ts` 在临时目录用系统 Git
   执行 init/checkpoint 的 argv 行为（无 Git 时自动跳过）。
-- 冒烟：方案 B 前已执行一次性 DSH profile，验证工具/命令/检查点并将结果写入本文档；
-  方案 B 精简后未重跑 profile。
+- 冒烟：方案 B 精简后已执行一次性 DSH profile，验证工具/命令/Skill、初始化、校验与
+  单实体检查点，并将结果写入本文档；不含真实模型 tool-call loop。
