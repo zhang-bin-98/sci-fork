@@ -4,6 +4,8 @@ import { dirname } from 'node:path'
 import type {
   CommandsPort,
   FsPort,
+  SessionLifecyclePort,
+  SessionsPort,
   SkillsPort,
   StorageDomainPort,
   SubprocessPort,
@@ -11,7 +13,9 @@ import type {
   WebServerPort,
 } from './contracts.js'
 import { registerResearchCommands } from './commands.js'
-import { gitShowToplevel } from './git-checkpoints.js'
+import { companionAssetsFromPackageRoot } from './companion-assets.js'
+import { CompanionService } from './companion-service.js'
+import { PageKeyStore } from './page-keys.js'
 import { findSkillsRoot, loadPackagedSkills } from './skills.js'
 import { registerResearchTools } from './tools.js'
 import { uiStateDomainSpec } from './ui-state.js'
@@ -20,11 +24,20 @@ import { sciforkRoutes } from './web-routes.js'
 export const name = 'scifork'
 
 /**
- * Hard dependencies: Cordis waits for all seven services before applying the
+ * Hard dependencies: Cordis waits for all eight services before applying the
  * fiber (and re-applies after service updates). The SciFork bundle targets
  * the DSH Web profile, which provides all of them.
  */
-export const inject = ['skills', 'webServer', 'subprocess', 'fs', 'storageDomain', 'tools', 'commands'] as const
+export const inject = [
+  'skills',
+  'webServer',
+  'subprocess',
+  'fs',
+  'storageDomain',
+  'tools',
+  'commands',
+  'sessions',
+] as const
 
 const sha256 = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex')
 
@@ -34,7 +47,7 @@ const sha256 = (content: string): string => createHash('sha256').update(content,
  * its own effect disposer.
  */
 export async function apply(ctx: Context): Promise<void> {
-  // inject guarantees all seven services exist before activation.
+  // inject guarantees all eight services exist before activation.
   const skills = ctx.get('skills') as SkillsPort
   const webServer = ctx.get('webServer') as WebServerPort
   const subprocess = ctx.get('subprocess') as SubprocessPort
@@ -42,6 +55,7 @@ export async function apply(ctx: Context): Promise<void> {
   const storageDomain = ctx.get('storageDomain') as StorageDomainPort
   const tools = ctx.get('tools') as ToolsPort
   const commands = ctx.get('commands') as CommandsPort
+  const sessions = ctx.get('sessions') as SessionsPort
   if (webServer.host !== '127.0.0.1') {
     throw new Error('scifork: DSH Web must listen on 127.0.0.1')
   }
@@ -53,12 +67,6 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.effect(() => skills.register(skill))
   }
   const packageRoot = dirname(skillsRoot)
-  const gitProbe = async (): Promise<boolean> =>
-    (await gitShowToplevel(subprocess, packageRoot)) !== undefined
-
-  for (const route of sciforkRoutes({ gitProbe })) {
-    ctx.effect(() => webServer.register(route))
-  }
 
   const storage = await storageDomain.open(uiStateDomainSpec())
   ctx.effect(() => () => {
@@ -66,6 +74,18 @@ export async function apply(ctx: Context): Promise<void> {
   })
 
   const researchDeps = { fs, subprocess, hash: sha256 }
+  const pageKeys = new PageKeyStore()
+  ctx.effect(() => () => pageKeys.clear())
+  const sessionLifecycle = ctx as unknown as SessionLifecyclePort
+  sessionLifecycle.on('session/disposed', (session) => {
+    pageKeys.revokeSession(session.id)
+  })
+  const api = new CompanionService({ ...researchDeps, storage, sessions, pageKeys })
+  const assets = companionAssetsFromPackageRoot(packageRoot)
+  for (const route of sciforkRoutes({ api, assets })) {
+    ctx.effect(() => webServer.register(route))
+  }
+
   ctx.effect(() => registerResearchTools({ ...researchDeps, storage, tools }))
   ctx.effect(() => registerResearchCommands({ ...researchDeps, commands }))
 }

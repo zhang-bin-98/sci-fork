@@ -40,7 +40,10 @@ async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation)
   }
 
   if (subcommand === 'open') {
-    return { kind: 'success', text: 'Open the Research Graph Companion at /scifork/' }
+    return {
+      kind: 'success',
+      text: 'Use the Open Research Graph action in DSH to launch the Companion.',
+    }
   }
 
   if (subcommand === 'validate') {

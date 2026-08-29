@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { apply, inject, name } from '../../src/host/index.js'
+import { PageKeyStore } from '../../src/host/page-keys.js'
 import type {
+  SessionPort,
+  SessionsPort,
   SkillRegistration,
   SkillsPort,
   SubprocessPort,
@@ -16,6 +19,7 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
   const registeredSkills: Array<() => SkillRegistration> = []
   const registeredRoutes: WebRoute[] = []
   const spawnedGit: SubprocessSpawnSpec[] = []
+  const sessionDisposedListeners: Array<(session: SessionPort) => void> = []
   const skills: SkillsPort = {
     register(skill) {
       registeredSkills.push(() => skill)
@@ -60,6 +64,14 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
   const storageDomain = new FakeStorageDomainPort()
   const tools = new FakeToolsPort()
   const commands = new FakeCommandsPort()
+  const sessionsById = new Map<string, SessionPort>([
+    ['s1', { id: 's1', header: { cwd: '/proj' } }],
+  ])
+  const sessions: SessionsPort = {
+    get(id) {
+      return sessionsById.get(id)
+    },
+  }
   return {
     ctx: {
       get(key: string) {
@@ -70,7 +82,15 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
         if (key === 'storageDomain') return storageDomain
         if (key === 'tools') return tools
         if (key === 'commands') return commands
+        if (key === 'sessions') return sessions
         return undefined
+      },
+      on(name: string, listener: (session: SessionPort) => void) {
+        if (name === 'session/disposed') sessionDisposedListeners.push(listener)
+        return () => {
+          const index = sessionDisposedListeners.indexOf(listener)
+          if (index >= 0) sessionDisposedListeners.splice(index, 1)
+        }
       },
       effect(callback: () => () => void) {
         const disposer = callback()
@@ -85,6 +105,8 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
     storageDomain,
     tools,
     commands,
+    sessionDisposedListeners,
+    sessionsById,
   }
 }
 
@@ -93,8 +115,17 @@ describe('host apply', () => {
     expect(name).toBe('scifork')
   })
 
-  it('declares the seven host services as hard dependencies', () => {
-    expect([...inject]).toEqual(['skills', 'webServer', 'subprocess', 'fs', 'storageDomain', 'tools', 'commands'])
+  it('declares the eight host services as hard dependencies', () => {
+    expect([...inject]).toEqual([
+      'skills',
+      'webServer',
+      'subprocess',
+      'fs',
+      'storageDomain',
+      'tools',
+      'commands',
+      'sessions',
+    ])
   })
 
   it('fails closed before registration when DSH Web listens on all interfaces', async () => {
@@ -113,8 +144,11 @@ describe('host apply', () => {
       'pubmed-search',
     ])
     expect(fake.registeredRoutes.map((route) => route.path)).toEqual([
-      '/scifork/api/spike',
+      '/scifork',
       '/scifork/api/launch',
+      '/scifork/api/snapshot',
+      '/scifork/api/entity',
+      '/scifork/api/focus',
     ])
     expect(fake.storageDomain.openedSpecs).toEqual([uiStateDomainSpec()])
     expect(fake.tools.definitions.map((definition) => definition.name).sort()).toEqual([
@@ -125,36 +159,26 @@ describe('host apply', () => {
     expect(fake.commands.definitions.map((definition) => definition.name)).toEqual(['research'])
   })
 
-  it('wires the spike route to an argv-only Git subprocess probe', async () => {
+  it('revokes Page Keys on Session disposal and clears them on unload', async () => {
+    const revokeSession = vi.spyOn(PageKeyStore.prototype, 'revokeSession')
+    const clear = vi.spyOn(PageKeyStore.prototype, 'clear')
     const fake = fakeContext()
     await apply(fake.ctx as never)
-    const route = fake.registeredRoutes.find((candidate) => candidate.path.endsWith('/spike'))
-    if (route === undefined) throw new Error('spike route was not registered')
-    let body = ''
-    const response = {
-      statusCode: 0,
-      setHeader() {},
-      end(chunk: string) {
-        body = chunk
-      },
-    }
-    await route.handler({ method: 'GET' } as never, response as never)
-    expect(fake.spawnedGit).toHaveLength(1)
-    expect(fake.spawnedGit[0]?.argv).toEqual([
-      'C:\\git\\git.exe',
-      'rev-parse',
-      '--show-toplevel',
-    ])
-    expect(response.statusCode).toBe(200)
-    expect(JSON.parse(body)).toEqual({ ok: true, stage: 'm0' })
-    expect(body).not.toContain('C:\\repo')
+    expect(fake.sessionDisposedListeners).toHaveLength(1)
+    fake.sessionDisposedListeners[0]?.({ id: 's1', header: { cwd: '/proj' } })
+    expect(revokeSession).toHaveBeenCalledWith('s1')
+
+    for (const dispose of fake.disposers) dispose()
+    expect(clear).toHaveBeenCalledOnce()
+    revokeSession.mockRestore()
+    clear.mockRestore()
   })
 
   it('keeps every registration disposable for unload', async () => {
     const fake = fakeContext()
     await apply(fake.ctx as never)
-    // 2 skills + 2 routes + 1 domain close + 1 tools + 1 commands
-    expect(fake.disposers).toHaveLength(7)
+    // 2 skills + 5 routes + 1 domain close + 1 Page Key clear + tools + commands
+    expect(fake.disposers).toHaveLength(11)
     for (const dispose of fake.disposers) dispose()
     expect(fake.storageDomain.closedCount).toBe(1)
     expect(fake.tools.disposals).toHaveLength(3)

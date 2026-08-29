@@ -68,11 +68,14 @@ describe('registerResearchCommands', () => {
     expect(text).not.toContain('/newproj')
   })
 
-  it('opens the companion URL via /research open', async () => {
+  it('directs /research open to the keyed DSH action without emitting a URL', async () => {
     const { commands } = await registered()
     const result = await commands.definitions[0]!.handler(invocation('/proj', ' open'))
     expect(result).toMatchObject({ kind: 'success' })
-    if (result.kind === 'success') expect(result.text).toContain('/scifork/')
+    if (result.kind === 'success') {
+      expect(result.text).toContain('Open Research Graph')
+      expect(result.text).not.toMatch(/https?:|\/scifork|#key=/u)
+    }
   })
 
   it('validates a healthy project', async () => {

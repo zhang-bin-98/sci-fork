@@ -9,13 +9,9 @@ side-by-side layout.
 
 ## Current status
 
-The M0 compatibility spike has pinned the exact DeepSeek Harness `0.1.1-rc.2`
+The M0 compatibility spike pinned the exact DeepSeek Harness `0.1.1-rc.2`
 preview contracts ([spike spec](docs/specs/m0-compatibility-spike.md)) and
-introduced the first toolchain: pnpm, TypeScript strict, and Vitest, with
-esbuild for the browser client bundle. The spike code exercises bundle
-load/unload, `/scifork/api/*` web routes with disposers, the two packaged
-Skills, the `shell.overlay` Open action, the scoped `SessionInput.setDraft +
-submit` path, and argv-only Git probes.
+introduced the pnpm, strict TypeScript, Vitest, and esbuild toolchain.
 
 M1 (Core + Git) is implemented ([M1 spec](docs/specs/m1-core-git.md)): the
 pure-TypeScript Core (strict schemas, front-matter parser, cross-entity
@@ -25,13 +21,18 @@ Project Locator, the three model tools (`research_graph_read`,
 `research_graph_apply`, `research_graph_focus`), the `/research init | open |
 validate` commands, Focus storage, and current-branch managed-file checkpoints.
 Git history recovery remains the responsibility of DSH Chat or the user.
-Implementation continues by milestone: M2
-Companion, M3 Research.
 
-All M0 gates pass: automated checks, clean-package assembly, real DSH
-HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, and the
-browser click-through for both overlay buttons, sequential Skill loading, and
-scoped Simulate submission.
+M2 Companion is implemented ([M2 spec](docs/specs/m2-companion.md)): the
+same-origin standalone React graph, Session/project-bound Page Keys, strict
+snapshot/entity/Focus APIs, safe Details rendering, visible-only polling, and
+the originating-Session `setDraft + submit` Bridge transaction. The current
+automated gates and desktop/narrow local browser checks pass. The disposable
+pinned-DSH-profile smoke remains a separate approval-gated verification.
+Implementation continues by milestone with M3 Research.
+
+All M0 gates remain recorded as passing: clean-package assembly, real DSH
+HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, sequential
+Skill loading, and scoped Simulate submission.
 
 Build and verify before installing from a checkout:
 

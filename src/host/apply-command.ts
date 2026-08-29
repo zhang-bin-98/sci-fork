@@ -57,7 +57,7 @@ export interface ResearchHostDeps {
   hash: HashFn
 }
 
-interface ProjectContext {
+export interface ProjectContext {
   root: string
   manifest: ResearchManifest | undefined
   project: LoadedProject

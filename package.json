@@ -29,7 +29,7 @@
   "packageManager": "pnpm@11.23.0",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
-    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs",
     "test": "vitest run",
     "prepack": "corepack pnpm build",
     "check": "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
@@ -44,12 +44,18 @@
     }
   },
   "devDependencies": {
+    "@dagrejs/dagre": "^3.1.1",
     "@deepseek-ai/cordis": "4.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.2.5",
+    "@xyflow/react": "^12.11.5",
     "esbuild": "^0.25.0",
     "react": "^19.0.0",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.0"
   },
