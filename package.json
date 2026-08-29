@@ -32,6 +32,7 @@
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs",
     "test": "vitest run",
     "prepack": "corepack pnpm build",
+    "verify:pack": "node scripts/verify-pack.mjs",
     "check": "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
   },
   "dsh": {

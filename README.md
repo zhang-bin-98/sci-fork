@@ -28,7 +28,11 @@ snapshot/entity/Focus APIs, safe Details rendering, visible-only polling, and
 the originating-Session `setDraft + submit` Bridge transaction. The current
 automated gates and desktop/narrow local browser checks pass. The disposable
 pinned-DSH-profile smoke remains a separate approval-gated verification.
-Implementation continues by milestone with M3 Research.
+M3 Research is in progress ([M3 spec](docs/specs/m3-research.md)): the
+dependency-free PubMed helper now supports full Entrez query pages up to 300
+metadata records and PMID/DOI lookup, and both packaged Skills contain the
+Draft, simulation, and critique protocol. Release E2E and the pinned-DSH smoke
+remain approval-gated.
 
 All M0 gates remain recorded as passing: clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, sequential
@@ -89,10 +93,13 @@ The dumped configuration should contain exactly one `scifork` loader entry.
   `SessionInput.setDraft + submit`, Skills, filesystem, and subprocess
   contracts.
 - Distribute one prebuilt, auditable `.tgz` from GitHub Releases.
+- Run `corepack pnpm pack --dry-run` and confirm the tarball contains
+  `dist/host`, `dist/client.js`, Companion assets, the PubMed helper, and both
+  Skill files.
 - Verify a fresh DSH Web profile can install, open, run Simulate, and uninstall
   SciFork without any third-party plugin.
-- Document loopback security, Git sharing, sensitive-data handling,
-  compatibility, and upgrade behavior.
+- See [SECURITY.md](SECURITY.md) for loopback security, Git sharing,
+  sensitive-data handling, compatibility, and upgrade behavior.
 
 ## License
 
