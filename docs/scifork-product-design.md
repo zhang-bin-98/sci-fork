@@ -1,4 +1,4 @@
-# SciFork 产品设计 v0.14
+# SciFork 产品设计 v0.15
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
@@ -86,10 +86,15 @@ DSH 或用户。
 └──────────────────────────────┘  └──────────────────────────────┘
 ```
 
-页面始终显示完整 Research Graph 投影、当前 Focus 路径和只读 Details，以及
-`Research & Expand`、`Details` 两个英语操作。Focus 只高亮目标并移动视图中心，
-不改变图谱内容；用户可以在保持全局上下文的同时沿关系思考。Git 历史恢复通过
-对应 DSH Chat 完成。
+页面始终显示完整 Research Graph 投影和当前 Focus 路径；只读 Details 默认打开，
+用户可以通过抽屉拉手收起或重新打开。页面提供 `Research & Expand`、`Details`
+两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心，不改变图谱内容；
+用户可以在保持全局上下文的同时沿关系思考。Git 历史恢复通过对应 DSH Chat 完成。
+
+实体点击期间显示独立的 pending 状态；连续点击按顺序完成并以最后一次点击为最终
+Focus，不把 React Flow 的临时选择态伪装成已持久的 Focus。Details 显示所选 Node、
+Result、Evidence Assertion 或 Edge 的完整可复制 ID；Focus 面包屑显示紧凑 ID 并可
+查看完整值。图中截断的实体标签在鼠标悬停或键盘聚焦时显示完整、可换行文本。
 
 DSH 入口使用公开的 `sidebar.footer.action`：展开时在 Settings 上方显示 Graph
 图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，并保留
@@ -99,10 +104,14 @@ DSH 的 list-slot owner，不用私有 DOM/CSS 强制重排。
 
 页面按宽度自动调整：
 
-- 窄窗口把 Details 放到图下方或临时覆盖层。
+- 视口不宽于 1120 px 时把 Details 放到图下方；更宽时与 Graph 并列。
 - 宽窗口把 Graph 与 Details 并列。
+- 顶栏与 Focus 面包屑固定在可视区域，Graph 和 Details 使用剩余高度。
+- Details 收起时，宽屏保留右侧竖向拉手，窄屏保留图下方横向拉手；展开状态只存在于
+  当前页面，刷新后恢复默认打开。
+- Details 标题保持可见，只有正文区域独立滚动，内容不会撑高整个页面。
 - 不提供 Compact/Workspace 模式开关。
-- 不保存第二套布局状态或节点坐标。
+- 不保存第二套布局状态、Details 展开状态或节点坐标。
 
 ### Git 历史
 
@@ -142,7 +151,7 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 
 ### Details
 
-Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程资源加载；附件路径必须位于 Research Project 根目录。
+Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程资源加载；附件路径必须位于 Research Project 根目录。Details 标题区显示实体类型、完整 ID、复制操作和 Focus 状态，正文在面板内部滚动。
 
 ## 4. 领域模型
 
@@ -334,7 +343,8 @@ research_graph_focus
 
 ### 6.3 Graph → Chat
 
-点击实体更新 Focus 并在保持当前缩放的前提下把该实体或关系移动到视图中心；
+点击实体更新 Focus 并在保持当前缩放的前提下把该实体或关系移动到视图中心；只有
+Host 确认后的 Focus 使用正式高亮，连续点击不会被静默丢弃。
 完整图谱内容保持不变。点击 `Research & Expand` 后，Companion 生成只包含 Focus
 ID/摘要、当前 Chat 研究目的约束、单步任务和明确保存授权的提示，并自动提交到启动
 该页面的 DSH Session。提示不预装邻域正文；大模型使用 `research_graph_read` 的
@@ -349,7 +359,9 @@ MVP 只发布一个 SciFork 专用的 `SciFork Research` Skill：
 - **Import formatting**：把当前 Chat 中的检索或 PDF 解析结果格式化为 Research Import Draft。
 - **Research expansion step**：读取 Focus/方向邻居，先完成检索，再生成最多五条不重复的直接分支并以低置信 Node + Edge 逐条保存。
 - **Progressive research**：仅在用户通过 Chat 明确请求时维护 frontier/visited state，按检索与图谱阶段逐轮扩展并在达到停止条件后汇报。
-- **Branch deletion**：读取目标及关系，先删除 Edge，再删除无关联的 Hypothesis/Prediction，并处理当前 Focus。
+- **Branch deletion**：用户说“当前”“选中”或“聚焦”实体时，先通过
+  `research_graph_read focus` 解析准确 ID 并回报；随后读取目标及关系，先删除 Edge，
+  再删除无关联的 Hypothesis/Prediction，并处理当前 Focus。
 - **Critique**：检查矛盾、Evidence Gap、过度推断、重复实体和缺失 locator。
 
 Skill 负责推理、格式化和常见流程，不联网检索，也不直接写文件；大模型通过
@@ -523,6 +535,9 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
 - Companion 默认显示完整图谱；Focus 只改变高亮、Details 和视图中心，不裁剪内容。
+- Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID 可见、可复制。
+- Details 默认打开且可收起；不宽于 1120 px 时位于 Graph 下方，标题固定、正文独立滚动，顶栏和 Focus 面包屑不随正文滚动。
+- 截断的实体标签在鼠标悬停或键盘聚焦时显示完整文本。
 - Graph、文件、Focus 和 DSH Chat context 一致。
 - 点击 Research & Expand 后对应 Chat 自动开始；运行中正确进入 Queue。
 - 一次点击先检索再最多保存五条直接低置信 Hypothesis/Prediction；每条都有明确 Edge、provenance 和 Evidence Gap，不移动 Focus 且不会自动递归。

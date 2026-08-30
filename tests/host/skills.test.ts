@@ -59,8 +59,10 @@ describe('loadPackagedSkills', () => {
     expect(research?.description).toMatch(/research expansion/i)
     expect(research?.description).toMatch(/progressive research/i)
     expect(research?.description).toMatch(/delete.*branch/i)
+    expect(research?.description).toMatch(/current\/selected\/focused/i)
     expect(research?.whenToUse).toMatch(/existing .*graph/i)
     expect(research?.whenToUse).toMatch(/explicit .*Chat/i)
+    expect(research?.whenToUse).toMatch(/current, selected, or focused/i)
   })
 
   it('keeps skill names kebab-case', () => {

@@ -155,18 +155,23 @@ Do not continue in the background.
 
 When the user rejects a research expansion branch:
 
-1. Read the target entity, neighborhood, and current Focus. Resolve the exact
-   Node/Edge set the request names; do not silently include an ambiguous
-   descendant.
-2. If an entity to remove is Focus or appears in its path, clear or move Focus
+1. If the user says `current`, `selected`, or `focused` entity without an id,
+   first call `research_graph_read` with `operation: focus`. Use only the returned
+   `focusEntityId`; if Focus is absent or `entityExists` is false, stop and ask the
+   user to select a valid entity. Never infer an id from a visible label.
+2. Report the resolved target id, then read that entity, its neighborhood, and
+   current Focus. Resolve the exact Node/Edge set the request names; do not
+   silently include an ambiguous descendant.
+3. If an entity to remove is Focus or appears in its path, clear or move Focus
    with `research_graph_focus` before deletion.
-3. Always delete Edges before Nodes with `delete_edge`, then delete
+4. Always delete Edges before Nodes with `delete_edge`, then delete
    Hypothesis/Prediction Nodes leaf-first with `delete_node`. Use each entity's
    current `fileVersion` and the latest `projectRevision`.
-4. If Core reports an incident Edge, a support-critical Edge, a Finding, or a
+5. If Core reports an incident Edge, a support-critical Edge, a Finding, or a
    stale version, re-read and either continue safely or explain why deletion is
    blocked. Never bypass the invariant with direct file or Git commands.
-5. Re-read and report exactly what was deleted. Evidence Assertions are rejected,
+6. Re-read and report exactly what was deleted, including every exact entity id.
+   Evidence Assertions are rejected,
    Results are superseded, and Findings are not physically deleted.
 
 ## Critique

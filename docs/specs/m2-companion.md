@@ -1,8 +1,8 @@
 # SciFork M2 Companion
 
-> Status: Implemented; global-view Focus extension specified on 2026-08-31
+> Status: Implemented; Focus-consistent responsive Details extension specified on 2026-08-31
 > Date: 2026-08-31
-> Parent design: [product design v0.13](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.14](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
+> Parent design: [product design v0.15](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.16](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 > Action semantics: the historical `Simulate & Save` contract below is superseded
 > by [literature-grounded research expansion](progressive-research-expansion.md).
@@ -23,8 +23,9 @@ to a different DSH Session.
    Key that never enters a query, repository, log, or Chat command result.
 3. Expose bounded snapshot, entity, and Focus POST APIs over the existing DSH
    Web origin.
-4. Render the complete Research Graph, current Focus path, and safe read-only
-   Details in one responsive React layout; Focus only recenters and highlights.
+4. Render the complete Research Graph, current Focus path, and safe read-only,
+   collapsible Details in one responsive React layout; Focus only recenters and
+   highlights after Host acknowledgement.
 5. Poll only while the page is visible and detect project, branch, HEAD, Focus,
    and validation changes through fresh Host reads.
 6. Submit a bounded simulation prompt to the exact originating Session through
@@ -32,9 +33,9 @@ to a different DSH Session.
 
 ## Non-goals
 
-- No embedded DSH panel, second layout mode, graph search, saved coordinates,
-  Back/Forward stack, editing, import UI, WebSocket, SSE, CORS, new port, login,
-  database, or remote synchronization.
+- No embedded DSH panel, second persisted layout mode, graph search, saved
+  coordinates, Back/Forward stack, direct graph editing/deletion, import UI,
+  WebSocket, SSE, CORS, new port, login, database, or remote synchronization.
 - No arbitrary project or attachment path supplied by the browser. M2 renders
   relative attachment references inert; a future contained attachment endpoint
   requires an explicit design decision.
@@ -192,6 +193,12 @@ path is derived from the previous sidecar state:
 Focus remains sidecar-only and creates no file or Git change. This visible path
 is not an undo/redo stack and provides no history restoration.
 
+React Flow's transient selection is not a second source of truth. A click shows
+pending feedback until `setFocus` succeeds, then the returned Focus becomes the
+only solid selection highlight and Details target. While one request is in
+flight, later clicks are retained and processed serially so the last clicked
+entity becomes the final Focus instead of being silently dropped.
+
 Focus does not define graph membership. Path changes, entity clicks, polling,
 and restored Focus state never remove unrelated entities or Edges from the
 Companion. The bounded one-hop selection remains an internal simulation-prompt
@@ -204,6 +211,19 @@ iframe, object, style, and raw HTML nodes are not executed. Image syntax renders
 as non-fetching alt text. HTTP(S) links require a real click and open with
 `noopener noreferrer`; non-HTTP schemes and relative paths render inert. Thus
 M2 performs no automatic remote request and no uncontained attachment read.
+
+Details is open by default and may be collapsed for the lifetime of the current
+page. Its state is not persisted. Above 1120 px it is a right-side drawer with a
+vertical closed handle; at or below 1120 px it is a bottom drawer with a
+horizontal closed handle. The app header and Focus breadcrumb remain outside
+scrolling content. The Details heading remains visible and only its body scrolls,
+so long entity content never increases the page height.
+
+The heading exposes the selected entity type, full monospace id, a copy-id
+button, and whether it is the current Focus. The breadcrumb uses a compact id
+with the full value available to assistive technology and pointer hover. A graph
+card keeps its bounded size, while pointer hover or keyboard focus exposes its
+complete wrapped label in a tooltip.
 
 Static routing serves only `index.html`, `app.js`, and `styles.css` from a fixed
 build manifest. It rejects encoded or decoded traversal and API-shaped paths.
@@ -277,6 +297,13 @@ channels and nonce state close on bundle unload.
 - [x] The same React tree works at narrow and wide viewports; graph, path,
       selected Details, loading, empty, read-only, and invalid-key states fit
       without overlap.
+- [x] Only Host-confirmed Focus receives the solid graph highlight; rapid clicks
+      are not dropped and settle on the last clicked entity.
+- [x] Every selected entity type exposes a full copyable id, and truncated graph
+      labels expose their complete text on pointer hover and keyboard focus.
+- [x] Details defaults open, collapses to a responsive handle, moves below Graph
+      at 1120 px, and keeps long content in an internal scroll region while the
+      app header, breadcrumb, and Details heading remain visible.
 - [x] Hidden pages issue no polling requests and refresh immediately when shown.
 - [x] Details executes no raw HTML/script and performs no automatic remote or
       uncontained resource load.
@@ -301,11 +328,12 @@ channels and nonce state close on bundle unload.
   ordering, wrong shape/session, duplicate nonce, prompt limit, and disposal.
 - Companion unit: fragment consumption/storage clearing, API error mapping,
   global graph membership, bounded prompt-neighborhood selection, Focus center
-  resolution, layout determinism, visible-only polling, safe link and
-  image rendering, prompt content/byte cap, ack timeout/retry nonce behavior.
+  resolution, serialized latest-click selection, layout determinism, visible-only
+  polling, safe link and image rendering, Details id/copy/drawer semantics,
+  prompt content/byte cap, ack timeout/retry nonce behavior.
 - Browser: built static assets served locally with fixture API responses at
-  desktop and narrow viewports; inspect screenshots, layout bounds, graph
-  pixels, Details rendering, and interaction states.
+  desktop, 1120 px boundary, and narrow viewports; inspect fixed header/path,
+  graph pixels, tooltip, Focus/pending states, Details drawer and internal scroll.
 - DSH smoke (separate explicit approval): disposable pinned `0.1.1-rc.2`
   profile, one package install, `/research init`, Open action, snapshot/entity/
   Focus, idle and busy Simulate, reload, unload, and project readability.

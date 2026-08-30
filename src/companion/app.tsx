@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react'
 import type {
   EntityDocument,
+  FocusSuccess,
   ProjectionEdgeSummary,
   ProjectionEntitySummary,
   SnapshotGraph,
@@ -21,6 +22,7 @@ import type {
 import { channelNameForPageKey } from '../shared/page-key.js'
 import { CompanionApiClient, CompanionApiError } from './api.js'
 import { DetailsMarkdown } from './details.js'
+import { FocusSelectionQueue } from './focus-selection.js'
 import {
   focusViewportCenter,
   layoutGraph,
@@ -59,19 +61,47 @@ function entityMeta(entity: ProjectionEntitySummary): string {
   return entity.status
 }
 
+export function compactEntityId(entityId: string): string {
+  return entityId.length <= 24
+    ? entityId
+    : entityId.slice(0, 12) + '…' + entityId.slice(-8)
+}
+
+export function EntityNodeCard(props: {
+  entity: ProjectionEntitySummary
+}): React.ReactElement {
+  const tooltipId = React.useId()
+  const { entity } = props
+  return (
+    <div className="entity-node-card">
+      <div
+        className="entity-node-content"
+        tabIndex={0}
+        aria-label={entityCategory(entity) + ': ' + entity.label}
+        aria-describedby={tooltipId}
+      >
+        <span className="entity-node-kind">{entityCategory(entity)}</span>
+        <strong>{entity.label}</strong>
+        <span className="entity-node-meta">{entityMeta(entity)}</span>
+      </div>
+      <div id={tooltipId} className="entity-node-tooltip" role="tooltip">
+        {entity.label}
+      </div>
+    </div>
+  )
+}
+
 function EntityNode(props: NodeProps<EntityFlowNode>): React.ReactElement {
   const { entity, direction } = props.data
   const vertical = direction === 'TB'
   return (
-    <div className="entity-node-content">
+    <div className="entity-node-shell">
       <Handle
         type="target"
         position={vertical ? Position.Top : Position.Left}
         className="entity-handle"
       />
-      <span className="entity-node-kind">{entityCategory(entity)}</span>
-      <strong>{entity.label}</strong>
-      <span className="entity-node-meta">{entityMeta(entity)}</span>
+      <EntityNodeCard entity={entity} />
       <Handle
         type="source"
         position={vertical ? Position.Bottom : Position.Right}
@@ -86,6 +116,7 @@ const NODE_TYPES = { entity: EntityNode } as NodeTypes
 interface GraphPaneProps {
   graph: SnapshotGraph
   focusEntityId: string | undefined
+  pendingEntityId: string | undefined
   pathIds: readonly string[]
   onSelect(entityId: string): void
 }
@@ -131,7 +162,9 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
     () =>
       laidOut.nodes.map((node) => {
         const className =
-          node.id === props.focusEntityId
+          node.id === props.pendingEntityId
+            ? 'graph-node-pending'
+            : node.id === props.focusEntityId
             ? 'graph-node-focus'
             : pathIds.has(node.id)
               ? 'graph-node-path'
@@ -142,7 +175,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
           ...(className === undefined ? {} : { className }),
         }
       }),
-    [laidOut.nodes, pathIds, props.focusEntityId, direction],
+    [laidOut.nodes, pathIds, props.focusEntityId, props.pendingEntityId, direction],
   )
   const edges: RelationFlowEdge[] = React.useMemo(
     () =>
@@ -151,11 +184,12 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
         className: [
           'graph-edge-' + edge.data.edge.relation,
           edge.data.edge.id === props.focusEntityId ? 'graph-edge-focus' : '',
+          edge.data.edge.id === props.pendingEntityId ? 'graph-edge-pending' : '',
         ]
           .filter(Boolean)
           .join(' '),
       })),
-    [laidOut.edges, props.focusEntityId],
+    [laidOut.edges, props.focusEntityId, props.pendingEntityId],
   )
   const layoutKey =
     direction +
@@ -173,7 +207,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
         nodeTypes={NODE_TYPES}
         nodesDraggable={false}
         nodesConnectable={false}
-        elementsSelectable
+        elementsSelectable={false}
         fitView
         fitViewOptions={{ padding: 0.18, minZoom: 0.35, maxZoom: 1.2 }}
         minZoom={0.25}
@@ -223,23 +257,80 @@ function EdgeDetails(props: {
   )
 }
 
-function DetailsPane(props: { entity: EntityDocument | undefined }): React.ReactElement {
+export interface DetailsPaneProps {
+  entity: EntityDocument | undefined
+  focusEntityId: string | undefined
+  open: boolean
+  onToggle(): void
+}
+
+export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
   const { entity } = props
+  const [copied, setCopied] = React.useState(false)
+  React.useEffect(() => setCopied(false), [entity?.id])
+
+  const copyId = (): void => {
+    if (entity === undefined || typeof navigator === 'undefined') return
+    void navigator.clipboard
+      ?.writeText(entity.id)
+      .then(() => setCopied(true))
+      .catch(() => undefined)
+  }
+
+  if (!props.open) {
+    return (
+      <aside className="details-pane details-pane-closed" aria-label="Details">
+        <button
+          type="button"
+          className="details-handle"
+          aria-label="Open Details"
+          aria-expanded={false}
+          onClick={props.onToggle}
+        >
+          <span aria-hidden="true">‹</span>
+          <strong>Details</strong>
+        </button>
+      </aside>
+    )
+  }
+
   return (
     <aside className="details-pane" aria-label="Details">
-      <div className="pane-heading">
-        <h2>Details</h2>
-        {entity === undefined ? null : <span>{humanize(entity.type)}</span>}
+      <header className="pane-heading">
+        <div className="pane-title">
+          <h2>Details</h2>
+          {entity === undefined ? null : <span>{humanize(entity.type)}</span>}
+        </div>
+        <button
+          type="button"
+          className="details-toggle"
+          aria-label="Close Details"
+          aria-expanded={true}
+          onClick={props.onToggle}
+        >
+          <span aria-hidden="true">›</span>
+        </button>
+        {entity === undefined ? null : (
+          <div className="details-identity">
+            <code title={entity.id}>{entity.id}</code>
+            {props.focusEntityId === entity.id ? <span className="focus-badge">Focused</span> : null}
+            <button type="button" onClick={copyId}>
+              {copied ? 'Copied' : 'Copy ID'}
+            </button>
+          </div>
+        )}
+      </header>
+      <div className="details-body" tabIndex={0} aria-label="Details content">
+        {entity === undefined ? (
+          <div className="details-empty" aria-label="No Details" />
+        ) : entity.type === 'edge' ? (
+          <EdgeDetails entity={entity} />
+        ) : (
+          <article className="markdown-details">
+            <DetailsMarkdown markdown={entity.body} />
+          </article>
+        )}
       </div>
-      {entity === undefined ? (
-        <div className="details-empty" aria-label="No Details" />
-      ) : entity.type === 'edge' ? (
-        <EdgeDetails entity={entity} />
-      ) : (
-        <article className="markdown-details">
-          <DetailsMarkdown markdown={entity.body} />
-        </article>
-      )}
     </aside>
   )
 }
@@ -271,8 +362,9 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const [graph, setGraph] = React.useState<SnapshotGraph>()
   const [selectedId, setSelectedId] = React.useState<string>()
   const [details, setDetails] = React.useState<EntityDocument>()
+  const [detailsOpen, setDetailsOpen] = React.useState(true)
   const [error, setError] = React.useState<string>()
-  const [focusPending, setFocusPending] = React.useState(false)
+  const [pendingFocusId, setPendingFocusId] = React.useState<string>()
   const [simulationState, setSimulationState] = React.useState<SimulationState>({
     phase: 'idle',
   })
@@ -281,7 +373,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const selectedIdRef = React.useRef<string | undefined>(undefined)
   const mountedRef = React.useRef(true)
   const detailsRequestRef = React.useRef(0)
-  const focusPendingRef = React.useRef(false)
+  const focusQueueRef = React.useRef<FocusSelectionQueue<FocusSuccess> | undefined>(undefined)
   const snapshotInFlightRef = React.useRef(false)
   const simulationRef = React.useRef<SimulationChannel | undefined>(undefined)
 
@@ -321,6 +413,41 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
     },
     [api],
   )
+
+  React.useEffect(() => {
+    const queue = new FocusSelectionQueue<FocusSuccess>({
+      setFocus: (entityId) => api.setFocus(entityId),
+      onConfirmed: (entityId, response) => {
+        if (!mountedRef.current) return
+        setError(undefined)
+        const current = snapshotRef.current
+        if (current !== undefined) {
+          const next = { ...current, focus: response.focus }
+          snapshotRef.current = next
+          setSnapshot(next)
+        }
+        selectedIdRef.current = entityId
+        setSelectedId(entityId)
+        void loadDetails(entityId)
+      },
+      onPendingChange: (entityId) => {
+        if (mountedRef.current) setPendingFocusId(entityId)
+      },
+      onError: (caught) => {
+        if (
+          mountedRef.current &&
+          !(caught instanceof CompanionApiError && caught.code === 'PAGE_KEY_INVALID')
+        ) {
+          setError(failureMessage(caught))
+        }
+      },
+    })
+    focusQueueRef.current = queue
+    return () => {
+      if (focusQueueRef.current === queue) focusQueueRef.current = undefined
+      queue.dispose()
+    }
+  }, [api, loadDetails])
 
   const applySnapshot = React.useCallback(
     (response: SnapshotSuccess): void => {
@@ -424,38 +551,10 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
     }
   }, [invalidKey, props.pageKey])
 
-  const selectEntity = React.useCallback(
-    async (entityId: string): Promise<void> => {
-      if (focusPendingRef.current) return
-      focusPendingRef.current = true
-      setFocusPending(true)
-      setError(undefined)
-      try {
-        const response = await api.setFocus(entityId)
-        if (!mountedRef.current) return
-        const current = snapshotRef.current
-        if (current !== undefined) {
-          const next = { ...current, focus: response.focus }
-          snapshotRef.current = next
-          setSnapshot(next)
-        }
-        selectedIdRef.current = entityId
-        setSelectedId(entityId)
-        await loadDetails(entityId)
-      } catch (caught) {
-        if (
-          mountedRef.current &&
-          !(caught instanceof CompanionApiError && caught.code === 'PAGE_KEY_INVALID')
-        ) {
-          setError(failureMessage(caught))
-        }
-      } finally {
-        focusPendingRef.current = false
-        if (mountedRef.current) setFocusPending(false)
-      }
-    },
-    [api, loadDetails],
-  )
+  const selectEntity = React.useCallback((entityId: string): void => {
+    setError(undefined)
+    focusQueueRef.current?.select(entityId)
+  }, [])
 
   const graphView = React.useMemo(
     () => selectGraphView(graph ?? EMPTY_GRAPH),
@@ -533,11 +632,14 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
               {index === 0 ? null : <span className="path-separator">/</span>}
               <button
                 type="button"
-                disabled={focusPending}
+                title={id}
+                aria-label={(labels.get(id) ?? edgeLabels.get(id) ?? id) + ' (' + id + ')'}
                 aria-current={id === focus?.focusEntityId ? 'page' : undefined}
-                onClick={() => void selectEntity(id)}
+                aria-busy={pendingFocusId === id}
+                onClick={() => selectEntity(id)}
               >
-                {labels.get(id) ?? edgeLabels.get(id) ?? id}
+                <span>{labels.get(id) ?? edgeLabels.get(id) ?? id}</span>
+                <code>{compactEntityId(id)}</code>
               </button>
             </React.Fragment>
           ))}
@@ -581,14 +683,20 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           <span>No research entities</span>
         </section>
       ) : (
-        <div className="workspace">
+        <div className={'workspace ' + (detailsOpen ? 'details-open' : 'details-closed')}>
           <GraphPane
             graph={graphView}
             focusEntityId={focus?.focusEntityId}
+            pendingEntityId={pendingFocusId}
             pathIds={focus?.pathIds ?? []}
-            onSelect={(entityId) => void selectEntity(entityId)}
+            onSelect={selectEntity}
           />
-          <DetailsPane entity={selectedId === details?.id ? details : undefined} />
+          <DetailsPane
+            entity={selectedId === details?.id ? details : undefined}
+            focusEntityId={focus?.focusEntityId}
+            open={detailsOpen}
+            onToggle={() => setDetailsOpen((open) => !open)}
+          />
         </div>
       )}
     </main>

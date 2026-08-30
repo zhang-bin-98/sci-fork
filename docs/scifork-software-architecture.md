@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.15
+# SciFork 软件架构与实现设计 v0.16
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
-> 上位设计：[SciFork 产品设计 v0.14](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.15](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -398,11 +398,18 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
 
 一个 React tree、一套状态和一套路由：
 
-- 窄宽度：Graph 主区，Details 在下方或覆盖层。
-- 宽宽度：Graph 与 Details 并列。
+- 视口宽度不大于 1120 px：Graph 主区，Details 抽屉在下方。
+- 视口宽度大于 1120 px：Graph 与 Details 抽屉并列。
+- Details 默认打开；关闭后分别保留右侧竖向拉手或图下方横向拉手。该状态只存在于
+  当前 React tree，刷新后恢复打开，不进入 storage。
+- 页面保持 `100dvh`；顶栏和 Focus 面包屑位于滚动区域之外，Details 标题固定且正文
+  独立滚动，不允许实体正文改变页面整体高度。
 - Graph 始终渲染 snapshot 的完整投影；Focus 不参与实体或 Edge 筛选。
 - 初始视口适配完整图谱；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
   移到视图中心并更新高亮与 Details。
+- React Flow 临时 `selected` 状态不代表 Focus。只有 Host `setFocus` 成功后才显示正式
+  Focus 高亮；请求期间显示独立 pending 反馈，连续点击串行收敛到最后一次目标。
+- 截断实体标签通过 hover/focus tooltip 显示完整可换行文本。
 - 不提供 density preference。
 - Focus 与 selected entity 是唯一 UI 导航状态。
 - 节点位置由确定性布局重建，不持久化。
@@ -416,6 +423,10 @@ Host 只返回受管实体文档。Companion 使用随 bundle 打包的 Markdown
 - 不自动加载远程图片、iframe 或嵌入内容。
 - 本地附件必须经过 Project Locator containment。
 - 外链需要真实用户点击。
+
+Details 标题区对 Node、Result、Evidence Assertion 和 Edge 显示实体类型、完整等宽 ID、
+复制操作和 Focus 状态。Focus 面包屑显示紧凑 ID，并用完整 ID 作为可访问说明；这些
+显示值只来自已解析的 projection/entity 响应，不接受浏览器构造的路径或标识。
 
 ## 9. Research Expansion 单步自动运行
 
@@ -714,6 +725,10 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - Open action 不占用 single slot。
 - Page Key 绑定、fragment 清除、失效和错误项目访问。
 - 一套响应式布局在窄/宽 viewport 可用。
+- Focus 正式高亮只来自 Host 确认状态，连续实体点击不会被丢弃或与模型可读 Focus 分叉。
+- 实体完整 ID 可见、可复制，截断标签有 hover/focus 完整文本。
+- Details 抽屉默认打开、页面内可收起；1120 px 断点、固定顶栏/面包屑和内部正文滚动
+  在宽窄 viewport 都不产生页面撑高或重叠。
 - 页面隐藏暂停 snapshot polling。
 - Details 阻止 raw HTML、脚本、远程资源和路径逃逸。
 - Research & Expand 真实点击后调用 `setDraft + submit`；prompt 使用 Focus id/摘要，要求
@@ -742,7 +757,7 @@ fresh DSH profile
 → verify up to five direct low-confidence branches persist with one Edge each and Focus is unchanged
 → explicitly ask Chat for a bounded Progressive Research Run across at least two levels
 → verify every retained node is connected and the run stops with a frontier report
-→ delete one rejected branch through Chat, Edge first and Node second
+→ select a rejected branch, ask Chat to delete the current Focus, verify the reported id, then delete Edge first and Node second
 → repeat with one alternative retrieval/PDF Skill
 → load scifork-research and import one formatted Draft item
 → create validated Result and support Edge
