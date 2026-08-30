@@ -9,9 +9,9 @@ import type {
 export const GRAPH_NODE_WIDTH = 224
 export const GRAPH_NODE_HEIGHT = 88
 
-export interface LocalGraph extends SnapshotGraph {}
+export interface GraphView extends SnapshotGraph {}
 
-export interface LocalGraphInput extends SnapshotGraph {
+export interface GraphViewInput extends SnapshotGraph {
   focus?: FocusState
 }
 
@@ -55,7 +55,14 @@ function sortEdges(edges: readonly ProjectionEdgeSummary[]): ProjectionEdgeSumma
   )
 }
 
-export function selectLocalGraph(input: LocalGraphInput): LocalGraph {
+export function selectGraphView(input: GraphViewInput): GraphView {
+  return {
+    entities: sortEntities(input.entities),
+    edges: sortEdges(input.edges),
+  }
+}
+
+export function selectFocusNeighborhood(input: GraphViewInput): GraphView {
   const entities = sortEntities(input.entities)
   const edges = sortEdges(input.edges)
   if (input.focus === undefined) return { entities, edges }
@@ -168,5 +175,32 @@ export function layoutGraph(
       label: edge.relation.replace('_', ' '),
       data: { edge },
     })),
+  }
+}
+
+export function focusViewportCenter(
+  graph: GraphLayout,
+  focusEntityId: string,
+): { x: number; y: number } | undefined {
+  const centers = new Map(
+    graph.nodes.map((node) => [
+      node.id,
+      {
+        x: node.position.x + GRAPH_NODE_WIDTH / 2,
+        y: node.position.y + GRAPH_NODE_HEIGHT / 2,
+      },
+    ] as const),
+  )
+  const entityCenter = centers.get(focusEntityId)
+  if (entityCenter !== undefined) return entityCenter
+
+  const edge = graph.edges.find(({ data }) => data.edge.id === focusEntityId)
+  if (edge === undefined) return undefined
+  const source = centers.get(edge.source)
+  const target = centers.get(edge.target)
+  if (source === undefined || target === undefined) return undefined
+  return {
+    x: stableCoordinate((source.x + target.x) / 2),
+    y: stableCoordinate((source.y + target.y) / 2),
   }
 }

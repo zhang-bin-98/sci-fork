@@ -1,7 +1,7 @@
-# SciFork 产品设计 v0.12
+# SciFork 产品设计 v0.13
 
 > 状态：Proposed（MVP 精简版）
-> 日期：2026-08-30
+> 日期：2026-08-31
 
 ## 1. 产品结论
 
@@ -77,7 +77,7 @@ DSH 或用户。
 ```text
 ┌──────────────────────────────┐  ┌──────────────────────────────┐
 │ DeepSeek Harness Web         │  │ SciFork Graph Companion      │
-│ Sessions / Chat / Tools      │  │ Focus graph + Details        │
+│ Sessions / Chat / Tools      │  │ Global graph + Details       │
 │                              │  │                              │
 │ ...                          │  │ Simulate Details             │
 │ [Graph] Research Graph       │  │                              │
@@ -85,8 +85,10 @@ DSH 或用户。
 └──────────────────────────────┘  └──────────────────────────────┘
 ```
 
-页面只包含以 Focus 为中心的局部图、当前路径和一层邻居、只读 Details，以及
-`Simulate & Save`、`Details` 两个英语操作。Git 历史恢复通过对应 DSH Chat 完成。
+页面始终显示完整 Research Graph 投影、当前 Focus 路径和只读 Details，以及
+`Simulate & Save`、`Details` 两个英语操作。Focus 只高亮目标并移动视图中心，
+不改变图谱内容；用户可以在保持全局上下文的同时沿关系思考。Git 历史恢复通过
+对应 DSH Chat 完成。
 
 DSH 入口使用公开的 `sidebar.footer.action`：展开时在 Settings 上方显示 Graph
 图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，并保留
@@ -188,7 +190,8 @@ basis: literature | experiment | ai_inference
 
 ### Focus
 
-用户当前讨论和查看的 Node、Result 或 Edge。Focus 只影响页面和 Chat context，不修改科研文件。
+用户当前讨论的 Node、Result 或 Edge，也是完整图谱中的视觉中心。Focus 只影响
+视口位置、高亮、Details 和 Chat context，不筛选图谱实体，也不修改科研文件。
 
 ### Confidence Band
 
@@ -315,9 +318,11 @@ research_graph_focus
 
 ### 6.3 Graph → Chat
 
-点击实体更新 Focus。点击 `Simulate & Save` 后，Companion 生成包含实体 ID、Claim、
-现有支持、反对、Evidence Gap 和明确保存授权的提示，并自动提交到启动该页面的
-DSH Session。Graph 不增加编辑或删除控件；用户通过 DSH Chat 要求修改或删除分支。
+点击实体更新 Focus 并在保持当前缩放的前提下把该实体或关系移动到视图中心；
+完整图谱内容保持不变。点击 `Simulate & Save` 后，Companion 仍从 Focus 的有界邻域
+生成包含实体 ID、Claim、现有支持、反对、Evidence Gap 和明确保存授权的提示，
+并自动提交到启动该页面的 DSH Session。Graph 不增加编辑或删除控件；用户通过
+DSH Chat 要求修改或删除分支。
 
 ## 7. SciFork Research Skill
 
@@ -479,7 +484,7 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 6. 大模型加载 SciFork Research 并格式化 Research Import Draft
 7. SciFork 校验文献标识，用户审核 Evidence Candidate
 8. 用户创建 Hypothesis 或 Finding
-9. Companion 显示 Focus 局部图
+9. Companion 显示完整图谱，并以 Focus 控制高亮和视图中心
 10. 用户点击 Simulate & Save
 11. 对应 DSH Chat 自动开始或进入 Queue
 12. 大模型读取最新邻域并保存全部有效、非重复的低置信推演分支及其 Edge
@@ -492,6 +497,7 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
+- Companion 默认显示完整图谱；Focus 只改变高亮、Details 和视图中心，不裁剪内容。
 - Graph、文件、Focus 和 DSH Chat context 一致。
 - 点击 Simulate & Save 后对应 Chat 自动开始；运行中正确进入 Queue。
 - 一次点击最多保存五条低置信 Hypothesis/Prediction，每条都有 Edge、provenance 和 Evidence Gap，且不会自动递归。

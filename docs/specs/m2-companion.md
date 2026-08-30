@@ -1,8 +1,8 @@
 # SciFork M2 Companion
 
-> Status: Implemented; disposable pinned-profile smoke passed for v0.0.1 on 2026-08-30
-> Date: 2026-08-30
-> Parent design: [product design v0.11](../scifork-product-design.md) sections 3, 6.3, and 11; [software architecture v0.12](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
+> Status: Implemented; global-view Focus extension specified on 2026-08-31
+> Date: 2026-08-31
+> Parent design: [product design v0.13](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.14](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 
 ## Problem
@@ -21,8 +21,8 @@ to a different DSH Session.
    Key that never enters a query, repository, log, or Chat command result.
 3. Expose bounded snapshot, entity, and Focus POST APIs over the existing DSH
    Web origin.
-4. Render the current Focus path, its one-hop neighborhood, and safe read-only
-   Details in one responsive React layout.
+4. Render the complete Research Graph, current Focus path, and safe read-only
+   Details in one responsive React layout; Focus only recenters and highlights.
 5. Poll only while the page is visible and detect project, branch, HEAD, Focus,
    and validation changes through fresh Host reads.
 6. Submit a bounded simulation prompt to the exact originating Session through
@@ -165,11 +165,12 @@ may omit graph entities and edges but still returns current Focus, diagnostics,
 and read-only state so a Focus-only change is observable. The browser retains
 the last graph until a changed revision arrives.
 
-With a Focus, the client renders the Focus, the current path, and one-hop
-neighbors. A stored edge Focus renders its endpoints and the one-hop relations
-of those endpoints. Without a Focus, the body-free projection is an overview;
-an empty project has an explicit empty state. The layout is rebuilt
-deterministically and is never persisted.
+The client always renders the complete body-free projection returned by the
+snapshot. Without a Focus, the initial viewport fits that complete graph. With
+a Focus, the entity or stored Edge remains part of the same complete graph and
+is highlighted; a Focus change preserves the current zoom and moves the entity
+center or Edge midpoint to the viewport center. An empty project has an explicit
+empty state. The layout is rebuilt deterministically and is never persisted.
 
 ### Entity and Focus
 
@@ -188,6 +189,11 @@ path is derived from the previous sidecar state:
 
 Focus remains sidecar-only and creates no file or Git change. This visible path
 is not an undo/redo stack and provides no history restoration.
+
+Focus does not define graph membership. Path changes, entity clicks, polling,
+and restored Focus state never remove unrelated entities or Edges from the
+Companion. The bounded one-hop selection remains an internal simulation-prompt
+context only.
 
 ### Details Safety
 
@@ -214,7 +220,7 @@ one snapshot request in flight and disposes timers/listeners on unmount.
 ### Simulate & Save
 
 `buildSimulationPrompt` runs only from the `Simulate & Save` click path and uses the
-latest snapshot. It includes the Focus id and summary, visible support and
+latest snapshot. It includes the Focus id and summary, bounded-neighborhood support and
 contradiction summaries, stored Evidence Gaps, and a clear simulation/critique
 task. It preserves Result versus Interpretation and instructs the model not to
 promote hypotheses, predictions, or `ai_inference` to Findings. The v0.0.1
@@ -263,6 +269,9 @@ channels and nonce state close on bundle unload.
       loopback, JSON type, body size, strict body, and allowlist boundaries.
 - [x] Snapshot and Details stay consistent with M1 parsing, projection,
       diagnostics, Focus, branch, and HEAD behavior.
+- [x] The Companion always renders the complete projection; changing a Node,
+      Result, Evidence, or stored Edge Focus preserves graph membership and
+      current zoom while centering the focused entity or Edge midpoint.
 - [x] The same React tree works at narrow and wide viewports; graph, path,
       selected Details, loading, empty, read-only, and invalid-key states fit
       without overlap.
@@ -289,7 +298,8 @@ channels and nonce state close on bundle unload.
   launch failure notification, key-derived channel, idle/busy submit, exact
   ordering, wrong shape/session, duplicate nonce, prompt limit, and disposal.
 - Companion unit: fragment consumption/storage clearing, API error mapping,
-  local graph selection/layout determinism, visible-only polling, safe link and
+  global graph membership, bounded prompt-neighborhood selection, Focus center
+  resolution, layout determinism, visible-only polling, safe link and
   image rendering, prompt content/byte cap, ack timeout/retry nonce behavior.
 - Browser: built static assets served locally with fixture API responses at
   desktop and narrow viewports; inspect screenshots, layout bounds, graph

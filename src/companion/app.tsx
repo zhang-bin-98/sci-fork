@@ -9,6 +9,7 @@ import {
   type Node,
   type NodeProps,
   type NodeTypes,
+  type ReactFlowInstance,
 } from '@xyflow/react'
 import type {
   EntityDocument,
@@ -20,7 +21,12 @@ import type {
 import { channelNameForPageKey } from '../shared/page-key.js'
 import { CompanionApiClient, CompanionApiError } from './api.js'
 import { DetailsMarkdown } from './details.js'
-import { layoutGraph, selectLocalGraph } from './graph.js'
+import {
+  focusViewportCenter,
+  layoutGraph,
+  selectFocusNeighborhood,
+  selectGraphView,
+} from './graph.js'
 import { clearStoredPageKey } from './page-key.js'
 import { startVisiblePolling } from './polling.js'
 import {
@@ -101,10 +107,25 @@ function useNarrowGraphLayout(): boolean {
 function GraphPane(props: GraphPaneProps): React.ReactElement {
   const narrow = useNarrowGraphLayout()
   const direction = narrow ? 'TB' : 'LR'
+  const [flow, setFlow] = React.useState<
+    ReactFlowInstance<EntityFlowNode, RelationFlowEdge> | undefined
+  >()
   const laidOut = React.useMemo(
     () => layoutGraph(props.graph, direction),
     [props.graph, direction],
   )
+  const focusCenter = React.useMemo(
+    () =>
+      props.focusEntityId === undefined
+        ? undefined
+        : focusViewportCenter(laidOut, props.focusEntityId),
+    [laidOut, props.focusEntityId],
+  )
+  React.useEffect(() => {
+    if (flow === undefined || focusCenter === undefined) return
+    const { zoom } = flow.getViewport()
+    void flow.setCenter(focusCenter.x, focusCenter.y, { zoom, duration: 250 })
+  }, [flow, focusCenter])
   const pathIds = React.useMemo(() => new Set(props.pathIds), [props.pathIds])
   const nodes: EntityFlowNode[] = React.useMemo(
     () =>
@@ -157,6 +178,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
         fitViewOptions={{ padding: 0.18, minZoom: 0.35, maxZoom: 1.2 }}
         minZoom={0.25}
         maxZoom={1.6}
+        onInit={setFlow}
         onNodeClick={(_event, node) => props.onSelect(node.id)}
         onEdgeClick={(_event, edge) => {
           const edgeId = edge.data?.edge.id
@@ -435,20 +457,16 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
     [api, loadDetails],
   )
 
-  const localGraph = React.useMemo(
-    () =>
-      selectLocalGraph({
-        ...(graph ?? EMPTY_GRAPH),
-        ...(snapshot?.focus === undefined ? {} : { focus: snapshot.focus }),
-      }),
-    [graph, snapshot?.focus],
+  const graphView = React.useMemo(
+    () => selectGraphView(graph ?? EMPTY_GRAPH),
+    [graph],
   )
 
   const simulate = (): void => {
     const focusEntityId = snapshotRef.current?.focus?.focusEntityId
     const latestGraph = graphRef.current
     if (focusEntityId === undefined || latestGraph === undefined) return
-    const visible = selectLocalGraph({
+    const visible = selectFocusNeighborhood({
       ...latestGraph,
       focus: snapshotRef.current!.focus!,
     })
@@ -569,7 +587,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
       ) : (
         <div className="workspace">
           <GraphPane
-            graph={localGraph}
+            graph={graphView}
             focusEntityId={focus?.focusEntityId}
             pathIds={focus?.pathIds ?? []}
             onSelect={(entityId) => void selectEntity(entityId)}

@@ -25,7 +25,9 @@ Git history recovery remains the responsibility of DSH Chat or the user.
 M2 Companion is implemented ([M2 spec](docs/specs/m2-companion.md)): the
 same-origin standalone React graph, Session/project-bound Page Keys, strict
 snapshot/entity/Focus APIs, safe Details rendering, visible-only polling, and
-the originating-Session `setDraft + submit` Bridge transaction. The current
+the originating-Session `setDraft + submit` Bridge transaction. The Companion
+keeps the complete projection visible; Focus only recenters and highlights it.
+The current
 automated gates, desktop/narrow browser checks, and approved disposable pinned
 DSH release-tarball exercise pass.
 M3 Research is implemented ([M3 spec](docs/specs/m3-research.md)): the

@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.13
+# SciFork 软件架构与实现设计 v0.14
 
 > 状态：Proposed（MVP 精简版）
-> 日期：2026-08-30
-> 上位设计：[SciFork 产品设计 v0.12](./scifork-product-design.md)
+> 日期：2026-08-31
+> 上位设计：[SciFork 产品设计 v0.13](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -396,6 +396,9 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
 
 - 窄宽度：Graph 主区，Details 在下方或覆盖层。
 - 宽宽度：Graph 与 Details 并列。
+- Graph 始终渲染 snapshot 的完整投影；Focus 不参与实体或 Edge 筛选。
+- 初始视口适配完整图谱；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
+  移到视图中心并更新高亮与 Details。
 - 不提供 density preference。
 - Focus 与 selected entity 是唯一 UI 导航状态。
 - 节点位置由确定性布局重建，不持久化。
@@ -416,7 +419,7 @@ Open action 创建 Page Key 时，Bridge 同时记住该 key 对应的 Session s
 
 ```text
 Companion `Simulate & Save` user click
-→ build bounded SimulationPrompt from current Focus snapshot
+→ build bounded SimulationPrompt from the current Focus neighborhood
 → broadcast { nonce, prompt }
 → matching DSH Bridge receives
 → conversation.input.for(scope).setDraft(prompt)
@@ -427,7 +430,8 @@ Companion `Simulate & Save` user click
 约束：
 
 - 只有 click handler 能发送，页面加载和后台刷新不能发送。
-- prompt 有字节上限，只包含当前 Focus、邻域摘要和明确任务。
+- prompt 有字节上限，只包含当前 Focus、有界邻域摘要和明确任务；页面显示全图不扩大
+  模型提示上下文。
 - prompt 明确说明本次真实点击授权保存当前轮全部有效推演分支；每轮最多五条、深度一层。
 - Bridge 只接受自己打开的 Page Key channel。
 - nonce 在页面内只使用一次，重复消息被丢弃。
@@ -741,7 +745,7 @@ fresh DSH profile
 ### M2：Companion
 
 - Page Key 和同源 API。
-- Focus graph、响应式布局和安全 Details。
+- 全局 Graph、Focus 居中高亮、响应式布局和安全 Details。
 - visible-only polling。
 - Simulate BroadcastChannel 与自动 Chat submit。
 
@@ -776,6 +780,7 @@ fresh DSH profile
 - 单 package 构建为一个可安装 tarball。
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面在窄窗和宽窗下使用同一响应式布局。
+- Companion 始终保留完整图谱内容，Focus 只改变视图中心、高亮与 Details。
 - Graph、文件、Focus 和 Chat context 一致。
 - Simulate & Save 点击后自动提交到对应 Chat；idle 启动、busy 排队，并默认保存最多五条有 Edge 的低置信推演分支。
 - Page Key 无二阶段交换，且不会暴露 cwd 或跨项目访问。

@@ -78,11 +78,15 @@ afterEach(() => {
 })
 
 describe('bounded simulation prompt', () => {
-  it('includes the Focus, visible support and contradiction, Evidence Gaps, and scientific guardrails', () => {
+  it('includes the Focus, bounded-neighborhood support and contradiction, Evidence Gaps, and scientific guardrails', () => {
     const prompt = buildSimulationPrompt(promptInput)
     const normalized = prompt.toLowerCase()
 
     expect(prompt).toContain('node_focus')
+    expect(prompt).toContain('Focus-neighborhood support')
+    expect(prompt).toContain('Focus-neighborhood contradictions')
+    expect(prompt).toContain('bounded Focus-neighborhood context')
+    expect(prompt).not.toContain('Visible support')
     expect(prompt).toContain('Blocking IL-6 may reduce the inflammatory phenotype.')
     expect(prompt).toContain('A reviewed cohort reported reduced inflammatory markers.')
     expect(prompt).toContain('The local assay showed no reduction after treatment.')

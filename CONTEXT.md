@@ -49,8 +49,8 @@ A transient structured package of Evidence Candidates produced outside SciFork's
 _Avoid_: Imported evidence, Research Project, accepted evidence
 
 **Focus**:
-The claim, result, or relationship currently grounding the user's conversation and local graph view.
-_Avoid_: Selection, active node
+The claim, result, or relationship currently grounding the user's conversation and visual center within the complete Research Graph.
+_Avoid_: Selection, active node, filtered subgraph
 
 **Confidence Band**:
 A qualitative assessment of support strength (`low`, `moderate`, or `high`), not a calibrated probability.
