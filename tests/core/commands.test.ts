@@ -361,12 +361,15 @@ describe('planCommand: edges', () => {
       to: NODE_B,
       relation: 'causes',
       basis: 'ai_inference',
+      publicationRefs: [{ pmid: '12345678', doi: 'https://doi.org/10.1000/ABC' }],
       provenance: 'model simulation',
       evidenceGap: 'no direct measurement',
     }, sha256)
     expect(ok.ok).toBe(true)
     if (!ok.ok) return
     expect(ok.path).toBe(`edges/${EDGE}.json`)
+    expect(writeContent(ok)).toContain('"publication_refs"')
+    expect(writeContent(ok)).toContain('"doi": "10.1000/ABC"')
 
     const noGap = planCommand(project, {
       kind: 'create_edge',
@@ -375,9 +378,22 @@ describe('planCommand: edges', () => {
       to: NODE_B,
       relation: 'causes',
       basis: 'ai_inference',
+      publicationRefs: [{ pmid: '12345678' }],
       provenance: 'model simulation',
     }, sha256)
     expect(noGap.ok).toBe(false)
+
+    const noReferences = planCommand(project, {
+      kind: 'create_edge',
+      id: EDGE,
+      from: NODE,
+      to: NODE_B,
+      relation: 'causes',
+      basis: 'ai_inference',
+      provenance: 'model simulation',
+      evidenceGap: 'no direct measurement',
+    }, sha256)
+    expect(noReferences.ok).toBe(false)
 
     const literatureNoRefs = planCommand(project, {
       kind: 'create_edge',
@@ -409,6 +425,7 @@ describe('planCommand: edges', () => {
       to: NODE_B,
       relation: 'predicts',
       basis: 'ai_inference',
+      publicationRefs: [{ pmid: '12345678' }],
       provenance: 'bounded simulation',
       evidenceGap: 'not experimentally tested',
     }, sha256)
@@ -421,6 +438,7 @@ describe('planCommand: edges', () => {
       to: NODE,
       relation: 'predicts',
       basis: 'ai_inference',
+      publicationRefs: [{ pmid: '12345678' }],
       provenance: 'bounded simulation',
       evidenceGap: 'not experimentally tested',
     }, sha256)
@@ -458,6 +476,22 @@ describe('planCommand: edges', () => {
     expect(writeContent(updated)).toContain(`"from": "${NODE}"`)
   })
 
+  it('rejects ai-inference-only reference fields on a non-ai edge update', () => {
+    const project = build([
+      nodeFile(NODE, 'hypothesis'),
+      nodeFile(NODE_B, 'prediction'),
+      edgeFile(EDGE, NODE, NODE_B),
+    ])
+    const updated = planCommand(project, {
+      kind: 'update_edge',
+      id: EDGE,
+      expectedFileVersion: versionOf(project.files, EDGE, 'edge'),
+      publicationRefs: [{ pmid: '12345678' }],
+    }, sha256)
+
+    expect(updated.ok).toBe(false)
+  })
+
   it('drops ai-inference-only fields when changing basis', () => {
     const project = projectWithEndpoints()
     const created = planCommand(project, {
@@ -467,6 +501,7 @@ describe('planCommand: edges', () => {
       to: NODE_B,
       relation: 'causes',
       basis: 'ai_inference',
+      publicationRefs: [{ pmid: '12345678' }],
       provenance: 'model simulation',
       evidenceGap: 'no direct measurement',
     }, sha256)
@@ -488,6 +523,7 @@ describe('planCommand: edges', () => {
     if (!updated.ok) return
     expect(writeContent(updated)).not.toContain('provenance')
     expect(writeContent(updated)).not.toContain('evidence_gap')
+    expect(writeContent(updated)).not.toContain('publication_refs')
   })
 })
 

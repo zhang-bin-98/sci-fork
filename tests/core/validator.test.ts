@@ -108,6 +108,7 @@ describe('validateProject', () => {
       edgeJsonFile(EDGE, NODE, NODE_B, {
         relation: 'predicts',
         basis: 'ai_inference',
+        publication_refs: [{ pmid: '12345678' }],
         provenance: 'bounded simulation',
         evidence_gap: 'not experimentally tested',
       }),
@@ -120,6 +121,7 @@ describe('validateProject', () => {
       edgeJsonFile(EDGE, NODE, NODE_B, {
         relation: 'predicts',
         basis: 'ai_inference',
+        publication_refs: [{ pmid: '12345678' }],
         provenance: 'bounded simulation',
         evidence_gap: 'not experimentally tested',
       }),

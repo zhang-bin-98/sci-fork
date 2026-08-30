@@ -49,44 +49,94 @@ function humanize(value: string): string {
   return value.replaceAll('_', ' ')
 }
 
-function entityCategory(entity: ProjectionEntitySummary): string {
-  if (entity.type === 'node') return humanize(entity.kind)
-  if (entity.type === 'evidence') return 'evidence assertion'
-  return 'result'
+type EntityTypeCarrier =
+  | Pick<Extract<ProjectionEntitySummary, { type: 'node' }>, 'type' | 'kind'>
+  | Pick<Extract<EntityDocument, { type: 'node' }>, 'type' | 'kind'>
+  | { type: 'evidence' | 'result' | 'edge' }
+
+function entityTypeLabel(entity: EntityTypeCarrier): string {
+  if (entity.type === 'node') return entity.kind.toUpperCase()
+  if (entity.type === 'evidence') return 'EVIDENCE'
+  return entity.type.toUpperCase()
+}
+
+function entityTypeClass(entity: EntityTypeCarrier): string {
+  return entity.type === 'node' ? entity.kind : entity.type
 }
 
 function entityMeta(entity: ProjectionEntitySummary): string {
-  if (entity.type === 'node') return entity.confidence + ' confidence'
+  if (entity.type === 'node') {
+    return (
+      entity.confidence +
+      ' confidence · ' +
+      entity.referenceCount +
+      ' refs (' +
+      entity.reviewedEvidenceCount +
+      ' reviewed)'
+    )
+  }
   if (entity.type === 'evidence') return entity.reviewStatus
   return entity.status
 }
 
-export function compactEntityId(entityId: string): string {
-  return entityId.length <= 24
-    ? entityId
-    : entityId.slice(0, 12) + '…' + entityId.slice(-8)
+function EntityTypeMark(props: { entity: EntityTypeCarrier }): React.ReactElement {
+  const typeClass = entityTypeClass(props.entity)
+  return (
+    <span className="entity-type-mark">
+      <span
+        className={'entity-type-dot entity-type-' + typeClass}
+        aria-hidden="true"
+      />
+      <span>{entityTypeLabel(props.entity)}</span>
+    </span>
+  )
 }
 
 export function EntityNodeCard(props: {
   entity: ProjectionEntitySummary
 }): React.ReactElement {
-  const tooltipId = React.useId()
   const { entity } = props
   return (
     <div className="entity-node-card">
       <div
         className="entity-node-content"
         tabIndex={0}
-        aria-label={entityCategory(entity) + ': ' + entity.label}
-        aria-describedby={tooltipId}
+        aria-label={entityTypeLabel(entity) + ': ' + entity.label}
       >
-        <span className="entity-node-kind">{entityCategory(entity)}</span>
+        <span className="entity-node-kind">
+          <EntityTypeMark entity={entity} />
+        </span>
         <strong>{entity.label}</strong>
         <span className="entity-node-meta">{entityMeta(entity)}</span>
       </div>
-      <div id={tooltipId} className="entity-node-tooltip" role="tooltip">
-        {entity.label}
-      </div>
+    </div>
+  )
+}
+
+export function HeaderIdentity(props: {
+  projectName: string
+  branch?: string
+  head?: string
+}): React.ReactElement {
+  return (
+    <div className="header-identity flex min-w-0 items-center gap-3 whitespace-nowrap">
+      <h1 className="shrink-0 text-xl font-semibold">SciFork</h1>
+      <span className="project-name min-w-0 truncate text-sm">{props.projectName}</span>
+      {props.branch === undefined ? null : (
+        <span
+          className="branch-chip inline-flex min-w-0 items-center gap-1.5 truncate rounded-full px-2.5 py-1 text-xs font-semibold"
+          aria-label="Current branch"
+          title={props.head === undefined ? props.branch : props.branch + ' @ ' + props.head}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="4" cy="3" r="1.75" />
+            <circle cx="4" cy="13" r="1.75" />
+            <circle cx="12" cy="5" r="1.75" />
+            <path d="M4 4.75v6.5M5.75 11c3.5 0 6.25-1.5 6.25-4.25" />
+          </svg>
+          <span className="truncate">{props.branch}</span>
+        </span>
+      )}
     </div>
   )
 }
@@ -241,6 +291,12 @@ function EdgeDetails(props: {
       <dd>{entity.to}</dd>
       <dt>Basis</dt>
       <dd>{humanize(entity.basis)}</dd>
+      {entity.publicationRefs === undefined ? null : (
+        <>
+          <dt>Research references</dt>
+          <dd>{entity.publicationRefs.length}</dd>
+        </>
+      )}
       {entity.provenance === undefined ? null : (
         <>
           <dt>Provenance</dt>
@@ -264,6 +320,21 @@ export interface DetailsPaneProps {
   onToggle(): void
 }
 
+function DrawerChevron(props: { action: 'open' | 'close' }): React.ReactElement {
+  return (
+    <svg
+      className="drawer-chevron"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <path d={props.action === 'close' ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'} />
+    </svg>
+  )
+}
+
 export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
   const { entity } = props
   const [copied, setCopied] = React.useState(false)
@@ -285,9 +356,10 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
           className="details-handle"
           aria-label="Open Details"
           aria-expanded={false}
+          data-drawer-action="open"
           onClick={props.onToggle}
         >
-          <span aria-hidden="true">‹</span>
+          <DrawerChevron action="open" />
           <strong>Details</strong>
         </button>
       </aside>
@@ -299,16 +371,17 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
       <header className="pane-heading">
         <div className="pane-title">
           <h2>Details</h2>
-          {entity === undefined ? null : <span>{humanize(entity.type)}</span>}
+          {entity === undefined ? null : <EntityTypeMark entity={entity} />}
         </div>
         <button
           type="button"
           className="details-toggle"
           aria-label="Close Details"
           aria-expanded={true}
+          data-drawer-action="close"
           onClick={props.onToggle}
         >
-          <span aria-hidden="true">›</span>
+          <DrawerChevron action="close" />
         </button>
         {entity === undefined ? null : (
           <div className="details-identity">
@@ -319,6 +392,12 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
             </button>
           </div>
         )}
+        {entity?.type === 'node' ? (
+          <div className="details-reference-counts">
+            <span><strong>{entity.referenceCount}</strong> refs</span>
+            <span><strong>{entity.reviewedEvidenceCount}</strong> reviewed</span>
+          </div>
+        ) : null}
       </header>
       <div className="details-body" tabIndex={0} aria-label="Details content">
         {entity === undefined ? (
@@ -580,26 +659,16 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   const project = snapshot?.project
   const focus = snapshot?.focus
-  const path = focus === undefined ? [] : [...focus.pathIds, focus.focusEntityId]
-  const labels = new Map((graph ?? EMPTY_GRAPH).entities.map((entity) => [entity.id, entity.label]))
-  const edgeLabels = new Map(
-    (graph ?? EMPTY_GRAPH).edges.flatMap((edge) =>
-      edge.id === undefined ? [] : [[edge.id, humanize(edge.relation)] as const],
-    ),
-  )
   const acknowledgement = simulationLabel(simulationState)
 
   return (
     <main className="companion-app">
-      <header className="app-header">
-        <div className="brand-block">
-          <h1>SciFork</h1>
-          <span>{project?.name ?? 'Research Graph'}</span>
-        </div>
-        <div className="project-meta" aria-label="Project revision">
-          {project?.branch === undefined ? null : <span>{project.branch}</span>}
-          {project?.head === undefined ? null : <code>{project.head.slice(0, 10)}</code>}
-        </div>
+      <header className="app-header flex h-14 shrink-0 items-center gap-3 overflow-hidden border-b border-sf-header-border bg-sf-header px-4 text-sf-header-foreground">
+        <HeaderIdentity
+          projectName={project?.name ?? 'Research Graph'}
+          {...(project?.branch === undefined ? {} : { branch: project.branch })}
+          {...(project?.head === undefined ? {} : { head: project.head })}
+        />
         <div className="header-actions">
           {acknowledgement === undefined ? null : (
             <output className="simulation-ack">{acknowledgement}</output>
@@ -624,27 +693,6 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           </button>
         </div>
       </header>
-
-      {path.length === 0 ? null : (
-        <nav className="focus-path" aria-label="Focus path">
-          {path.map((id, index) => (
-            <React.Fragment key={id}>
-              {index === 0 ? null : <span className="path-separator">/</span>}
-              <button
-                type="button"
-                title={id}
-                aria-label={(labels.get(id) ?? edgeLabels.get(id) ?? id) + ' (' + id + ')'}
-                aria-current={id === focus?.focusEntityId ? 'page' : undefined}
-                aria-busy={pendingFocusId === id}
-                onClick={() => selectEntity(id)}
-              >
-                <span>{labels.get(id) ?? edgeLabels.get(id) ?? id}</span>
-                <code>{compactEntityId(id)}</code>
-              </button>
-            </React.Fragment>
-          ))}
-        </nav>
-      )}
 
       {project?.readOnly ? (
         <section className="read-only-banner" aria-label="Read-only project">

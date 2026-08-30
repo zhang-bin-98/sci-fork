@@ -11,7 +11,7 @@ side-by-side layout.
 
 The M0 compatibility spike pinned the exact DeepSeek Harness `0.1.1-rc.2`
 preview contracts ([spike spec](docs/specs/m0-compatibility-spike.md)) and
-introduced the pnpm, strict TypeScript, Vitest, and esbuild toolchain.
+introduced the pnpm, strict TypeScript, Vitest, esbuild, and build-time Tailwind CSS toolchain.
 
 M1 (Core + Git) is implemented ([M1 spec](docs/specs/m1-core-git.md)): the
 pure-TypeScript Core (strict schemas, front-matter parser, cross-entity
@@ -27,9 +27,14 @@ same-origin standalone React graph, Session/project-bound Page Keys, strict
 snapshot/entity/Focus APIs, safe Details rendering, visible-only polling, and
 the originating-Session `setDraft + submit` Bridge transaction. The Companion
 keeps the complete projection visible; Focus only recenters and highlights it.
-The current
-automated gates, desktop/narrow browser checks, and approved disposable pinned
-DSH release-tarball exercise pass.
+Its single-row project/branch header, typed color-dot cards, responsive Details
+drawer, and in-card hover expansion use Tailwind utilities plus bounded
+React Flow/Markdown-specific CSS. Hypothesis/Prediction cards retain their exact
+scientific type and show deduplicated research references as total count with the
+reviewed-evidence count in parentheses.
+The current automated gates and served-asset checks pass. The earlier
+desktop/narrow browser checks and approved disposable pinned DSH release-tarball
+exercise also pass; the latest visual refinements still require a browser smoke check.
 M3 Research is implemented ([M3 spec](docs/specs/m3-research.md)): the
 dependency-free PubMed helper supports full Entrez query pages up to 300 metadata
 records and PMID/DOI lookup, and both packaged Skills contain the Draft,

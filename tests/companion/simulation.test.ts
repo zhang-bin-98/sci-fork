@@ -36,6 +36,8 @@ const promptInput = {
       type: 'node' as const,
       kind: 'hypothesis' as const,
       confidence: 'low' as const,
+      referenceCount: 0,
+      reviewedEvidenceCount: 0,
       label: 'Blocking IL-6 may reduce the inflammatory phenotype.',
     },
     {
@@ -111,6 +113,7 @@ describe('literature-grounded research expansion prompt', () => {
     expect(normalized).toContain('low confidence')
     expect(normalized).toContain('create_node')
     expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('publicationrefs')
     expect(normalized).toContain('focus remains unchanged')
     expect(normalized).toContain('do not recurse')
     expect(normalized).toContain('progressive research run')
@@ -147,6 +150,7 @@ describe('literature-grounded research expansion prompt', () => {
     expect(normalized).toContain('five')
     expect(normalized).toContain('create_node')
     expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('publicationrefs')
     expect(normalized).toContain('focus remains unchanged')
     expect(normalized).toContain('do not recurse')
   })

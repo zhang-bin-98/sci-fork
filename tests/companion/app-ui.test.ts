@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DetailsPane,
   EntityNodeCard,
-  compactEntityId,
+  HeaderIdentity,
 } from '../../src/companion/app.js'
 import type { EntityDocument, ProjectionEntitySummary } from '../../src/shared/companion-contract.js'
 
@@ -17,6 +17,8 @@ const summary = {
   type: 'node',
   kind: 'hypothesis',
   confidence: 'low',
+  referenceCount: 2,
+  reviewedEvidenceCount: 1,
   label: LONG_LABEL,
 } satisfies ProjectionEntitySummary
 
@@ -27,13 +29,32 @@ const entity = {
 } satisfies EntityDocument
 
 describe('Companion graph UI', () => {
-  it('exposes a complete wrapped node label to pointer and keyboard users', () => {
+  it('keeps project and branch identity in one header row', () => {
+    const html = renderToStaticMarkup(
+      createElement(HeaderIdentity, {
+        projectName: 'STAT3 resistance study',
+        branch: 'chore/v0.0.1-release',
+        head: 'abcdef1234567890',
+      }),
+    )
+
+    expect(html).toContain('STAT3 resistance study')
+    expect(html).toContain('chore/v0.0.1-release')
+    expect(html).toContain('aria-label="Current branch"')
+    expect(html).toContain('header-identity')
+    expect(html).toContain('branch-chip')
+  })
+
+  it('expands the card itself with a complete label and no detached tooltip', () => {
     const html = renderToStaticMarkup(createElement(EntityNodeCard, { entity: summary }))
 
     expect(html).toContain('tabindex="0"')
-    expect(html).toContain('role="tooltip"')
+    expect(html).not.toContain('role="tooltip"')
     expect(html).toContain(LONG_LABEL)
-    expect(html).toContain('aria-describedby=')
+    expect(html).not.toContain('aria-describedby=')
+    expect(html).toContain('entity-type-dot entity-type-hypothesis')
+    expect(html).toContain('HYPOTHESIS')
+    expect(html).toContain('2 refs (1 reviewed)')
   })
 
   it('shows the full focused entity id with a copy action in open Details', () => {
@@ -49,6 +70,9 @@ describe('Companion graph UI', () => {
     expect(html).toContain(ENTITY_ID)
     expect(html).toContain('Copy ID')
     expect(html).toContain('Focused')
+    expect(html).toContain('HYPOTHESIS')
+    expect(html).toContain('<strong>2</strong> refs')
+    expect(html).toContain('<strong>1</strong> reviewed')
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('class="details-body"')
     expect(html).toContain('aria-label="Details content"')
@@ -65,12 +89,22 @@ describe('Companion graph UI', () => {
     )
 
     expect(html).toContain('Open Details')
+    expect(html).toContain('data-drawer-action="open"')
     expect(html).toContain('aria-expanded="false"')
     expect(html).not.toContain('class="details-body"')
   })
 
-  it('keeps breadcrumb ids compact without losing their identifying suffix', () => {
-    expect(compactEntityId(ENTITY_ID)).toBe('node_bbbbbbb…22222222')
-    expect(compactEntityId('node_short')).toBe('node_short')
+  it('uses a direction-aware close control in open Details', () => {
+    const html = renderToStaticMarkup(
+      createElement(DetailsPane, {
+        entity,
+        focusEntityId: ENTITY_ID,
+        open: true,
+        onToggle: () => undefined,
+      }),
+    )
+
+    expect(html).toContain('data-drawer-action="close"')
+    expect(html).toContain('drawer-chevron')
   })
 })

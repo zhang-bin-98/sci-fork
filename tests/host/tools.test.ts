@@ -209,6 +209,7 @@ describe('registerResearchTools', () => {
       return kind === 'create_edge' || kind === 'update_edge'
     })) {
       expect(branch.properties['relation']?.enum).toContain('predicts')
+      expect(branch.properties).toHaveProperty('publicationRefs')
     }
     const focus = tools.definitions.find((d) => d.name === 'research_graph_focus')!
     expect(focus.output.schema).toEqual({})

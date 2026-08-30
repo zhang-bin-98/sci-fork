@@ -1,4 +1,4 @@
-# SciFork 产品设计 v0.15
+# SciFork 产品设计 v0.16
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
@@ -86,15 +86,22 @@ DSH 或用户。
 └──────────────────────────────┘  └──────────────────────────────┘
 ```
 
-页面始终显示完整 Research Graph 投影和当前 Focus 路径；只读 Details 默认打开，
+页面始终显示完整 Research Graph 投影和当前 Focus 路径高亮；只读 Details 默认打开，
 用户可以通过抽屉拉手收起或重新打开。页面提供 `Research & Expand`、`Details`
 两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心，不改变图谱内容；
 用户可以在保持全局上下文的同时沿关系思考。Git 历史恢复通过对应 DSH Chat 完成。
 
 实体点击期间显示独立的 pending 状态；连续点击按顺序完成并以最后一次点击为最终
 Focus，不把 React Flow 的临时选择态伪装成已持久的 Focus。Details 显示所选 Node、
-Result、Evidence Assertion 或 Edge 的完整可复制 ID；Focus 面包屑显示紧凑 ID 并可
-查看完整值。图中截断的实体标签在鼠标悬停或键盘聚焦时显示完整、可换行文本。
+Result、Evidence Assertion 或 Edge 的完整可复制 ID。页面不保留独立 Focus 面包屑栏；
+Focus 路径继续在全局图中高亮。图中截断的实体标签在鼠标悬停或键盘聚焦时由卡片
+本体向下展开为完整、可换行文本，不显示脱离卡片的 tooltip，也不触发全图重新布局。
+
+Companion 使用颜色圆点和文字共同区分实体：Finding 为绿色、Hypothesis 为琥珀色、
+Prediction 为紫色、Evidence Assertion 显示为 `EVIDENCE` 并使用蓝色、Result 为青色。
+颜色不是唯一语义载体。Node 卡片显示去重后的 `总参考数（reviewed evidence 数）`；
+总数合并 Node 的 Evidence Assertion 引用与 incident Edge 的结构化 Publication
+References，reviewed 数只统计 reviewed Evidence Assertion 背后的去重文献。
 
 DSH 入口使用公开的 `sidebar.footer.action`：展开时在 Settings 上方显示 Graph
 图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，并保留
@@ -106,10 +113,15 @@ DSH 的 list-slot owner，不用私有 DOM/CSS 强制重排。
 
 - 视口不宽于 1120 px 时把 Details 放到图下方；更宽时与 Graph 并列。
 - 宽窗口把 Graph 与 Details 并列。
-- 顶栏与 Focus 面包屑固定在可视区域，Graph 和 Details 使用剩余高度。
+- 顶栏固定在可视区域并始终保持单行；项目名与分支 chip 位于左侧，分支不在窄窗口
+  另起第二行，空间不足时按 HEAD、项目名、分支文字的顺序降级或截断。
+- 页面不显示独立 Focus 面包屑栏；Graph 和 Details 使用顶栏以下的剩余高度。
 - Details 收起时，宽屏保留右侧竖向拉手，窄屏保留图下方横向拉手；展开状态只存在于
   当前页面，刷新后恢复默认打开。
-- Details 标题保持可见，只有正文区域独立滚动，内容不会撑高整个页面。
+- Details 标题保持可见，显示 Finding/Hypothesis/Prediction/Evidence/Result/Edge 的精确
+  类型以及参考文献总数与 reviewed evidence 数；只有正文区域独立滚动，内容不会撑高整个页面。
+- Details 在右侧时使用左右方向箭头，在图下方时使用上下方向箭头；箭头方向表达
+  当前操作将打开或收起抽屉的方向。
 - 不提供 Compact/Workspace 模式开关。
 - 不保存第二套布局状态、Details 展开状态或节点坐标。
 
@@ -151,7 +163,7 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 
 ### Details
 
-Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程资源加载；附件路径必须位于 Research Project 根目录。Details 标题区显示实体类型、完整 ID、复制操作和 Focus 状态，正文在面板内部滚动。
+Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程资源加载；附件路径必须位于 Research Project 根目录。Details 标题区显示精确实体类型、完整 ID、复制操作、Focus 状态，以及适用时的 `总参考数（reviewed evidence 数）`，正文在面板内部滚动。
 
 ## 4. 领域模型
 
@@ -193,7 +205,9 @@ draft | validated | superseded
 
 一次用户发起、先检索后推理的单层图谱扩展。它不是新的实体类型，也不代表用户接受
 其科学内容。每个保留的低置信 Hypothesis 或 Prediction 必须通过一条持久化 Edge
-连接到当前图谱锚点，并在 `ai_inference` 上保留检索 provenance 与 Evidence Gap。
+连接到当前图谱锚点，并在 `ai_inference` 上保留检索 provenance、Evidence Gap 与支撑
+该推断的结构化 `publication_refs`。这些 Publication References 是可计数的检索
+provenance，不是 Evidence Assertion，也不能满足 Finding 支持门槛。
 
 ### Progressive Research Run
 
@@ -211,6 +225,10 @@ MVP 只保留 `supports`、`contradicts`、`causes`、`associated_with`、`predi
 ```text
 basis: literature | experiment | ai_inference
 ```
+
+`ai_inference` Edge 保存一至五十条去重的 `publication_refs`。每项至少包含 PMID 或
+规范化 DOI；同一条记录同时有 PMID 和 DOI 时按同一文献计数。它们只说明推断查阅了
+哪些文献，不代表已提取、审核或接受其中的 Evidence Assertion。
 
 ### Focus
 
@@ -536,8 +554,10 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
 - Companion 默认显示完整图谱；Focus 只改变高亮、Details 和视图中心，不裁剪内容。
 - Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID 可见、可复制。
-- Details 默认打开且可收起；不宽于 1120 px 时位于 Graph 下方，标题固定、正文独立滚动，顶栏和 Focus 面包屑不随正文滚动。
-- 截断的实体标签在鼠标悬停或键盘聚焦时显示完整文本。
+- Details 默认打开且可收起；不宽于 1120 px 时位于 Graph 下方，标题固定、正文独立滚动，顶栏不随正文滚动。
+- 截断的实体标签在鼠标悬停或键盘聚焦时由卡片本体展开显示完整文本。
+- Companion 使用 Tailwind CSS 的构建期 utilities 和 SciFork theme tokens 统一整体风格；
+  不增加浏览器 runtime 或 UI 组件库，React Flow/Markdown 专用规则保留少量手写 CSS。
 - Graph、文件、Focus 和 DSH Chat context 一致。
 - 点击 Research & Expand 后对应 Chat 自动开始；运行中正确进入 Queue。
 - 一次点击先检索再最多保存五条直接低置信 Hypothesis/Prediction；每条都有明确 Edge、provenance 和 Evidence Gap，不移动 Focus 且不会自动递归。

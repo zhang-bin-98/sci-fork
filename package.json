@@ -33,7 +33,7 @@
   "packageManager": "pnpm@11.23.0",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
-    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs && tailwindcss -i src/companion/styles.css -o dist/companion/styles.css --minify",
     "test": "vitest run",
     "prepack": "corepack pnpm build",
     "verify:pack": "node scripts/verify-pack.mjs",
@@ -51,6 +51,7 @@
   "devDependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@deepseek-ai/cordis": "4.0.1",
+    "@tailwindcss/cli": "^4.3.3",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
@@ -61,6 +62,7 @@
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vitest": "^3.2.0"
   },

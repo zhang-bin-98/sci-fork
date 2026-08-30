@@ -1,8 +1,8 @@
 # SciFork M2 Companion
 
-> Status: Implemented; Focus-consistent responsive Details extension specified on 2026-08-31
+> Status: Implemented; Tailwind visual-system and reference-count extension specified on 2026-08-31
 > Date: 2026-08-31
-> Parent design: [product design v0.15](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.16](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
+> Parent design: [product design v0.16](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.17](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 > Action semantics: the historical `Simulate & Save` contract below is superseded
 > by [literature-grounded research expansion](progressive-research-expansion.md).
@@ -23,7 +23,7 @@ to a different DSH Session.
    Key that never enters a query, repository, log, or Chat command result.
 3. Expose bounded snapshot, entity, and Focus POST APIs over the existing DSH
    Web origin.
-4. Render the complete Research Graph, current Focus path, and safe read-only,
+4. Render the complete Research Graph, graph-highlighted Focus path, and safe read-only,
    collapsible Details in one responsive React layout; Focus only recenters and
    highlights after Host acknowledgement.
 5. Poll only while the page is visible and detect project, branch, HEAD, Focus,
@@ -215,15 +215,27 @@ M2 performs no automatic remote request and no uncontained attachment read.
 Details is open by default and may be collapsed for the lifetime of the current
 page. Its state is not persisted. Above 1120 px it is a right-side drawer with a
 vertical closed handle; at or below 1120 px it is a bottom drawer with a
-horizontal closed handle. The app header and Focus breadcrumb remain outside
-scrolling content. The Details heading remains visible and only its body scrolls,
+horizontal closed handle. The single-row app header remains outside scrolling
+content and no separate Focus breadcrumb is rendered. The Details heading remains visible and only its body scrolls,
 so long entity content never increases the page height.
 
-The heading exposes the selected entity type, full monospace id, a copy-id
-button, and whether it is the current Focus. The breadcrumb uses a compact id
-with the full value available to assistive technology and pointer hover. A graph
-card keeps its bounded size, while pointer hover or keyboard focus exposes its
-complete wrapped label in a tooltip.
+The heading exposes the precise selected entity type, full monospace id, a copy-id
+button, whether it is the current Focus, and applicable reference counts. Finding,
+Hypothesis, Prediction, `EVIDENCE`, and Result use a colored dot plus text in both
+cards and Details. A graph card expands its own body on pointer hover or keyboard
+focus to expose its complete wrapped label; it uses no detached tooltip and does
+not trigger graph relayout. Extremely long labels use bounded internal scrolling.
+
+The header keeps project name, branch chip, status, and actions on one line at all
+supported widths; HEAD and long labels may be hidden or ellipsized before branch
+metadata wraps. Drawer chevrons use left/right semantics beside the graph and
+up/down semantics below it.
+
+Node projection summaries expose `referenceCount` and `reviewedEvidenceCount`.
+The Host deduplicates total references from the Node and incident stored Edges by
+canonical PMID, otherwise normalized DOI. Reviewed count only includes publications
+behind reviewed Evidence Assertions. Cards format this as `N refs (M reviewed)`;
+Details exposes the same values with explicit labels.
 
 Static routing serves only `index.html`, `app.js`, and `styles.css` from a fixed
 build manifest. It rejects encoded or decoded traversal and API-shaped paths.
@@ -272,7 +284,10 @@ channels and nonce state close on bundle unload.
 - Browser code imports no `node:` modules.
 - Approved architecture dependencies are `@xyflow/react`,
   `@dagrejs/dagre`, `react-markdown`, and `remark-gfm`; React DOM is the
-  rendering peer required by the approved standalone React tree.
+  rendering peer required by the approved standalone React tree. Tailwind CSS and
+  its CLI are build-time development dependencies; no Tailwind runtime or component
+  library is shipped. Preflight remains disabled to avoid changing React Flow and
+  safe Markdown defaults.
 - One package, one bundle, one tarball, one DSH Web origin, and one responsive
   layout remain unchanged.
 - No log line records Page Keys, prompts, entity bodies, local roots, or
@@ -299,11 +314,16 @@ channels and nonce state close on bundle unload.
       without overlap.
 - [x] Only Host-confirmed Focus receives the solid graph highlight; rapid clicks
       are not dropped and settle on the last clicked entity.
-- [x] Every selected entity type exposes a full copyable id, and truncated graph
-      labels expose their complete text on pointer hover and keyboard focus.
-- [x] Details defaults open, collapses to a responsive handle, moves below Graph
+- [ ] Every selected entity type exposes a full copyable id and precise type with
+      text plus a color dot; graph cards expand themselves on pointer hover and
+      keyboard focus without a detached tooltip or graph relayout.
+- [ ] Node cards and Details show deduplicated `N refs (M reviewed)` derived from
+      structured Publication References and reviewed Evidence Assertions.
+- [ ] The top bar remains one line with an inline branch chip, and the standalone
+      Focus breadcrumb is absent.
+- [ ] Details defaults open, collapses with direction-correct responsive chevrons, moves below Graph
       at 1120 px, and keeps long content in an internal scroll region while the
-      app header, breadcrumb, and Details heading remain visible.
+      app header and Details heading remain visible.
 - [x] Hidden pages issue no polling requests and refresh immediately when shown.
 - [x] Details executes no raw HTML/script and performs no automatic remote or
       uncontained resource load.
@@ -329,11 +349,11 @@ channels and nonce state close on bundle unload.
 - Companion unit: fragment consumption/storage clearing, API error mapping,
   global graph membership, bounded prompt-neighborhood selection, Focus center
   resolution, serialized latest-click selection, layout determinism, visible-only
-  polling, safe link and image rendering, Details id/copy/drawer semantics,
+  polling, safe link and image rendering, Details id/copy/type/reference/drawer semantics,
   prompt content/byte cap, ack timeout/retry nonce behavior.
 - Browser: built static assets served locally with fixture API responses at
-  desktop, 1120 px boundary, and narrow viewports; inspect fixed header/path,
-  graph pixels, tooltip, Focus/pending states, Details drawer and internal scroll.
+  desktop, 1120 px boundary, and narrow viewports; inspect the fixed single-row header,
+  graph pixels, card expansion, Focus/pending states, Details drawer and internal scroll.
 - DSH smoke (separate explicit approval): disposable pinned `0.1.1-rc.2`
   profile, one package install, `/research init`, Open action, snapshot/entity/
   Focus, idle and busy Simulate, reload, unload, and project readability.

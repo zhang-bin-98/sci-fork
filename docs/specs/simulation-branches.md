@@ -81,8 +81,10 @@ Finding | Hypothesis --predicts--> Prediction
 
 For another scientifically justified shape, the model chooses the narrowest of
 `supports`, `contradicts`, `causes`, or `associated_with`. Every generated Edge
-uses `basis: ai_inference` with non-empty provenance and Evidence Gap. A
-simulation cannot create or promote a Finding.
+uses `basis: ai_inference` with non-empty provenance, Evidence Gap, and one to
+fifty structured `publication_refs` identifying the retrieved records that
+support that inference. Those references do not create or review an Evidence
+Assertion. A simulation cannot create or promote a Finding.
 
 The model creates one Node and immediately creates its Edge using the returned
 project revision. If Edge creation fails, it re-reads and retries only when the

@@ -191,6 +191,7 @@ evidence_refs:             # 可选，≤50 条，无重复
   "relation": "supports | contradicts | causes | associated_with",
   "basis": "literature | experiment | ai_inference",
   "evidence_refs": [ { "id": "ev_…", "role": "supports | contradicts" } ],
+  "publication_refs": [ { "pmid": "12345678", "doi": "10.xxxx/example" } ],
   "provenance": "…",
   "evidence_gap": "…"
 }
@@ -198,7 +199,10 @@ evidence_refs:             # 可选，≤50 条，无重复
 
 - `from ≠ to`；两端必须存在且为 node 或 result。
 - `basis: literature` 必须带 ≥1 条 reviewed EA 引用（role 与 direction 一致）。
-- `basis: ai_inference` 必须带 `provenance` 与 `evidence_gap`（各 ≤2000 字符）。
+- `basis: ai_inference` 必须带 `provenance`、`evidence_gap`（各 ≤2000 字符）与
+  `publication_refs`（1..50 条）；每条至少有 PMID 或规范化 DOI，列表按 Publication
+  Reference 去重。这些检索引用不是 Evidence Assertion。
+- `publication_refs` 只允许用于 `ai_inference`；literature/experiment Edge 拒绝该字段。
 - `evidence_refs` 可选，≤50 条；`from`/`to` 在 UpdateEdge 中不可变。
 
 ### Result（results/res_<uuid>.md，front matter + 必填正文）
@@ -276,8 +280,8 @@ interface ResearchProject {
 | `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: reviewed\|rejected、limitations? | 按状态机转移 |
 | `create_node` | id、nodeKind、confidence、evidenceRefs?、body | 创建 finding 须满足门槛 |
 | `update_node` | id、expectedFileVersion、nodeKind?、confidence?、evidenceRefs?、body?（至少一项） | 结果态满足门槛 |
-| `create_edge` | id、from、to、relation、basis、evidenceRefs?、provenance?、evidenceGap? | 端点存在；basis 规则 |
-| `update_edge` | id、expectedFileVersion、relation?、basis?、evidenceRefs?、provenance?、evidenceGap?（至少一项） | from/to 不可变 |
+| `create_edge` | id、from、to、relation、basis、evidenceRefs?、publicationRefs?、provenance?、evidenceGap? | 端点存在；basis 规则 |
+| `update_edge` | id、expectedFileVersion、relation?、basis?、evidenceRefs?、publicationRefs?、provenance?、evidenceGap?（至少一项） | from/to 不可变 |
 | `create_result` | id、observedAt、body | 落盘 status 强制 draft |
 | `update_result` | id、expectedFileVersion、status?、observedAt?、body?（至少一项） | 按状态机转移 |
 | `import_draft_item` | id、draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须可导入；转换为 candidate EA 的单实体命令 |

@@ -1,8 +1,24 @@
-@import '@xyflow/react/dist/style.css';
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(".");
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  --color-sf-canvas: #f2f4f2;
+  --color-sf-surface: #ffffff;
+  --color-sf-ink: #202522;
+  --color-sf-muted: #68716c;
+  --color-sf-border: #d4d9d5;
+  --color-sf-header: #33463f;
+  --color-sf-header-border: #26352f;
+  --color-sf-header-foreground: #f8faf8;
+  --color-sf-accent: #146c5a;
+  --color-sf-accent-soft: #e9f4ef;
+}
 
 :root {
-  color: #202522;
-  background: #f2f4f2;
+  color: var(--color-sf-ink);
+  background: var(--color-sf-canvas);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -64,59 +80,46 @@ button:disabled {
   height: 100dvh;
   min-height: 0;
   flex-direction: column;
-  background: #f2f4f2;
+  background: var(--color-sf-canvas);
 }
 
 .app-header {
-  display: flex;
-  min-height: 64px;
-  align-items: center;
-  gap: 18px;
-  flex: 0 0 auto;
   border-bottom: 1px solid #26352f;
-  padding: 10px 16px;
-  color: #f8faf8;
-  background: #33463f;
+  color: var(--color-sf-header-foreground);
+  background: var(--color-sf-header);
 }
 
-.brand-block {
-  display: flex;
+.header-identity {
+  flex: 1 1 auto;
   min-width: 0;
-  align-items: baseline;
-  gap: 12px;
 }
 
-.brand-block h1 {
+.header-identity h1 {
   margin: 0;
-  font-size: 20px;
   line-height: 1;
   letter-spacing: 0;
 }
 
-.brand-block span {
-  max-width: 34vw;
-  overflow: hidden;
+.project-name {
+  max-width: min(34vw, 360px);
   color: #cbd2cd;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.project-meta {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  color: #aeb8b1;
-  font-size: 12px;
+.branch-chip {
+  max-width: min(32vw, 280px);
+  border: 1px solid #71857d;
+  color: #dce5df;
+  background: rgb(255 255 255 / 8%);
 }
 
-.project-meta span,
-.project-meta code {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.branch-chip svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .header-actions {
@@ -160,62 +163,6 @@ button:disabled {
   font-size: 12px;
   font-weight: 700;
   text-align: right;
-}
-
-.focus-path {
-  display: flex;
-  min-height: 48px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 7px;
-  overflow-x: auto;
-  border-bottom: 1px solid #d5dad6;
-  padding: 7px 14px;
-  background: #ffffff;
-  scrollbar-width: thin;
-}
-
-.focus-path button {
-  max-width: 240px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  border-color: transparent;
-  padding: 0 8px;
-  color: #405048;
-  background: transparent;
-  white-space: nowrap;
-}
-
-.focus-path button > span {
-  display: block;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.focus-path button code {
-  display: block;
-  color: #718078;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 9px;
-  font-weight: 500;
-  line-height: 1.25;
-}
-
-.focus-path button[aria-busy="true"] {
-  border-color: #c8953f;
-  background: #fff7e5;
-}
-
-.focus-path button[aria-current="page"] {
-  border-color: #78aa9d;
-  color: #0d5f4e;
-  background: #e9f4ef;
-}
-
-.path-separator {
-  color: #9aa29d;
-  font-size: 13px;
 }
 
 .read-only-banner,
@@ -300,6 +247,10 @@ button:disabled {
 }
 
 .entity-node-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
   display: grid;
   width: 100%;
   height: 100%;
@@ -311,6 +262,7 @@ button:disabled {
   background: #ffffff;
   box-shadow: 0 2px 6px rgb(31 42 35 / 10%);
   text-align: left;
+  transition: box-shadow 140ms ease, min-height 140ms ease;
 }
 
 .entity-node-content:focus-visible {
@@ -318,33 +270,18 @@ button:disabled {
   outline-offset: 3px;
 }
 
-.entity-node-tooltip {
-  position: absolute;
-  z-index: 20;
-  bottom: calc(100% + 9px);
-  left: 50%;
-  width: max-content;
-  max-width: min(360px, 70vw);
-  padding: 8px 10px;
-  border: 1px solid #87958e;
-  border-radius: 5px;
-  opacity: 0;
-  color: #f8faf8;
-  background: #33463f;
-  box-shadow: 0 5px 18px rgb(24 36 30 / 24%);
-  font-size: 12px;
-  font-weight: 550;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-  pointer-events: none;
-  transform: translate(-50%, 4px);
-  transition: opacity 120ms ease, transform 120ms ease;
+.react-flow__node-entity:hover,
+.react-flow__node-entity:focus-within {
+  z-index: 10 !important;
 }
 
-.entity-node-card:hover .entity-node-tooltip,
-.entity-node-content:focus-visible + .entity-node-tooltip {
-  opacity: 1;
-  transform: translate(-50%, 0);
+.entity-node-card:hover .entity-node-content,
+.entity-node-content:focus-visible {
+  height: auto;
+  min-height: 100%;
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  box-shadow: 0 9px 28px rgb(31 42 35 / 22%);
 }
 
 .entity-node-kind,
@@ -354,8 +291,56 @@ button:disabled {
   font-size: 10px;
   line-height: 1.2;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
+}
+
+.entity-node-kind {
+  text-transform: uppercase;
+}
+
+.entity-type-mark {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.entity-type-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #7c8580;
+  box-shadow: 0 0 0 2px rgb(124 133 128 / 14%);
+}
+
+.entity-type-finding {
+  background: #198754;
+  box-shadow: 0 0 0 2px rgb(25 135 84 / 16%);
+}
+
+.entity-type-hypothesis {
+  background: #c48418;
+  box-shadow: 0 0 0 2px rgb(196 132 24 / 16%);
+}
+
+.entity-type-prediction {
+  background: #7558b3;
+  box-shadow: 0 0 0 2px rgb(117 88 179 / 16%);
+}
+
+.entity-type-evidence {
+  background: #2978b5;
+  box-shadow: 0 0 0 2px rgb(41 120 181 / 16%);
+}
+
+.entity-type-result {
+  background: #168a99;
+  box-shadow: 0 0 0 2px rgb(22 138 153 / 16%);
+}
+
+.entity-type-edge {
+  background: #6b746f;
 }
 
 .entity-node-content strong {
@@ -366,6 +351,14 @@ button:disabled {
   line-height: 1.25;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.entity-node-card:hover .entity-node-content > strong,
+.entity-node-content:focus-visible > strong {
+  display: block;
+  overflow: visible;
+  align-self: start;
+  -webkit-line-clamp: unset;
 }
 
 .entity-handle {
@@ -460,8 +453,10 @@ button:disabled {
   writing-mode: vertical-rl;
 }
 
-.details-handle span {
-  font-size: 18px;
+.drawer-chevron {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
 }
 
 .pane-heading {
@@ -490,9 +485,10 @@ button:disabled {
   letter-spacing: 0;
 }
 
-.pane-title > span {
+.pane-title > .entity-type-mark {
   color: #68716c;
   font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -509,6 +505,21 @@ button:disabled {
   grid-column: 1 / -1;
   align-items: center;
   gap: 8px;
+}
+
+.details-reference-counts {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 14px;
+  color: #68716c;
+  font-size: 11px;
+}
+
+.details-reference-counts strong {
+  color: #33423b;
+  font-size: 12px;
 }
 
 .details-identity code {
@@ -661,28 +672,12 @@ button:disabled {
 }
 
 @media (max-width: 1120px) {
-  .app-header {
-    min-height: 104px;
-    flex-wrap: wrap;
-    gap: 8px 12px;
-    align-content: center;
+  .project-name {
+    max-width: 24vw;
   }
 
-  .brand-block {
-    flex: 1 1 190px;
-  }
-
-  .brand-block span {
-    max-width: 52vw;
-  }
-
-  .project-meta {
-    order: 3;
-    width: 100%;
-  }
-
-  .header-actions {
-    flex: 0 0 auto;
+  .branch-chip {
+    max-width: 28vw;
   }
 
   .workspace {
@@ -719,12 +714,8 @@ button:disabled {
     writing-mode: horizontal-tb;
   }
 
-  .details-handle span {
+  .drawer-chevron {
     transform: rotate(90deg);
-  }
-
-  .focus-path button {
-    max-width: 180px;
   }
 
   .read-only-banner span {
@@ -737,9 +728,13 @@ button:disabled {
     padding: 9px 10px;
   }
 
-  .brand-block span,
-  .project-meta {
+  .project-name {
     display: none;
+  }
+
+  .branch-chip {
+    max-width: 30vw;
+    padding-inline: 7px;
   }
 
   .header-actions {
@@ -748,10 +743,6 @@ button:disabled {
 
   .header-actions button {
     padding: 0 9px;
-  }
-
-  .focus-path {
-    padding-inline: 9px;
   }
 
   .structured-details {

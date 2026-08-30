@@ -147,6 +147,8 @@ function fakeApi(): CompanionApiPort {
         kind: 'hypothesis' as const,
         confidence: 'low' as const,
         evidenceRefs: [],
+        referenceCount: 0,
+        reviewedEvidenceCount: 0,
         body: '# Test',
       },
     })),

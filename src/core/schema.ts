@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { publicationReferencesHaveOverlap } from './publication-references.js'
 
 /**
  * Core schema layer: the exact on-disk Research Project formats from
@@ -30,6 +31,7 @@ export const ASSERTION_MAX = 4000
 export const LIMITATIONS_MAX = 20
 export const LIMITATION_MAX = 500
 export const EVIDENCE_REFS_MAX = 50
+export const PUBLICATION_REFS_MAX = 50
 export const LOCATOR_SECTION_MAX = 500
 export const LOCATOR_PAGE_MAX = 99999
 export const PROVENANCE_MAX = 2000
@@ -158,6 +160,14 @@ export const PUBLICATION_REFERENCE_SCHEMA = z
   })
 export type PublicationReference = z.infer<typeof PUBLICATION_REFERENCE_SCHEMA>
 
+export const PUBLICATION_REFERENCES_SCHEMA = z
+  .array(PUBLICATION_REFERENCE_SCHEMA)
+  .min(1)
+  .max(PUBLICATION_REFS_MAX)
+  .refine((references) => !publicationReferencesHaveOverlap(references), {
+    message: 'publication_refs must not repeat a PMID or DOI',
+  })
+
 export const LOCATOR_SCHEMA = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pubmed_abstract') }).strict(),
   z
@@ -241,6 +251,7 @@ export const EDGE_FILE_SCHEMA = z
       .object({
         ...EDGE_COMMON,
         basis: z.literal('ai_inference'),
+        publication_refs: PUBLICATION_REFERENCES_SCHEMA,
         provenance: z.string().min(1).max(PROVENANCE_MAX),
         evidence_gap: z.string().min(1).max(PROVENANCE_MAX),
       })

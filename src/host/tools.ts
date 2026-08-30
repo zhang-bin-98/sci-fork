@@ -134,6 +134,9 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
           relation: edge.relation,
           basis: edge.basis,
           evidenceRefs: edge.evidence_refs ?? [],
+          ...(edge.basis === 'ai_inference'
+            ? { publicationRefs: edge.publication_refs }
+            : {}),
           ...(edge.basis === 'ai_inference' && edge.provenance !== undefined ? { provenance: edge.provenance } : {}),
           ...(edge.basis === 'ai_inference' && edge.evidence_gap !== undefined ? { evidenceGap: edge.evidence_gap } : {}),
         }
@@ -337,6 +340,7 @@ function commandBranch(
 const ID = { type: 'string' }
 const VERSION = { type: 'string' }
 const EVIDENCE_REFS = { type: 'array', items: { type: 'object' } }
+const PUBLICATION_REFS = { type: 'array', items: { type: 'object' } }
 const APPLY_COMMAND_SCHEMA = {
   type: 'object',
   oneOf: [
@@ -395,6 +399,7 @@ const APPLY_COMMAND_SCHEMA = {
         relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with', 'predicts'] },
         basis: { type: 'string', enum: ['literature', 'experiment', 'ai_inference'] },
         evidenceRefs: EVIDENCE_REFS,
+        publicationRefs: PUBLICATION_REFS,
         provenance: { type: 'string' },
         evidenceGap: { type: 'string' },
       },
@@ -408,6 +413,7 @@ const APPLY_COMMAND_SCHEMA = {
         relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with', 'predicts'] },
         basis: { type: 'string', enum: ['literature', 'experiment', 'ai_inference'] },
         evidenceRefs: EVIDENCE_REFS,
+        publicationRefs: PUBLICATION_REFS,
         provenance: { type: 'string' },
         evidenceGap: { type: 'string' },
       },

@@ -71,6 +71,10 @@ const EDGE_FILE = JSON.stringify({
   to: NODE,
   relation: 'supports',
   basis: 'ai_inference',
+  publication_refs: [
+    { pmid: '12345678' },
+    { doi: '10.1000/second' },
+  ],
   provenance: 'Simulation proposal pending experimental review.',
   evidence_gap: 'Independent replication is still missing.',
 })
@@ -220,6 +224,8 @@ describe('CompanionService reads', () => {
       type: 'node',
       kind: 'hypothesis',
       label: 'STAT3 sustains resistant-cell proliferation',
+      referenceCount: 2,
+      reviewedEvidenceCount: 1,
     })
     expect(result.graph.edges.find((edge) => edge.id === EDGE)).toMatchObject({
       relation: 'supports',
@@ -255,7 +261,13 @@ describe('CompanionService reads', () => {
     const node = await setupState.service.entity(key, NODE)
     expect(node).toMatchObject({
       ok: true,
-      entity: { id: NODE, type: 'node', body: expect.stringContaining('provisional') },
+      entity: {
+        id: NODE,
+        type: 'node',
+        referenceCount: 2,
+        reviewedEvidenceCount: 1,
+        body: expect.stringContaining('provisional'),
+      },
     })
 
     const edge = await setupState.service.entity(key, EDGE)
@@ -266,6 +278,7 @@ describe('CompanionService reads', () => {
         type: 'edge',
         from: RESULT,
         to: NODE,
+        publicationRefs: [{ pmid: '12345678' }, { doi: '10.1000/second' }],
         evidenceGap: 'Independent replication is still missing.',
       },
     })

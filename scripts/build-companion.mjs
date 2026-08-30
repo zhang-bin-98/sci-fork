@@ -15,13 +15,6 @@ buildSync({
   minify: true,
 })
 
-buildSync({
-  entryPoints: ['src/companion/styles.css'],
-  outfile: outputDirectory + '/styles.css',
-  bundle: true,
-  minify: true,
-})
-
 const html = [
   '<!doctype html>',
   '<html lang="en">',

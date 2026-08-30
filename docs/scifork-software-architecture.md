@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.16
+# SciFork 软件架构与实现设计 v0.17
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
-> 上位设计：[SciFork 产品设计 v0.15](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.16](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -178,7 +178,8 @@ interface PublicationReference {
 - Node/Edge 只正向引用 reviewed Evidence Assertion。
 - Result 直接投影为 Graph entity，不创建 Evidence 或 Node 包装。
 - Confidence Band 是支持强度，不是统计概率。
-- 任何 `ai_inference` 都必须保留 provenance 和 Evidence Gap。
+- 任何 `ai_inference` 都必须保留 provenance、Evidence Gap 和一至五十条结构化
+  `publication_refs`；这些检索引用不等于 Evidence Assertion 或 reviewed evidence。
 - `predicts` 只能从 Finding/Hypothesis 指向 Prediction。
 - Evidence Assertion 和 Result 不物理删除，分别使用 rejected 或 superseded；Finding 也不可物理删除。
 - 无关联 Edge 的 Hypothesis/Prediction 可以通过 typed command 删除；Edge 可以删除，但删除后项目仍须满足全部科研不变量。
@@ -402,14 +403,19 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
 - 视口宽度大于 1120 px：Graph 与 Details 抽屉并列。
 - Details 默认打开；关闭后分别保留右侧竖向拉手或图下方横向拉手。该状态只存在于
   当前 React tree，刷新后恢复打开，不进入 storage。
-- 页面保持 `100dvh`；顶栏和 Focus 面包屑位于滚动区域之外，Details 标题固定且正文
+- 页面保持 `100dvh`；单行顶栏位于滚动区域之外，Details 标题固定且正文
   独立滚动，不允许实体正文改变页面整体高度。
+- 项目名、分支 chip 和操作处于同一顶栏；窄窗口不得把分支元数据换到第二行。
+- 不渲染独立 Focus 面包屑栏；Focus path 仍用于图内路径高亮。
 - Graph 始终渲染 snapshot 的完整投影；Focus 不参与实体或 Edge 筛选。
 - 初始视口适配完整图谱；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
   移到视图中心并更新高亮与 Details。
 - React Flow 临时 `selected` 状态不代表 Focus。只有 Host `setFocus` 成功后才显示正式
   Focus 高亮；请求期间显示独立 pending 反馈，连续点击串行收敛到最后一次目标。
-- 截断实体标签通过 hover/focus tooltip 显示完整可换行文本。
+- 截断实体标签在 hover/focus 时由卡片本体向下展开，完整文本位于卡片内；为保持
+  画布稳定，不因 hover 重新运行 Dagre，极长标签在有界卡片内部滚动。
+- 卡片使用颜色圆点与文字共同表达精确实体类型。Node 卡片显示去重后的
+  `referenceCount (reviewedEvidenceCount reviewed)`；颜色不得成为唯一类型信息。
 - 不提供 density preference。
 - Focus 与 selected entity 是唯一 UI 导航状态。
 - 节点位置由确定性布局重建，不持久化。
@@ -424,9 +430,15 @@ Host 只返回受管实体文档。Companion 使用随 bundle 打包的 Markdown
 - 本地附件必须经过 Project Locator containment。
 - 外链需要真实用户点击。
 
-Details 标题区对 Node、Result、Evidence Assertion 和 Edge 显示实体类型、完整等宽 ID、
-复制操作和 Focus 状态。Focus 面包屑显示紧凑 ID，并用完整 ID 作为可访问说明；这些
-显示值只来自已解析的 projection/entity 响应，不接受浏览器构造的路径或标识。
+Details 标题区对 Node、Result、Evidence Assertion 和 Edge 显示精确类型、完整等宽 ID、
+复制操作和 Focus 状态。Node 不显示笼统的 `NODE`，而显示 Finding、Hypothesis 或
+Prediction；Evidence Assertion 显示 `EVIDENCE`。适用时还显示去重后的总参考文献数和
+reviewed evidence 文献数。这些显示值只来自已解析的 projection/entity 响应，不接受
+浏览器构造的路径或标识。
+
+`referenceCount` 合并 Node 自身 `evidence_refs` 以及 incident stored Edge 上的结构化
+`publication_refs`/`evidence_refs`，按 PMID 优先、否则规范化 DOI 去重；
+`reviewedEvidenceCount` 只统计实际 reviewed Evidence Assertion 背后的去重文献。
 
 ## 9. Research Expansion 单步自动运行
 
@@ -517,8 +529,8 @@ read current Chat objective + Focus + directional neighbors
 多轮或递归。单步结束不更新 Focus。若当前 Chat 研究目的不清楚、Evidence Assertion
 是 Focus 且没有可用 Node/Result 锚点，或检索不能支持明确关系，Skill 不创建孤立
 分支。自动扩展不得创建 Finding，所有新 Node 使用 `low` confidence，所有
-`ai_inference` Edge 必须带检索 provenance 与 Evidence Gap；PMID/DOI provenance
-不等于 reviewed Evidence Assertion。
+`ai_inference` Edge 必须带检索 provenance、Evidence Gap 与结构化
+`publication_refs`；这些 PMID/DOI 检索引用不等于 reviewed Evidence Assertion。
 
 Progressive Research Run 工作流只接受当前 Chat 中的明确用户请求。模型先陈述用户
 目标和有界计划，维护 frontier/visited state，按“读取方向邻居 → 完成一个检索 Skill
@@ -686,6 +698,7 @@ interface SciForkError {
 | Graph | `@xyflow/react` |
 | Layout | `@dagrejs/dagre` |
 | Details | `react-markdown` + `remark-gfm`，raw HTML disabled |
+| Companion styling | Tailwind CSS build-time utilities + SciFork theme tokens；无浏览器 runtime，React Flow/Markdown 保留专用 CSS |
 | Web API | DSH `ctx.webServer.register` + typed JSON POST |
 | Research Expansion submit | scoped BroadcastChannel + public SessionInput |
 | Git | DSH `ctx.subprocess` + system Git |
@@ -726,8 +739,10 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - Page Key 绑定、fragment 清除、失效和错误项目访问。
 - 一套响应式布局在窄/宽 viewport 可用。
 - Focus 正式高亮只来自 Host 确认状态，连续实体点击不会被丢弃或与模型可读 Focus 分叉。
-- 实体完整 ID 可见、可复制，截断标签有 hover/focus 完整文本。
-- Details 抽屉默认打开、页面内可收起；1120 px 断点、固定顶栏/面包屑和内部正文滚动
+- 实体完整 ID 可见、可复制；卡片 hover/focus 本体展开完整标签并保持全图布局稳定。
+- 精确实体类型用文字和颜色圆点共同显示；Node 卡片与 Details 的去重参考总数、reviewed
+  evidence 数和结构化 `publication_refs` 一致。
+- Details 抽屉默认打开、页面内可收起；1120 px 断点、固定单行顶栏和内部正文滚动
   在宽窄 viewport 都不产生页面撑高或重叠。
 - 页面隐藏暂停 snapshot polling。
 - Details 阻止 raw HTML、脚本、远程资源和路径逃逸。

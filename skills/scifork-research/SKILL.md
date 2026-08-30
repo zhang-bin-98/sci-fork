@@ -1,3 +1,8 @@
+---
+name: scifork-research
+description: Format retrieved biomedical literature into reviewable SciFork import drafts, preserve retrieval-supported AI-inference branches with structured publication references, critique graph branches, and apply accepted graph changes through SciFork tools. Use after a literature-retrieval or PDF-reading skill has placed real source results in the current conversation.
+---
+
 # SciFork Research
 
 This is SciFork's single research-formatting, graph-workflow, and reasoning
@@ -105,8 +110,12 @@ When actual results are absent, stop without graph mutation.
    Result in this workflow.
 5. Immediately after each `create_node`, call `create_edge` so no completed
    branch is isolated. Every generated Edge uses `basis: ai_inference` with
-   non-empty provenance naming the query and consulted PMID/DOI, plus an
-   `evidenceGap` that states why the relation remains unverified.
+   non-empty provenance naming the query, an `evidenceGap` that states why the
+   relation remains unverified, and `publicationRefs` containing the one to
+   fifty normalized, distinct PMID/DOI records that support that exact inference.
+   Copy these identifiers from completed retrieval results; never recover them
+   by parsing prose provenance. These structured references do not create or
+   review an Evidence Assertion and do not satisfy a Finding threshold.
 6. Use `predicts` only from a Finding/Hypothesis to a Prediction. Otherwise choose
    the narrowest valid relation from `supports`, `contradicts`, `causes`, or
    `associated_with` based on the scientific claim.
@@ -182,7 +191,8 @@ When asked to critique the graph, inspect the supplied graph context for:
 - missing or context-only locators, unsupported Finding thresholds, duplicate
   entities, and stale references;
 - over-strong language, causal claims without experimental basis, and
-  `ai_inference` edges without both provenance and an evidence gap; and
+  `ai_inference` edges without provenance, an evidence gap, and structured
+  `publicationRefs`; and
 - proposed next retrieval or experiment steps that could resolve each gap.
 
 Label every item as observed, inferred, or proposed. Do not silently change

@@ -10,6 +10,7 @@ import {
   ENDPOINT_ID_RE,
   EVIDENCE_ID_RE,
   EVIDENCE_REFS_MAX,
+  PUBLICATION_REFS_MAX,
   LIMITATION_MAX,
   LIMITATIONS_MAX,
   LOCATOR_SCHEMA,
@@ -134,6 +135,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       relation: RELATION_SCHEMA,
       basis: BASIS_SCHEMA,
       evidenceRefs: z.array(EVIDENCE_REF_COMMAND_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
+      publicationRefs: z.array(PUBLICATION_REF_COMMAND_SCHEMA).max(PUBLICATION_REFS_MAX).optional(),
       provenance: z.string().min(1).max(2000).optional(),
       evidenceGap: z.string().min(1).max(2000).optional(),
     })
@@ -146,6 +148,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       relation: RELATION_SCHEMA.optional(),
       basis: BASIS_SCHEMA.optional(),
       evidenceRefs: z.array(EVIDENCE_REF_COMMAND_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
+      publicationRefs: z.array(PUBLICATION_REF_COMMAND_SCHEMA).max(PUBLICATION_REFS_MAX).optional(),
       provenance: z.string().min(1).max(2000).optional(),
       evidenceGap: z.string().min(1).max(2000).optional(),
     })
@@ -155,6 +158,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
         command.relation !== undefined ||
         command.basis !== undefined ||
         command.evidenceRefs !== undefined ||
+        command.publicationRefs !== undefined ||
         command.provenance !== undefined ||
         command.evidenceGap !== undefined,
       'update_edge requires at least one change',
@@ -446,6 +450,7 @@ interface EdgeShape {
   relation: Relation
   basis: EdgeBasis
   evidence_refs?: EvidenceRef[]
+  publication_refs?: { pmid?: string | undefined; doi?: string | undefined }[]
   provenance?: string
   evidence_gap?: string
 }
@@ -457,6 +462,7 @@ function edgeToDisk(command: {
   relation: Relation
   basis: EdgeBasis
   evidenceRefs?: EvidenceRef[] | undefined
+  publicationRefs?: { pmid?: string | undefined; doi?: string | undefined }[] | undefined
   provenance?: string | undefined
   evidenceGap?: string | undefined
 }): EdgeShape {
@@ -467,6 +473,18 @@ function edgeToDisk(command: {
     relation: command.relation,
     basis: command.basis,
     ...(command.evidenceRefs !== undefined ? { evidence_refs: command.evidenceRefs } : {}),
+    ...(command.publicationRefs !== undefined
+      ? {
+          publication_refs: command.publicationRefs.map((reference) => ({
+            ...(reference.pmid !== undefined
+              ? { pmid: normalizePmid(reference.pmid) ?? reference.pmid }
+              : {}),
+            ...(reference.doi !== undefined
+              ? { doi: normalizeDoi(reference.doi) ?? reference.doi }
+              : {}),
+          })),
+        }
+      : {}),
     ...(command.provenance !== undefined ? { provenance: command.provenance } : {}),
     ...(command.evidenceGap !== undefined ? { evidence_gap: command.evidenceGap } : {}),
   }
@@ -522,6 +540,9 @@ function planUpdateEdge(project: LoadedProject, command: Extract<ResearchCommand
     ...('evidence_refs' in edgeEntity && edgeEntity.evidence_refs !== undefined
       ? { evidence_refs: edgeEntity.evidence_refs }
       : {}),
+    ...('publication_refs' in edgeEntity && edgeEntity.publication_refs !== undefined
+      ? { publication_refs: edgeEntity.publication_refs }
+      : {}),
     ...('provenance' in edgeEntity && edgeEntity.provenance !== undefined
       ? { provenance: edgeEntity.provenance }
       : {}),
@@ -530,6 +551,21 @@ function planUpdateEdge(project: LoadedProject, command: Extract<ResearchCommand
       : {}),
   }
   const basis = command.basis ?? current.basis
+  if (
+    basis !== 'ai_inference' &&
+    (command.publicationRefs !== undefined ||
+      command.provenance !== undefined ||
+      command.evidenceGap !== undefined)
+  ) {
+    issues.push(
+      commandIssue(
+        'INVALID_ENTITY',
+        'publicationRefs, provenance, and evidenceGap are only valid for ai_inference edges',
+        command.id,
+      ),
+    )
+    return undefined
+  }
   const shape: EdgeShape = {
     id: current.id,
     from: current.from,
@@ -543,6 +579,20 @@ function planUpdateEdge(project: LoadedProject, command: Extract<ResearchCommand
         : {}),
     ...(basis === 'ai_inference'
       ? {
+          ...(command.publicationRefs !== undefined
+            ? {
+                publication_refs: command.publicationRefs.map((reference) => ({
+                  ...(reference.pmid !== undefined
+                    ? { pmid: normalizePmid(reference.pmid) ?? reference.pmid }
+                    : {}),
+                  ...(reference.doi !== undefined
+                    ? { doi: normalizeDoi(reference.doi) ?? reference.doi }
+                    : {}),
+                })),
+              }
+            : current.publication_refs !== undefined
+              ? { publication_refs: current.publication_refs }
+              : {}),
           ...(command.provenance !== undefined
             ? { provenance: command.provenance }
             : current.provenance !== undefined

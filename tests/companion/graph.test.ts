@@ -8,10 +8,10 @@ import {
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
 const entities = [
-  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', label: 'A' },
-  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', label: 'B' },
-  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', label: 'C' },
-  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', label: 'D' },
+  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', referenceCount: 1, reviewedEvidenceCount: 1, label: 'A' },
+  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', referenceCount: 2, reviewedEvidenceCount: 0, label: 'B' },
+  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 0, label: 'C' },
+  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 1, label: 'D' },
   {
     id: 'node_e',
     type: 'result',

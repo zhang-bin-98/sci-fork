@@ -267,7 +267,7 @@ describe('edge data', () => {
     })).ok).toBe(true)
   })
 
-  it('requires provenance and evidence gap for ai_inference basis', () => {
+  it('requires provenance, evidence gap, and unique publication refs for ai_inference basis', () => {
     expect(parseEdgeFile(JSON.stringify({ ...base, basis: 'ai_inference' })).ok).toBe(false)
     expect(parseEdgeFile(JSON.stringify({
       ...base, basis: 'ai_inference', provenance: 'model x',
@@ -277,7 +277,25 @@ describe('edge data', () => {
       basis: 'ai_inference',
       provenance: 'model x',
       evidence_gap: 'no direct measurement',
+      publication_refs: [{ pmid: '12345678', doi: '10.1000/ABC' }],
     })).ok).toBe(true)
+    expect(parseEdgeFile(JSON.stringify({
+      ...base,
+      basis: 'ai_inference',
+      provenance: 'model x',
+      evidence_gap: 'no direct measurement',
+    })).ok).toBe(false)
+    expect(parseEdgeFile(JSON.stringify({
+      ...base,
+      basis: 'ai_inference',
+      provenance: 'model x',
+      evidence_gap: 'no direct measurement',
+      publication_refs: [{ pmid: '12345678' }, { pmid: '12345678' }],
+    })).ok).toBe(false)
+    expect(parseEdgeFile(JSON.stringify({
+      ...base,
+      publication_refs: [{ pmid: '12345678' }],
+    })).ok).toBe(false)
   })
 
   it('rejects self edges, malformed endpoints, and unknown keys', () => {

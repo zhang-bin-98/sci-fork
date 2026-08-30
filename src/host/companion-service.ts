@@ -1,6 +1,11 @@
 import type { LoadedProject } from '../core/parser.js'
+import { distinctPublicationReferenceCount } from '../core/publication-references.js'
 import { buildProjection } from '../core/projection.js'
-import { entityTypeOfId } from '../core/schema.js'
+import {
+  entityTypeOfId,
+  type EvidenceRef,
+  type PublicationReference,
+} from '../core/schema.js'
 import type {
   CompanionFailure,
   EntityDocument,
@@ -82,15 +87,58 @@ function boundedLabel(value: string, fallback: string): string {
   return (normalized || fallback).slice(0, 240)
 }
 
+interface ReferenceCounts {
+  referenceCount: number
+  reviewedEvidenceCount: number
+}
+
+function evidenceReferences(
+  project: LoadedProject,
+  refs: readonly EvidenceRef[],
+): { all: PublicationReference[]; reviewed: PublicationReference[] } {
+  const all: PublicationReference[] = []
+  const reviewed: PublicationReference[] = []
+  for (const ref of refs) {
+    const evidence = project.evidenceAssertions.get(ref.id)
+    if (evidence === undefined) continue
+    all.push(evidence.publication_ref)
+    if (evidence.review_status === 'reviewed') reviewed.push(evidence.publication_ref)
+  }
+  return { all, reviewed }
+}
+
+function nodeReferenceCounts(project: LoadedProject, nodeId: string): ReferenceCounts {
+  const node = project.nodes.get(nodeId)
+  const total: PublicationReference[] = []
+  const reviewed: PublicationReference[] = []
+  const collectEvidence = (refs: readonly EvidenceRef[]): void => {
+    const collected = evidenceReferences(project, refs)
+    total.push(...collected.all)
+    reviewed.push(...collected.reviewed)
+  }
+  collectEvidence(node?.evidence_refs ?? [])
+  for (const edge of project.edges.values()) {
+    if (edge.from !== nodeId && edge.to !== nodeId) continue
+    collectEvidence(edge.evidence_refs ?? [])
+    if (edge.basis === 'ai_inference') total.push(...edge.publication_refs)
+  }
+  return {
+    referenceCount: distinctPublicationReferenceCount(total),
+    reviewedEvidenceCount: distinctPublicationReferenceCount(reviewed),
+  }
+}
+
 function graphSnapshot(project: LoadedProject): SnapshotGraph {
   const projection = buildProjection(project)
   const entities: ProjectionEntitySummary[] = projection.entities.map((entity) => {
     if (entity.type === 'node') {
+      const counts = nodeReferenceCounts(project, entity.id)
       return {
         id: entity.id,
         type: entity.type,
         kind: entity.kind,
         confidence: entity.confidence,
+        ...counts,
         label: boundedLabel(entity.body, entity.kind),
       }
     }
@@ -141,6 +189,7 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           kind: node.kind,
           confidence: node.confidence,
           evidenceRefs: node.evidence_refs ?? [],
+          ...nodeReferenceCounts(project, node.id),
           body: node.body,
         }
   }
@@ -186,6 +235,9 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           relation: edge.relation,
           basis: edge.basis,
           evidenceRefs: edge.evidence_refs ?? [],
+          ...(edge.basis === 'ai_inference'
+            ? { publicationRefs: edge.publication_refs }
+            : {}),
           ...(edge.basis === 'ai_inference'
             ? { provenance: edge.provenance, evidenceGap: edge.evidence_gap }
             : {}),

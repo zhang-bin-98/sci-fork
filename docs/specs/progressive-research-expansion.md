@@ -1,7 +1,7 @@
 # SciFork literature-grounded research expansion
 
 > Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31
-> Parent design: [product design v0.15](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.16](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
+> Parent design: [product design v0.16](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.17](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
 > Refines: [bounded simulation branches](simulation-branches.md) and [ADR-0001](../adr/0001-llm-orchestrated-simulation-branches.md)
 > Decision: [ADR-0002](../adr/0002-separate-step-expansion-from-progressive-research.md)
 
@@ -89,9 +89,11 @@ relationships use the narrowest valid `supports`, `contradicts`, `causes`, or
 
 Search results remain untrusted context rather than accepted evidence. A branch
 grounded in retrieved but unreviewed literature therefore remains low confidence,
-and its generated Edge uses `basis: ai_inference` with non-empty provenance and an
-Evidence Gap. A PMID or DOI in provenance does not create or review an Evidence
-Assertion and cannot satisfy a Finding support threshold.
+and its generated Edge uses `basis: ai_inference` with non-empty provenance, an
+Evidence Gap, and one to fifty structured `publication_refs` identifying the
+records that support that exact inference. These references are normalized and
+deduplicated, but do not create or review an Evidence Assertion and cannot satisfy
+a Finding support threshold.
 
 The generated expansion may branch and later converge:
 
@@ -175,6 +177,9 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
   Bridge bounds and contains no Page Key, local path, abstract, or complete graph.
 - Core remains pure TypeScript and all mutations remain primitive single-entity
   commands with revision/file-version guards and one managed-path checkpoint.
+- `create_edge`/`update_edge` accept bounded `publicationRefs` only for
+  `ai_inference`; literature/experiment Edges reject the field. The Skill never
+  relies on parsing identifiers back out of prose provenance.
 - Research Project files remain the scientific source of truth; Chat retrieval
   notes and a Progressive Research Run frontier are transient.
 - External and packaged retrieval Skills cannot write the Research Project.

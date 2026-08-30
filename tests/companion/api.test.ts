@@ -38,6 +38,8 @@ describe('Companion API client', () => {
             kind: 'hypothesis',
             confidence: 'low',
             evidenceRefs: [],
+            referenceCount: 0,
+            reviewedEvidenceCount: 0,
             body: '# Hypothesis',
           },
         }),

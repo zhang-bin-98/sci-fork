@@ -48,6 +48,8 @@ export type ProjectionEntitySummary =
       type: 'node'
       kind: NodeKind
       confidence: ConfidenceBand
+      referenceCount: number
+      reviewedEvidenceCount: number
       label: string
     }
   | {
@@ -95,6 +97,8 @@ export type EntityDocument =
       kind: NodeKind
       confidence: ConfidenceBand
       evidenceRefs: EvidenceRef[]
+      referenceCount: number
+      reviewedEvidenceCount: number
       body: string
     }
   | {
@@ -123,6 +127,7 @@ export type EntityDocument =
       relation: Relation
       basis: EdgeBasis
       evidenceRefs: EvidenceRef[]
+      publicationRefs?: PublicationReference[]
       provenance?: string
       evidenceGap?: string
     }

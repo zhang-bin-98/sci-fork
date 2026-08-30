@@ -14,6 +14,7 @@ _Avoid_: Knowledge database, paper graph
 
 **Publication Reference**:
 A PMID or normalized DOI that uniquely identifies the publication behind an Evidence Assertion; PMID is canonical when both are available.
+An unreviewed Research Expansion Edge may also retain bounded Publication References as retrieval provenance; those references do not become Evidence Assertions or satisfy a Finding support threshold.
 _Avoid_: Source, publication node, citation record
 
 **Evidence Assertion**:

@@ -93,7 +93,7 @@ export function buildResearchExpansionPrompt(input: ResearchExpansionPromptInput
     '- Retain only explicit scientific relationships supported as a defensible inference by the retrieved material. Use zero branches if none qualify.\n' +
     '- For each retained branch, run create_node with low confidence (confidence: low), then immediately run create_edge to the Focus anchor. Never leave an orphan.\n' +
     '- Use predicts only for Finding/Hypothesis -> Prediction; otherwise choose the narrowest valid scientific relation.\n' +
-    '- Because retrieved literature is unreviewed, every generated Edge uses basis: ai_inference with non-empty provenance and an Evidence Gap. Do not create a reviewed Evidence Assertion, validated Result, or Finding.\n\n' +
+    '- Because retrieved literature is unreviewed, every generated Edge uses basis: ai_inference with non-empty provenance, an Evidence Gap, and publicationRefs copied from the exact consulted PMID/DOI records. Do not create a reviewed Evidence Assertion, validated Result, or Finding.\n\n' +
     'Scientific constraints\n' +
     '- Keep Results (recorded observations) separate from Interpretation.\n' +
     '- Do not promote a Hypothesis, Prediction, ai_inference, or unreviewed source to a Finding.\n' +
