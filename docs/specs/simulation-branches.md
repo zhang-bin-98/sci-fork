@@ -1,6 +1,6 @@
 # SciFork bounded simulation branches
 
-> Status: implemented for v0.0.1 with automated gates passing on 2026-08-30; disposable DSH model-loop E2E awaits the user click
+> Status: implemented for v0.0.1; automated gates and the disposable DSH save/delete exercise passed on 2026-08-30
 > Parent design: [product design v0.12](../scifork-product-design.md) sections 3, 4, 6, and 7; [software architecture v0.13](../scifork-software-architecture.md) sections 5, 6, 7, 9-12, and 15
 > Extends: [M1 Core + Git](m1-core-git.md), [M2 Companion](m2-companion.md), and [M3 Research](m3-research.md)
 
@@ -129,6 +129,10 @@ Finding has no physical deletion command.
 its SHA-256 `fileVersion`. Update and delete workflows must use that value; the
 model does not calculate managed-file hashes or paths itself.
 
+All read-tool results remain lossless JSON during recovery. Optional manifest,
+branch, or HEAD fields are omitted when unavailable; they are never returned as
+JavaScript `undefined`, which the pinned DSH tool boundary rejects.
+
 Core plans exactly one create, update, or deletion path derived from the entity
 id. The pinned DSH filesystem service has guarded create/replace but no deletion.
 After Core and project-revision validation, Host therefore performs a deletion
@@ -140,10 +144,13 @@ git rm -- <Core-derived managed relative path>
 
 The model cannot supply a path, executable, or argv. Host re-reads the complete
 managed snapshot, requires it to equal the initial snapshot minus that one file,
-revalidates all invariants, and then creates the normal one-path checkpoint. A
-failed deletion does not claim success; a checkpoint failure leaves the deletion
-visible for DSH or the user to inspect, matching existing mutation recovery
-semantics.
+revalidates all invariants, and then creates the normal one-path checkpoint.
+Because `git rm` already staged the exact deletion and removed the path from the
+index, the deletion checkpoint goes directly to `git commit --only <path>`; it
+must not run the create/update `git add` step on the now-missing path. This keeps
+unrelated staged work untouched. A failed deletion does not claim success; a
+checkpoint failure leaves the deletion visible for DSH or the user to inspect,
+matching existing mutation recovery semantics.
 
 ## Constraints and interfaces
 
@@ -180,6 +187,32 @@ semantics.
       existing bounded interfaces.
 - [x] Focused tests, `pnpm check`, `node --check index.js`, `git diff --check`, and
       `pnpm pack --dry-run` pass.
+
+## Disposable DSH exercise
+
+The approved pinned-profile exercise used one real `Simulate & Save` click on a
+Prediction Focus. The originating Chat loaded the updated Skill, retained three
+distinct depth-one branches, and created three low-confidence Nodes plus three
+`ai_inference` Edges with provenance and Evidence Gaps. It correctly avoided
+`predicts` because a Prediction cannot be its source. Companion and Git both
+showed five Nodes, four Edges, six independent create checkpoints, and a clean
+worktree.
+
+Deleting one rejected branch Edge-first exposed two recovery defects. First,
+the generic checkpoint tried `git add` after `git rm` had already removed the
+path from the index, so the file deletion remained staged and the tool correctly
+reported `CHECKPOINT_FAILED`. The repaired deletion checkpoint now commits that
+exact existing staging directly; a real-Git regression covers the Edge path and
+the repaired Host completed the Node deletion with its own checkpoint. Second,
+read-tool recovery results included absent Git fields as `undefined`, which the
+pinned DSH lossless-JSON boundary rejected. Read results now omit unavailable
+optional fields, with regression coverage for dirty Git and invalid manifests.
+
+The staged Edge deletion was recovered with the same exact-path `commit --only`
+operation before the repaired Host resumed. Final state was clean and contained
+four Nodes, three Edges, one candidate Evidence Assertion, zero Results, and the
+original Focus. The selected Edge and Prediction no longer existed; the other
+two generated branches were unchanged.
 
 ## Test plan
 

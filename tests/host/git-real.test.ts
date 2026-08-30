@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   gitCheckpoint,
+  gitCheckpointManagedDeletion,
   gitInit,
   gitPreflight,
+  gitRemoveManagedPath,
   initCheckpointMessage,
 } from '../../src/host/git-checkpoints.js'
 import type { SubprocessPort } from '../../src/host/contracts.js'
@@ -120,6 +122,25 @@ describe.skipIf(!gitAvailable)('real git integration', () => {
     git(['add', 'unrelated.txt'], root)
     const checkpoint = await gitCheckpoint(port, root, 'scifork: create_node node_a', ['nodes/node_a.md'])
     expect(checkpoint.ok).toBe(true)
+    expect(git(['status', '--porcelain'], root)).toBe('A  unrelated.txt')
+  })
+
+  it('checkpoints a managed deletion without touching unrelated staged work', async () => {
+    const root = makeRepo()
+    const port = realGitPort()
+    const edgePath = 'edges/edge_aaaaaaaa-1111-4111-8111-111111111111.json'
+    mkdirSync(join(root, 'edges'))
+    writeFileSync(join(root, 'research.json'), '{"schema_version":1,"project_id":"a","name":"x"}\n')
+    await gitCheckpoint(port, root, initCheckpointMessage(), ['research.json'])
+    writeFileSync(join(root, edgePath), '{}\n')
+    await gitCheckpoint(port, root, 'scifork: create_edge edge_a', [edgePath])
+    writeFileSync(join(root, 'unrelated.txt'), 'staged\n')
+    git(['add', 'unrelated.txt'], root)
+
+    await expect(gitRemoveManagedPath(port, root, edgePath)).resolves.toBe(true)
+    expect(existsSync(join(root, edgePath))).toBe(false)
+    await expect(gitCheckpointManagedDeletion(port, root, 'scifork: delete_edge edge_a', edgePath)).resolves.toMatchObject({ ok: true })
+    expect(git(['show', '--format=', '--name-status', 'HEAD'], root)).toBe(`D\t${edgePath}`)
     expect(git(['status', '--porcelain'], root)).toBe('A  unrelated.txt')
   })
 })

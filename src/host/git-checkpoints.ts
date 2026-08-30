@@ -200,22 +200,19 @@ export async function gitPreflight(
   return { ok: true, branch: result.branch, head: result.head }
 }
 
-/**
- * Commit exactly the supplied managed pathspecs. Staging happens first so a
- * pathspec also works on an unborn repository; `commit --only` preserves any
- * unrelated staged work. No rollback is attempted when this operation fails.
- */
-export async function gitCheckpoint(
+type GitCheckpointResult =
+  | { ok: true; head: string }
+  | { ok: false; code: 'CHECKPOINT_FAILED'; committed?: boolean }
+
+async function commitCheckpoint(
   subprocess: SubprocessPort,
   cwd: string,
   message: string,
   paths: readonly string[],
   signal?: AbortSignal,
-): Promise<{ ok: true; head: string } | { ok: false; code: 'CHECKPOINT_FAILED'; committed?: boolean }> {
+): Promise<GitCheckpointResult> {
   let committed = false
   try {
-    const add = await runGit(subprocess, ['add', '--', ...paths], cwd, signal)
-    if (add.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
     const commit = await runGit(subprocess, ['commit', '--only', '-m', message, '--', ...paths], cwd, signal)
     if (commit.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
     committed = true
@@ -230,6 +227,27 @@ export async function gitCheckpoint(
       ? { ok: false, code: 'CHECKPOINT_FAILED', committed: true }
       : { ok: false, code: 'CHECKPOINT_FAILED' }
   }
+}
+
+/**
+ * Commit exactly the supplied managed pathspecs. Staging happens first so a
+ * pathspec also works on an unborn repository; `commit --only` preserves any
+ * unrelated staged work. No rollback is attempted when this operation fails.
+ */
+export async function gitCheckpoint(
+  subprocess: SubprocessPort,
+  cwd: string,
+  message: string,
+  paths: readonly string[],
+  signal?: AbortSignal,
+): Promise<GitCheckpointResult> {
+  try {
+    const add = await runGit(subprocess, ['add', '--', ...paths], cwd, signal)
+    if (add.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
+  } catch {
+    return { ok: false, code: 'CHECKPOINT_FAILED' }
+  }
+  return commitCheckpoint(subprocess, cwd, message, paths, signal)
 }
 
 function deletableManagedPath(path: string): boolean {
@@ -258,6 +276,18 @@ export async function gitRemoveManagedPath(
   } catch {
     return false
   }
+}
+
+/** Commit one exact deletion already staged by gitRemoveManagedPath. */
+export async function gitCheckpointManagedDeletion(
+  subprocess: SubprocessPort,
+  cwd: string,
+  message: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<GitCheckpointResult> {
+  if (!deletableManagedPath(path)) return { ok: false, code: 'CHECKPOINT_FAILED' }
+  return commitCheckpoint(subprocess, cwd, message, [path], signal)
 }
 
 /** Plain `git init` in the project directory; never touches global config. */

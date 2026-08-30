@@ -151,13 +151,19 @@ async function executeRead(
   const gitError = gitFailure === undefined
     ? {}
     : { gitError: { code: gitFailure.code, message: gitFailure.reason } }
+  const manifestFields = manifest === undefined
+    ? {}
+    : { projectId: manifest.project_id, name: manifest.name, schemaVersion: manifest.schema_version }
+  const gitFields = {
+    ...(branch !== undefined ? { branch } : {}),
+    ...(head !== undefined ? { head } : {}),
+    ...gitError,
+  }
 
   if (operation === 'summary') {
     return {
       ok: true,
-      projectId: manifest?.project_id,
-      name: manifest?.name,
-      schemaVersion: manifest?.schema_version,
+      ...manifestFields,
       revision: project.projectRevision,
       counts: {
         nodes: project.nodes.size,
@@ -167,9 +173,7 @@ async function executeRead(
       },
       diagnosticCount: project.diagnostics.length,
       readOnly,
-      branch,
-      head,
-      ...gitError,
+      ...gitFields,
     }
   }
 
@@ -216,10 +220,8 @@ async function executeRead(
   if (operation === 'checkpoint') {
     return {
       ok: true,
-      branch,
-      head,
       readOnly,
-      ...gitError,
+      ...gitFields,
     }
   }
 

@@ -389,7 +389,8 @@ interface ProjectionEdge {
 → Core parseCommand / planCommand → INVALID_ENTITY
 → ctx.fs writeText（createIfAbsent / replaceIfVersion + fileVersion 双保险）
 → 重读全部受管文件并要求等于“初始快照 + plan.path 新内容”（不等则返回 STALE_REVISION 诊断，不做破坏性回滚）
-→ git add <plan.path> && git commit --only <plan.path> -m "scifork: <kind> <entityId>"
+→ create/update: git add -- <plan.path>; deletion: retain the exact-path git rm staging
+→ git commit --only <plan.path> -m "scifork: <kind> <entityId>"
 → 返回 { ok, entityId, revision, checkpointId }
 ```
 
@@ -402,8 +403,10 @@ interface ProjectionEdge {
   或用户使用 Git。
 - commit 用 `--only <paths>`：不改变无关 staged files，绝不 `git add .`。
 - 真实 Git 验证的路径语义：`git commit --only` 的 pathspec 必须命中 index，
-  因此先 `git add -- <paths>` 再 `commit --only`；普通 mutation 的 paths 只取
-  Core 计划出的单实体 `plan.path`，初始化只提交 `research.json`。
+  因此 create/update 先 `git add -- <paths>` 再 `commit --only`；deletion 已由
+  `git rm -- <path>` 从 index 移除并暂存，直接进入同一个 `commit --only`，不得
+  对已不存在的 path 再执行 `git add`。普通 mutation 的 paths 只取 Core 计划
+  出的单实体 `plan.path`，初始化只提交 `research.json`。
 
 ### Git 检查点边界（git-checkpoints.ts）
 

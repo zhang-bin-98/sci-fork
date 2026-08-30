@@ -265,6 +265,7 @@ describe('applyCommand', () => {
     expect(git.calls.find((call) => call[1] === 'rm')).toEqual([
       'C:\\git\\git.exe', 'rm', '--', `nodes/${NODE}.md`,
     ])
+    expect(git.calls.some((call) => call[1] === 'add')).toBe(false)
     expect(git.calls.find((call) => call[1] === 'commit')?.slice(5)).toEqual(['--', `nodes/${NODE}.md`])
   })
 

@@ -43,7 +43,10 @@ keeps orchestration in the LLM: one real `Simulate & Save` click may persist up
 to five distinct low-confidence Hypothesis/Prediction branches, each with an
 Edge. The same typed apply tool exposes guarded Edge and unverified-node deletion
 so users can remove unsuitable branches through DSH Chat; Evidence, Result, and
-Finding deletion boundaries remain unchanged.
+Finding deletion boundaries remain unchanged. Its disposable DSH exercise saved
+three Node+Edge branches in one click and removed one branch Edge-first; the run
+also produced and verified fixes for exact-path deletion checkpoints and
+lossless-JSON recovery reads.
 
 All M0 gates remain recorded as passing: clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, sequential

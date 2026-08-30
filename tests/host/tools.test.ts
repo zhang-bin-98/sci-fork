@@ -191,10 +191,13 @@ describe('research_graph_read', () => {
 
     expect(value).toMatchObject({
       ok: true,
-      projectId: undefined,
       readOnly: true,
       diagnosticCount: 1,
     })
+    expect(value).not.toHaveProperty('projectId')
+    expect(value).not.toHaveProperty('name')
+    expect(value).not.toHaveProperty('schemaVersion')
+    expect(value).toEqual(JSON.parse(JSON.stringify(value)))
   })
 
   it('reports Git read-only state when a managed path is dirty', async () => {
@@ -207,6 +210,14 @@ describe('research_graph_read', () => {
       readOnly: true,
       gitError: { code: 'READ_ONLY_CONFLICT', message: 'managed paths have uncommitted changes' },
     })
+    expect(value).not.toHaveProperty('branch')
+    expect(value).not.toHaveProperty('head')
+    expect(value).toEqual(JSON.parse(JSON.stringify(value)))
+
+    const checkpoint = await read.execute({ operation: 'checkpoint' }, execFor())
+    expect(checkpoint).not.toHaveProperty('branch')
+    expect(checkpoint).not.toHaveProperty('head')
+    expect(checkpoint).toEqual(JSON.parse(JSON.stringify(checkpoint)))
   })
 
   it('returns entities and neighborhoods', async () => {

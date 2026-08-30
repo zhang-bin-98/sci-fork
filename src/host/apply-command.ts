@@ -10,6 +10,7 @@ import type { FsPort, SubprocessPort } from './contracts.js'
 import {
   checkpointMessage,
   gitCheckpoint,
+  gitCheckpointManagedDeletion,
   gitIdentityConfigured,
   gitInit,
   gitInitPreflight,
@@ -237,13 +238,10 @@ export async function applyCommand(
       )
     }
 
-    const checkpoint = await gitCheckpoint(
-      deps.subprocess,
-      located.root,
-      checkpointMessage(plan.kind, plan.entityId),
-      [plan.path],
-      input.signal,
-    )
+    const message = checkpointMessage(plan.kind, plan.entityId)
+    const checkpoint = plan.writeKind === 'delete'
+      ? await gitCheckpointManagedDeletion(deps.subprocess, located.root, message, plan.path, input.signal)
+      : await gitCheckpoint(deps.subprocess, located.root, message, [plan.path], input.signal)
     if (!checkpoint.ok) {
       if (checkpoint.committed) {
         return fail(

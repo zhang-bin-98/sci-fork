@@ -553,7 +553,9 @@ detached HEAD、unmerged entries 或 Git root 与项目根不一致时拒绝 mut
 - mutation 前若受管路径已有外部 dirty change，则返回 stale/只读诊断。
 - create/update 的内容访问继续通过 `ctx.fs`。由于 pinned DSH filesystem contract
   没有 delete，Core 校验后的单文件删除使用固定 Git executable 和 argv-only
-  `git rm -- <core-derived-managed-path>`；模型不能提供路径或 Git argv。
+  `git rm -- <core-derived-managed-path>`；该命令已暂存删除，因此删除检查点直接
+  对同一精确 path 执行 `git commit --only`，不再对已不存在的 path 执行
+  create/update 的 `git add`。模型不能提供路径或 Git argv。
 
 ### 11.3 Git 历史边界
 
