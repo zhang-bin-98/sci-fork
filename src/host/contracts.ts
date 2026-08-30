@@ -34,6 +34,11 @@ export interface SkillInvocationPolicy {
   userInvocable: boolean
 }
 
+export type SkillResourceBase =
+  | { readonly kind: 'directory'; readonly path: string }
+  | { readonly kind: 'url'; readonly url: string }
+  | { readonly kind: 'opaque'; readonly description: string }
+
 export interface SkillRegistration {
   name: string
   description: string
@@ -44,6 +49,7 @@ export interface SkillRegistration {
   provider?: string
   path?: string
   metadata?: Readonly<Record<string, unknown>>
+  resourceBase?: SkillResourceBase
 }
 
 export interface SkillsPort {

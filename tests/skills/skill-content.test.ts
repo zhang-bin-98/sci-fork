@@ -12,6 +12,11 @@ describe('packaged M3 Skills', () => {
     expect(content).toContain('more than 200 PMIDs is sent by POST')
     expect(content).toContain('Do not create a Research Import Draft')
     expect(content).toContain('do not invent')
+    expect(content).toContain('relative resource `helper.mjs`')
+    expect(content).toContain('standard input')
+    expect(content).toContain('Do not search')
+    expect(content).not.toContain('<packaged-pubmed-skill>')
+    expect(content).not.toContain('request.json')
   })
 
   it('publishes the Draft, simulation, and critique boundary', () => {
@@ -22,5 +27,7 @@ describe('packaged M3 Skills', () => {
     expect(content).toContain('Simulation')
     expect(content).toContain('Critique')
     expect(content).toContain('Do not promote a')
+    expect(content).toContain('actual retrieval or PDF results')
+    expect(content).toContain('do not produce a Draft')
   })
 })

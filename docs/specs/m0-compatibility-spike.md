@@ -107,14 +107,30 @@ type SkillRegistration = Omit<SkillDefinition, 'invocation' | 'provider'> & {
   readonly invocation?: SkillInvocationPolicy
   readonly provider?: string
 }
+type SkillResourceBase =
+  | { readonly kind: 'directory'; readonly path: string }
+  | { readonly kind: 'url'; readonly url: string }
+  | { readonly kind: 'opaque'; readonly description: string }
 // SkillDefinition 需含：name（kebab-case）、description、content、
 // source（'runtime' 等）、可选 whenToUse/path/metadata/resourceBase
 ```
 
 - 文件系统 provider 不扫描 npm 包；插件包内 Skill 必须在 `apply()` 里逐条
   `ctx.skills.register(...)`（source `'runtime'`）。
-- `ctx.skills.list()`/`get(name)` 验证发现；大模型按 name 顺序加载两个 Skill
-  （`scifork-research`、`pubmed-search`）。
+- `ctx.skills.list()`/`get(name)` 验证发现。模型侧 catalog 投影只提供足以选择
+  Skill 的 name 和 description，因此顺序约束必须出现在 description 中，不能
+  只依赖 `whenToUse` 或 Skill 正文。
+- `dsh-tool-skill` 加载结果包含 `resourceBase`。directory 类型渲染为绝对
+  `Base directory for this skill`，并要求模型仅把 Skill 正文明示的相对路径
+  基于该目录解析；它不会列举目录内容。
+- SciFork 只为 `pubmed-search` 注册
+  `{ kind: 'directory', path: <package>/skills/pubmed-search }`，使正文中的
+  `helper.mjs` 可确定解析；`scifork-research` 不注册资源根。
+- directory 路径会进入模型可见的 Skill 工具结果并可能保存在本地 DSH
+  Session 中。这是用户批准的受限兼容性例外；SciFork 自身不得把它写入日志、
+  错误、Draft 或 Research Project。
+- 大模型先加载并执行 `pubmed-search`，检索结果进入当前 Chat context 后才加载
+  `scifork-research`。Skills 不互相调用。
 - 获取方式：`inject: ['skills']` 硬依赖，`ctx.skills.register(...)` 直接访问。
 
 ### 6. argv-only Git（`ctx.subprocess`）

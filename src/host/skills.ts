@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { SkillResourceBase } from './contracts.js'
 
 /**
  * Packaged skills shipped inside the bundle as `skills/<name>/SKILL.md`.
@@ -14,24 +14,26 @@ export interface PackagedSkillSource {
   description: string
   whenToUse?: string
   file: string
+  directoryResources?: readonly string[]
 }
 
 export const PACKAGED_SKILLS = [
   {
     name: 'scifork-research',
     description:
-      'Format retrieval results into Research Import Drafts, plan simulations, and critique the SciFork research graph.',
+      'Format actual retrieval or PDF results already present in the current DSH Chat context into Research Import Drafts, simulations, or critiques; this Skill does not perform retrieval.',
     whenToUse:
-      'Load after a retrieval or PDF skill, when current results must become a Research Import Draft.',
+      'Load only after a retrieval or PDF Skill has completed and its real results are present in the current Chat context.',
     file: 'scifork-research/SKILL.md',
   },
   {
     name: 'pubmed-search',
     description:
-      'Search PubMed metadata with full Entrez queries, paged batches up to 300 records, and PMID/DOI lookup.',
+      'Run concise PubMed/Entrez search or PMID/DOI lookup; complete retrieval before loading scifork-research, and do not load both while retrieval is unfinished.',
     whenToUse:
-      'Use when the task needs PubMed literature metadata, PMID/DOI lookup, or paged search results.',
+      'Use first when the task needs PubMed literature metadata, PMID/DOI lookup, or paged search results.',
     file: 'pubmed-search/SKILL.md',
+    directoryResources: ['helper.mjs'],
   },
 ] as const satisfies readonly PackagedSkillSource[]
 
@@ -41,6 +43,7 @@ export interface LoadedPackagedSkill {
   whenToUse?: string
   content: string
   source: 'runtime'
+  resourceBase?: SkillResourceBase
 }
 
 /**
@@ -53,9 +56,10 @@ export function loadPackagedSkills(
   entries: readonly PackagedSkillSource[] = PACKAGED_SKILLS,
 ): LoadedPackagedSkill[] {
   return entries.map((entry) => {
+    const skillPath = join(skillsRoot, entry.file)
     let content: string
     try {
-      content = readFileSync(join(skillsRoot, entry.file), 'utf8')
+      content = readFileSync(skillPath, 'utf8')
     } catch {
       throw new Error(`scifork: failed to read packaged skill ${entry.name}`)
     }
@@ -69,6 +73,17 @@ export function loadPackagedSkills(
       source: 'runtime',
     }
     if (entry.whenToUse !== undefined) skill.whenToUse = entry.whenToUse
+    if (entry.directoryResources !== undefined) {
+      const resourceDirectory = dirname(skillPath)
+      for (const resource of entry.directoryResources) {
+        if (!existsSync(join(resourceDirectory, resource))) {
+          throw new Error(
+            `scifork: failed to read packaged skill resource ${entry.name}/${resource}`,
+          )
+        }
+      }
+      skill.resourceBase = { kind: 'directory', path: resourceDirectory }
+    }
     return skill
   })
 }

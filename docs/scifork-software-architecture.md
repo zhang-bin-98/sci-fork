@@ -447,7 +447,7 @@ Skill 不直接调用另一个 Skill，也不共享 provider 生命周期或私�
 
 ### 10.2 SciFork Research Skill
 
-Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`：
+Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`。它的 catalog description 明确说明：只有真实检索或 PDF 结果已存在于当前 Chat context 后才加载；它不执行检索，也不配置 `resourceBase`：
 
 - Retrieval guidance。
 - Research Import Draft formatting。
@@ -459,7 +459,11 @@ Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`：
 
 ### 10.3 PubMed Search Skill
 
-Bundle 同时贡献通用 `pubmed-search` Skill。其 `SKILL.md` 指导大模型使用随 Skill 打包的轻量辅助脚本：
+Bundle 同时贡献通用 `pubmed-search` Skill。Host 只为它注册 directory `resourceBase`，精确指向 package-owned `skills/pubmed-search` 目录；`SKILL.md` 显式引用相对资源 `helper.mjs`，DSH 在模型加载 Skill 时提供基目录并要求按需解析，不列举目录。模型不得扫描安装目录、猜测包位置、把 helper 复制进 Research Project，或创建中间请求文件。
+
+它的 catalog description 明确说明这是紧凑的 PubMed search/PMID-or-DOI lookup Skill，必须在加载 `scifork-research` 前完成实际检索，检索未完成时不得同时加载二者。该描述借鉴通用生命科学检索 Skill 的路由原则：描述先限定适用任务，所有请求使用随包脚本，默认返回紧凑结构而非原始上游响应，失败明确且不合成记录。
+
+辅助脚本请求为：
 
 ```ts
 type PubMedSkillRequest =
@@ -480,7 +484,7 @@ Lookup：
 
 辅助脚本直接调用 NCBI Entrez E-utilities，设置 `tool`、`email`、超时、User-Agent 和有界重试。无 API Key 时最多 3 requests/second，有用户配置的 API Key 时最多 10 requests/second；超过约 200 个 PMID 的批量元数据请求使用 POST 或 Entrez History。
 
-脚本输出有界 JSON 到当前 Chat context，不生成 Draft，也不调用 SciFork tools。它不自动扩展 MeSH，不实现 PubTator、全文下载、缓存、RAG 或文章知识图谱。检索失败作为 Skill 执行结果显示，不进入 SciForkError。
+脚本默认从 stdin 接收紧凑 JSON，也允许不支持管道的 Host 传入一个 JSON 参数。脚本输出有界紧凑 JSON 到当前 Chat context，不保存原始响应，不生成 Draft，也不调用 SciFork tools。它不自动扩展 MeSH，不实现 PubTator、全文下载、缓存、RAG 或文章知识图谱。检索失败作为 Skill 执行结果显示，不进入 SciForkError。
 
 ### 10.4 其他检索 Skills
 
@@ -545,7 +549,7 @@ SciFork 不提供 Back/Forward，不维护 checkpoint 栈、undo storage 或恢�
 - 静态路由只返回 build manifest 内资源。
 - CSP 至少限制 `default-src 'self'`、`connect-src 'self'`，禁止 object/frame。
 - Page Key 只在 fragment、sessionStorage 和 Host 内存中出现。
-- 日志不记录 Page Key、prompt、abstract、Draft 正文或本地绝对路径。
+- SciFork 日志、错误、Draft 和 Research Project 不记录 Page Key、prompt、abstract、Draft 正文或本地绝对路径。用户批准的唯一兼容性例外是：DSH 通过 directory `resourceBase` 把 package-owned `pubmed-search` 目录作为 Skill 加载结果提供给模型，并可能保存在本地 DSH Session；不得把该路径再复制到用户可见回答、项目文件或 SciFork 诊断。
 - API 不接收模型提供的路径或 Git argv。
 
 ### 12.3 Research data

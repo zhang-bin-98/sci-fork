@@ -306,7 +306,7 @@ MVP 只发布一个 SciFork 专用的 `SciFork Research` Skill：
 
 Skill 负责推理、格式化和提案，不联网检索，也不直接写文件。持久化仍通过 SciFork typed tools 和用户确认。
 
-检索 Skill 保持独立、可替换，由大模型根据任务先行使用；随后大模型加载 `SciFork Research` 完成格式化。Skill 之间不互相调用，SciFork 不维护检索 provider 生命周期或跨 Skill 私有协议。
+检索 Skill 保持独立、可替换，由大模型根据任务先行使用；只有真实检索或 PDF 解析结果已进入当前 Chat context 后，大模型才加载 `SciFork Research` 完成格式化。两个 packaged Skill 的 catalog description 必须在加载正文前表达这个先后边界。Skill 之间不互相调用，SciFork 不维护检索 provider 生命周期或跨 Skill 私有协议。
 
 ## 8. 轻量 PubMed 检索 Skill
 
@@ -316,6 +316,8 @@ Skill 负责推理、格式化和提案，不联网检索，也不直接写文�
 search: PubMed/Entrez query + retstart + retmax
 lookup: PMID or DOI
 ```
+
+Bundle 只为 `pubmed-search` 注册 directory `resourceBase`，并把它限制为该 Skill 自己的 package-owned 目录。Skill 正文显式引用相对资源 `helper.mjs`，DSH 在加载 Skill 时基于该目录解析脚本；模型不得扫描 DSH 安装目录、猜测包位置，或把 helper 复制到 Research Project。`SciFork Research` 不需要本地附属资源，因此不注册 `resourceBase`。
 
 Search 原样接受 PubMed/Entrez 查询语法。默认 `retmax=20`，单批最多 300 条元数据，返回总数和下一页位置；用户可以继续分页，不设置 300 条的总结果上限。每条只返回 PMID、DOI、title、journal、year、简化 authors 和 publication type。
 
@@ -327,7 +329,7 @@ Skill 遵守 NCBI 请求频率；大于约 200 个 PMID 的批量元数据请求
 
 ## 9. 模型编排与导入
 
-大模型先加载并使用一个检索 Skill；默认可以选择 `pubmed-search`，也可以选择其他数据库检索或 PDF 解析 Skill。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把当前结果格式化为 Research Import Draft。
+大模型先加载并完成一个检索 Skill；默认可以选择 `pubmed-search`，也可以选择其他数据库检索或 PDF 解析 Skill。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把当前结果格式化为 Research Import Draft。不得在检索尚未执行时预先或同时加载两个 packaged Skill；若 `SciFork Research` 被过早加载，它必须等待真实检索上下文，不能补造 Draft。
 
 Skill 之间没有直接调用关系。检索 Skill 不需要理解 SciFork schema，也不能直接写 Research Project；只有格式化后的 Draft 进入 SciFork 校验。
 

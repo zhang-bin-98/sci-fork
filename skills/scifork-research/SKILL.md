@@ -1,9 +1,11 @@
 # SciFork Research
 
 This is SciFork's single research-formatting and reasoning Skill. It consumes
-retrieval or PDF results already present in the current DSH Chat context. It
-does not browse, call another Skill, or write a Research Project. Persistence
-always goes through SciFork typed tools after explicit user confirmation.
+actual retrieval or PDF results already present in the current DSH Chat
+context. It does not browse, retrieve literature, call another Skill, or write
+a Research Project. If no actual retrieval or PDF results are present, do not produce a Draft;
+wait for retrieval to complete. Persistence always goes through SciFork typed
+tools after explicit user confirmation.
 
 ## Orchestration order
 

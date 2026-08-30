@@ -1,6 +1,6 @@
 # SciFork M2 Companion
 
-> Status: Implemented; disposable pinned-profile smoke remains approval-gated
+> Status: Implemented; disposable pinned-profile smoke passed for v0.0.1 on 2026-08-30
 > Date: 2026-08-30
 > Parent design: [product design v0.11](../scifork-product-design.md) sections 3, 6.3, and 11; [software architecture v0.12](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`

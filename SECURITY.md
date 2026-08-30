@@ -43,8 +43,18 @@ write project files. A Draft cannot declare reviewed evidence or directly
 create a Finding, Edge, or Result. PMID/DOI and locator information must come
 from the retrieval context.
 
+The pinned DSH Skill contract renders a directory `resourceBase` as an absolute
+base directory in the model-facing Skill load result. SciFork uses this only for
+the package-owned `pubmed-search` directory so the model can resolve the
+explicitly referenced `helper.mjs`; `scifork-research` has no resource base. The
+path can remain in the private local DSH Session. The model must not search
+around that directory, repeat the path in user-facing prose, copy the helper or
+request files into the Research Project, or include the path in a Draft.
+
 Do not put Page Keys, prompts, Draft bodies, abstracts, local absolute paths,
-or sensitive research data in logs, issue reports, or public repositories.
+or sensitive research data in SciFork logs, errors, Drafts, Research Projects,
+issue reports, or public repositories. The model-facing local DSH
+`resourceBase` described above is the sole approved absolute-path exception.
 
 ## Compatibility and upgrades
 
