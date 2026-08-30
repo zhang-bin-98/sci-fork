@@ -14,7 +14,9 @@
     "dist/",
     "skills/",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "SECURITY.md",
+    "docs/specs/m3-research.md"
   ],
   "keywords": [
     "dsh-plugin",

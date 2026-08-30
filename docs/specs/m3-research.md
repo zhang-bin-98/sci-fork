@@ -116,5 +116,9 @@ Draft before the user selects candidates for one-at-a-time typed persistence.
   lookup, empty results, malformed responses, timeout/network errors, and
   output bounds.
 - Static checks verify Skill boundary language and that the package dry-run
-  contains the helper, both Skill files, and built assets.
+  contains the helper, both Skill files, `SECURITY.md`, this M3 spec, and built
+  assets.
+- An offline workflow test proves retrieval output formatted by
+  `scifork-research` passes Core Draft validation and becomes one candidate-only
+  typed import command; identifier-free PDF candidates remain non-importable.
 - Disposable pinned DSH E2E remains approval-gated and is not run implicitly.

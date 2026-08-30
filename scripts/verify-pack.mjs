@@ -35,6 +35,8 @@ const required = [
   'dist/client.js',
   'dist/companion/index.html',
   'dist/host/index.js',
+  'SECURITY.md',
+  'docs/specs/m3-research.md',
   'skills/pubmed-search/helper.mjs',
   'skills/pubmed-search/SKILL.md',
   'skills/scifork-research/SKILL.md',
