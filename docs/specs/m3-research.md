@@ -109,6 +109,15 @@ Draft before the user selects candidates for one-at-a-time typed persistence.
 - [x] `pnpm check`, `node --check index.js`, `git diff --check`, and
       `pnpm pack --dry-run` pass.
 
+### Disposable DSH smoke
+
+Using the pinned DSH `0.1.1-rc.2` in a disposable profile, the Web origin
+returned `200` for `/`, `/scifork/`, `/scifork/app.js`, and
+`/scifork/styles.css`; `GET /scifork/api/snapshot` correctly returned `405`.
+This verifies the static entry and HTTP method guard only. The full DSH
+workflow (commands, Skill discovery, Draft import, and scoped simulation)
+remains approval-gated and is not claimed by this smoke.
+
 ## Test plan
 
 - Unit/integration tests run the CLI against a local HTTP fixture and cover
