@@ -12,3 +12,8 @@ shape, evidence, relation, stale-write, and deletion invariants. This favors a
 convenient breadth of exploration and adaptable LLM workflows while accepting
 multiple checkpoints and recoverable partial progress instead of adding a second
 workflow engine.
+
+ADR-0002 refines the trigger and research semantics: the Companion action performs
+one literature-grounded expansion step, while only an explicit Chat request may
+authorize a progressive multi-step run. The primitive-tool and connected-write
+decisions recorded here remain in force.

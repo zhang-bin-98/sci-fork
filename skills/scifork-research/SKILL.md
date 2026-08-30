@@ -2,12 +2,13 @@
 
 This is SciFork's single research-formatting, graph-workflow, and reasoning
 Skill. For evidence import it consumes actual retrieval or PDF results already
-present in the current DSH Chat context. It can also simulate, critique, and
-delete branches on an existing Research Graph without retrieval. It does not
-browse, retrieve literature, call another Skill, or write project files
-directly. If no actual retrieval or PDF results are present, do not produce a Draft;
-wait for retrieval to complete. Persistence always goes through SciFork typed
-tools and the authorization rules below.
+present in the current DSH Chat context. It also decides which connected branches
+to retain after a completed retrieval phase, critiques the graph, and deletes
+rejected branches. It does not browse, retrieve literature, call another Skill,
+or write project files directly. If no actual retrieval or PDF results are
+present, do not produce a Draft or literature-grounded branch; wait for retrieval
+to complete. Persistence always goes through SciFork typed tools and the
+authorization rules below.
 
 ## Orchestration order
 
@@ -21,11 +22,13 @@ For evidence import:
 4. Convert accepted candidates to one `import_draft_item` command each, using
    the latest `projectRevision`. Never batch unreviewed content into a Finding.
 
-For graph simulation, critique, or deletion, load this Skill directly. Use
+For graph expansion, the orchestrating model completes one retrieval phase first,
+keeps the actual results in the current Chat, and only then loads this Skill for
+graph decisions. For critique or deletion, load this Skill directly. Use
 `research_graph_read` for current state, `research_graph_apply` for one guarded
-entity mutation at a time, and `research_graph_focus` only for Focus. Entity
-reads return `fileVersion` for update/delete commands. Always use the latest
-returned `projectRevision` after a successful mutation.
+entity mutation at a time, and `research_graph_focus` only when a workflow must
+change Focus. Entity reads return `fileVersion` for update/delete commands.
+Always use the latest returned `projectRevision` after a successful mutation.
 
 Skills do not call each other and a retrieval result is not itself a Draft.
 
@@ -73,44 +76,84 @@ Formatting rules:
   `PMID_DOI_CONSISTENCY_UNVERIFIED`; user review decides whether they identify
   the same publication.
 
-## Simulation: Simulate & Save
+## Research Expansion Step: Research & Expand
 
-A real Companion `Simulate & Save` click explicitly authorizes one bounded run
-to persist every valid branch you actually propose. A direct user request in
-the current Chat may provide the same authorization. Page load, polling, model
-output, a saved branch, and background events do not.
+A real Companion `Research & Expand` click authorizes exactly one bounded graph
+step after the button-submitted prompt has made the current Chat objective clear
+and the orchestrating model has completed a real retrieval phase. Page load,
+polling, model output, an earlier click, and background events do not authorize
+the step. A click does not authorize a Progressive Research Run.
 
-1. Read Focus, its entity document, and its neighborhood. Check existing claims
-   for semantic duplicates before creating anything.
-2. Choose zero to five scientifically distinct branches at depth one. Zero is
-   correct when the visible state does not justify a new direction. Do not recurse
-   or trigger another simulation.
-3. Each branch is one `hypothesis` or `prediction` Node with `confidence: low`.
-   Never create or promote a Finding in this workflow.
-4. Immediately after each `create_node`, call `create_edge` so no completed
+The packaged `pubmed-search` Skill is the default retrieval source. The
+orchestrating model must complete `search` and then `lookup` for promising PMID or
+DOI records before loading this Skill. This Skill never calls `pubmed-search`.
+When actual results are absent, stop without graph mutation.
+
+1. Read the latest Focus and its full entity. Use `neighbors` with `incoming`,
+   `outgoing`, or `both` according to the objective; read a neighbor's full entity
+   only when needed. Use `find` to check semantic duplicates outside the current
+   component.
+2. If Focus is an Edge, read it with `entity`, choose the scientifically relevant
+   Node/Result endpoint, and use that endpoint as the anchor. Include the Focus
+   Edge id in provenance. If Focus is an Evidence Assertion, use a connected
+   Node/Result anchor; if none exists, retain no branch.
+3. Choose zero to five scientifically distinct direct branches at depth one.
+   Zero is correct when retrieval reveals no novel, defensible, explicit
+   scientific relationship. Do not recurse. Focus remains unchanged.
+4. Each branch is one `hypothesis` or `prediction` Node with `confidence: low`.
+   Never create or promote a Finding, reviewed Evidence Assertion, or validated
+   Result in this workflow.
+5. Immediately after each `create_node`, call `create_edge` so no completed
    branch is isolated. Every generated Edge uses `basis: ai_inference` with
-   non-empty provenance and `evidenceGap`.
-5. Use `predicts` only from a Finding/Hypothesis to a Prediction. Otherwise
-   choose the narrowest valid relation from `supports`, `contradicts`, `causes`,
-   or `associated_with` based on the scientific claim.
-6. If Focus is an Edge, choose the scientifically relevant Node/Result endpoint
-   as anchor and include the Focus Edge id in provenance. If Focus is an
-   Evidence Assertion, use a connected Node/Result anchor; if none exists, do
-   not create an orphan branch.
+   non-empty provenance naming the query and consulted PMID/DOI, plus an
+   `evidenceGap` that states why the relation remains unverified.
+6. Use `predicts` only from a Finding/Hypothesis to a Prediction. Otherwise choose
+   the narrowest valid relation from `supports`, `contradicts`, `causes`, or
+   `associated_with` based on the scientific claim.
 7. Use the revision returned by `create_node` for `create_edge`. If Edge creation
    fails, re-read and retry only for a recoverable stale state. If the Node still
    cannot be connected, delete the orphan when safe and report any unresolved
    partial state.
-8. Re-read the graph and report the exact Node and Edge ids saved or rejected.
+8. Re-read the graph and report the retrieval query, consulted identifiers, and
+   exact Node and Edge ids retained or rejected.
 
 For each branch, state its assumptions, observable outcome, falsifying result,
 alternative explanations, and Evidence Gap. Keep Result (observation) separate
-from Interpretation. Do not promote a Hypothesis, Prediction, `ai_inference`,
-or an unreviewed candidate to a Finding.
+from Interpretation. Do not promote a Hypothesis, Prediction, `ai_inference`, or
+an unreviewed source to a Finding.
+
+## Progressive Research Run
+
+Start this workflow only from an explicit user request in the current DSH Chat
+to conduct progressive, iterative, or multi-round research. A Companion click
+never grants this authority. Use the user's objective, direction, depth, source,
+and stopping condition when supplied. Otherwise state a bounded plan in Chat.
+Ask before mutation when a material ambiguity would change the objective.
+
+The orchestrating model, not this Skill, maintains a `frontier` and `visited` set
+and alternates complete phases:
+
+1. Select one unvisited frontier entity and read its full entity plus directional
+   `neighbors` (`incoming`, `outgoing`, or `both`).
+2. Form one focused retrieval question. Complete one retrieval/PDF Skill and keep
+   its actual results in the current Chat. The default is `pubmed-search` with
+   `search` followed by `lookup`, but honor a user-selected reliable source.
+3. Load this Skill and retain only novel branches with an explicit scientific
+   relationship. Apply the same low-confidence Node + immediate Edge rules and
+   scientific boundaries as the Research Expansion Step.
+4. Add retained Node ids to the frontier, mark the expanded entity visited, and
+   repeat only while the user's request and declared plan authorize another turn.
+
+Stop when the requested scope is reached, the plan is exhausted, retrieval finds
+no new explicit scientific relationship, a non-recoverable retrieval or graph
+error occurs, or a decision would materially change the objective. Report all
+queries and identifiers consulted, retained and rejected branches, remaining
+Evidence Gaps, and the final frontier. Do not silently broaden the objective.
+Do not continue in the background.
 
 ## Delete a branch
 
-When the user rejects a simulated direction:
+When the user rejects a research expansion branch:
 
 1. Read the target entity, neighborhood, and current Focus. Resolve the exact
    Node/Edge set the request names; do not silently include an ambiguous

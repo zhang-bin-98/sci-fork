@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createSimulationNonce,
+  RESEARCH_EXPANSION_ACTION_LABEL,
   SimulationChannel,
-  buildSimulationPrompt,
+  buildResearchExpansionPrompt,
 } from '../../src/companion/simulation.js'
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
@@ -77,36 +78,43 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('bounded simulation prompt', () => {
-  it('includes the Focus, bounded-neighborhood support and contradiction, Evidence Gaps, and scientific guardrails', () => {
-    const prompt = buildSimulationPrompt(promptInput)
+describe('literature-grounded research expansion prompt', () => {
+  it('authorizes one objective-led retrieval and connected expansion step without preloading the neighborhood', () => {
+    const prompt = buildResearchExpansionPrompt(promptInput)
     const normalized = prompt.toLowerCase()
 
+    expect(RESEARCH_EXPANSION_ACTION_LABEL).toBe('Research & Expand')
     expect(prompt).toContain('node_focus')
-    expect(prompt).toContain('Focus-neighborhood support')
-    expect(prompt).toContain('Focus-neighborhood contradictions')
-    expect(prompt).toContain('bounded Focus-neighborhood context')
-    expect(prompt).not.toContain('Visible support')
     expect(prompt).toContain('Blocking IL-6 may reduce the inflammatory phenotype.')
-    expect(prompt).toContain('A reviewed cohort reported reduced inflammatory markers.')
-    expect(prompt).toContain('The local assay showed no reduction after treatment.')
-    expect(prompt).toContain('No randomized intervention study is available.')
-    expect(normalized).toContain('simulation')
-    expect(normalized).toContain('critique')
+    expect(prompt).not.toContain('Focus-neighborhood')
+    expect(prompt).not.toContain('A reviewed cohort reported reduced inflammatory markers.')
+    expect(prompt).not.toContain('The local assay showed no reduction after treatment.')
+    expect(prompt).not.toContain('No randomized intervention study is available.')
+    expect(normalized).not.toContain('simulation')
+    expect(normalized).toContain('research expansion step')
+    expect(normalized).toContain('current chat objective')
+    expect(normalized).toContain('pubmed-search')
+    expect(normalized).toContain('search')
+    expect(normalized).toContain('lookup')
+    expect(normalized).toContain('scifork-research')
+    expect(normalized).toContain('neighbors')
+    expect(normalized).toContain('incoming')
+    expect(normalized).toContain('outgoing')
     expect(normalized).toContain('result')
     expect(normalized).toContain('interpretation')
-    expect(normalized).toContain('hypotheses')
-    expect(normalized).toContain('predictions')
     expect(normalized).toContain('ai_inference')
-    expect(normalized).toContain('findings')
+    expect(normalized).toContain('finding')
     expect(normalized).toContain('authorizes')
-    expect(normalized).toContain('save every valid')
+    expect(normalized).toContain('zero to five')
     expect(normalized).toContain('five')
     expect(normalized).toContain('depth one')
     expect(normalized).toContain('low confidence')
     expect(normalized).toContain('create_node')
     expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('focus remains unchanged')
     expect(normalized).toContain('do not recurse')
+    expect(normalized).toContain('progressive research run')
+    expect(normalized).toContain('not authorized')
   })
 
   it('preserves the task and scientific guardrails within the 12 KiB UTF-8 cap', () => {
@@ -122,20 +130,24 @@ describe('bounded simulation prompt', () => {
       })),
     }
 
-    const prompt = buildSimulationPrompt(huge)
+    const prompt = buildResearchExpansionPrompt(huge)
     const normalized = prompt.toLowerCase()
 
     expect(new TextEncoder().encode(prompt).byteLength).toBeLessThanOrEqual(12 * 1024)
-    expect(normalized).toContain('simulation')
-    expect(normalized).toContain('critique')
+    expect(normalized).toContain('research expansion step')
+    expect(normalized).toContain('current chat objective')
+    expect(normalized).toContain('pubmed-search')
+    expect(normalized).toContain('lookup')
+    expect(normalized).toContain('neighbors')
     expect(normalized).toContain('result')
     expect(normalized).toContain('interpretation')
     expect(normalized).toContain('ai_inference')
-    expect(normalized).toContain('findings')
-    expect(normalized).toContain('save every valid')
+    expect(normalized).toContain('finding')
+    expect(normalized).toContain('zero to five')
     expect(normalized).toContain('five')
     expect(normalized).toContain('create_node')
     expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('focus remains unchanged')
     expect(normalized).toContain('do not recurse')
   })
 })

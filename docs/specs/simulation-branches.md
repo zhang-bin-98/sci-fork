@@ -1,6 +1,6 @@
 # SciFork bounded simulation branches
 
-> Status: implemented for v0.0.1; automated gates and the disposable DSH save/delete exercise passed on 2026-08-30
+> Status: implemented for v0.0.1; forward expansion and Companion-action semantics are superseded by [literature-grounded research expansion](progressive-research-expansion.md), while typed deletion remains authoritative here
 > Parent design: [product design v0.12](../scifork-product-design.md) sections 3, 4, 6, and 7; [software architecture v0.13](../scifork-software-architecture.md) sections 5, 6, 7, 9-12, and 15
 > Extends: [M1 Core + Git](m1-core-git.md), [M2 Companion](m2-companion.md), and [M3 Research](m3-research.md)
 

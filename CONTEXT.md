@@ -36,9 +36,13 @@ _Avoid_: Finding, speculation
 A testable consequence derived from a Hypothesis or Finding.
 _Avoid_: Hypothesis, forecast
 
-**Simulation Branch**:
-A bounded, unverified Hypothesis or Prediction retained from one user-started simulation and connected to the research state that grounded it.
-_Avoid_: Simulation result, accepted finding, scenario record
+**Research Expansion Step**:
+A single user-started, literature-grounded expansion from the current Focus that retains only connected, unverified claims with explicit scientific relationships.
+_Avoid_: Simulation, recursive run, background research
+
+**Progressive Research Run**:
+A Chat-directed sequence of Research Expansion Steps that follows one stated research objective and an evolving frontier within the user's authorization.
+_Avoid_: Background crawler, button recursion, scheduled simulation
 
 **Evidence Candidate**:
 A proposed Evidence Assertion awaiting human review and adoption into the Research Project.

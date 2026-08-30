@@ -33,22 +33,27 @@ DSH release-tarball exercise pass.
 M3 Research is implemented ([M3 spec](docs/specs/m3-research.md)): the
 dependency-free PubMed helper supports full Entrez query pages up to 300 metadata
 records and PMID/DOI lookup, and both packaged Skills contain the Draft,
-simulation, and critique protocol. The approved disposable DSH `0.1.1-rc.2`
+research-expansion, progressive-research, and critique protocols. The approved
+disposable DSH `0.1.1-rc.2`
 v0.0.1 release-tarball exercise verified directory `resourceBase` discovery,
 ordered Skill loading, real PubMed search and DOI lookup, Draft formatting and
 single-candidate import, typed mutation/checkpoint, Focus, idle and queued
-Simulate submission, Page Key invalidation on restart, and uninstall with the
+prompt submission, Page Key invalidation on restart, and uninstall with the
 Git Research Project preserved.
 
-The approved [bounded simulation branch extension](docs/specs/simulation-branches.md)
-keeps orchestration in the LLM: one real `Simulate & Save` click may persist up
-to five distinct low-confidence Hypothesis/Prediction branches, each with an
-Edge. The same typed apply tool exposes guarded Edge and unverified-node deletion
-so users can remove unsuitable branches through DSH Chat; Evidence, Result, and
-Finding deletion boundaries remain unchanged. Its disposable DSH exercise saved
-three Node+Edge branches in one click and removed one branch Edge-first; the run
-also produced and verified fixes for exact-path deletion checkpoints and
-lossless-JSON recovery reads.
+The implemented [literature-grounded research expansion](docs/specs/progressive-research-expansion.md)
+refines the earlier [bounded branch workflow](docs/specs/simulation-branches.md).
+The Companion now exposes a one-hop `Research & Expand` action that asks the model
+to complete PubMed search and lookup before retaining zero to five connected,
+low-confidence branches. `research_graph_read` provides compact directional
+neighbor reads, Focus remains unchanged, and multi-round Progressive Research
+Runs require an explicit user request in DSH Chat. Guarded Edge-first branch
+deletion and the Evidence, Result, and Finding boundaries remain unchanged.
+The pinned disposable DSH `0.1.1-rc.2` exercise verified a real one-click step and
+a two-level Chat-authorized run, including per-level PubMed retrieval,
+`frontier`/`visited` updates, connected persistence, explicit stopping, and an
+unchanged Focus. It also exposed and verified a lossless-JSON fix for clearing
+and reading an empty Focus.
 
 All M0 gates remain recorded as passing: clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, sequential
@@ -61,7 +66,7 @@ corepack pnpm install
 corepack pnpm check   # typecheck + vitest + build
 ```
 
-The lean MVP design has these boundaries:
+The currently implemented v0.0.1 baseline has these boundaries:
 
 - One package and one first-party bundle contain Core, Host, DSH Bridge,
   Companion assets, one `SciFork Research` Skill, and one lightweight PubMed
@@ -69,11 +74,11 @@ The lean MVP design has these boundaries:
 - The Companion uses `/scifork/*` on the existing DSH Web origin, is
   loopback-only, and opens no extra port.
 - The page has one responsive layout; there are no Compact/Workspace modes.
-- Clicking `Simulate & Save` automatically submits to the corresponding DSH Chat.
+- Clicking `Research & Expand` automatically submits to the corresponding DSH Chat.
   An idle Chat starts immediately; a running Chat queues the request.
-- The click authorizes one non-recursive run to save every valid branch the LLM
-  proposes, up to five. Each saved branch is a low-confidence Hypothesis or
-  Prediction connected by an Edge; users remove unsuitable branches through Chat.
+- The click authorizes one literature-first, non-recursive step to retain zero to
+  five direct branches. Each retained branch is a low-confidence Hypothesis or
+  Prediction connected by an explicit Edge; Focus does not change.
 - A lightweight PubMed Skill supports full PubMed queries, paged metadata
   batches of up to 300 records, and PMID/DOI lookup. It does not implement
   automatic MeSH expansion, PubTator, full text, caching, or RAG.
@@ -82,7 +87,9 @@ The lean MVP design has these boundaries:
   directory without searching the installation or writing project intermediates.
 - The model may use another retrieval or PDF Skill instead, then load
   `SciFork Research` to format the current results as a `Research Import Draft`.
-  SciFork validates the Draft; research-team data remains a Result.
+  SciFork validates the Draft; research-team data remains a Result. An explicitly
+  requested Progressive Research Run may alternate completed retrieval and graph
+  phases while maintaining a transient frontier and visited set.
 - Git uses the current branch for a minimal managed-path commit attempt.
   SciFork does not own undo/redo or history recovery; branches and remotes remain
   the user's or DSH's responsibility.
@@ -121,8 +128,9 @@ The dumped configuration should contain exactly one `scifork` loader entry.
   `dist/host`, `dist/client.js`, Companion assets, the PubMed helper, and both
   Skill files.
 - Verify an isolated DSH Web profile containing the pinned first-party base and
-  Web app layers can install, open, run retrieval/import/Simulate, restart, and
-  uninstall SciFork without any third-party plugin.
+  Web app layers can install, open, run retrieval/import, execute one
+  `Research & Expand` step, complete one Chat-authorized Progressive Research
+  Run, restart, and uninstall SciFork without any third-party plugin.
 - See [SECURITY.md](SECURITY.md) for loopback security, Git sharing,
   sensitive-data handling, compatibility, and upgrade behavior.
 

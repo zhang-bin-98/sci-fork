@@ -3,6 +3,8 @@
 > Status: v0.0.1 implemented; release E2E passed on 2026-08-30
 > Parent design: [product design v0.11](../scifork-product-design.md) sections 7-9; [software architecture v0.12](../scifork-software-architecture.md) sections 10 and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
+> Expansion semantics: the historical bounded-simulation sections below are
+> superseded by [literature-grounded research expansion](progressive-research-expansion.md).
 
 ## Problem
 

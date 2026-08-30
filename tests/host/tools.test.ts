@@ -11,10 +11,20 @@ const sha256 = (content: string): string => createHash('sha256').update(content,
 
 const PROJECT_ID = 'aaaaaaaa-1111-4111-8111-111111111111'
 const UUID_B = 'bbbbbbbb-2222-4222-8222-222222222222'
+const UUID_C = 'cccccccc-3333-4333-8333-333333333333'
+const UUID_D = 'dddddddd-4444-4444-8444-444444444444'
+const UUID_E = 'eeeeeeee-5555-4555-8555-555555555555'
+const UUID_F = 'ffffffff-6666-4666-8666-666666666666'
 const NODE = `node_${UUID_B}`
+const OTHER_NODE = `node_${UUID_C}`
 const EV = `ev_${UUID_B}`
 const RES = `res_${UUID_B}`
+const OTHER_RES = `res_${UUID_D}`
+const UNRELATED_NODE = `node_${UUID_F}`
 const EDGE = `edge_${UUID_B}`
+const INCOMING_EDGE = `edge_${UUID_C}`
+const OUTGOING_EDGE = `edge_${UUID_D}`
+const CONVERGING_EDGE = `edge_${UUID_E}`
 const OLD_SHA = 'abcdef1234567890abcdef1234567890abcdef12'
 const NEW_SHA = 'fedcba0987654321fedcba0987654321fedcba09'
 
@@ -61,6 +71,60 @@ const EDGE_FILE = JSON.stringify({
   id: EDGE,
   from: NODE,
   to: `res_${UUID_B.replaceAll('b', 'c')}`,
+  relation: 'associated_with',
+  basis: 'experiment',
+})
+
+const OTHER_NODE_FILE = [
+  '---',
+  `id: ${OTHER_NODE}`,
+  'kind: hypothesis',
+  'confidence: moderate',
+  'evidence_refs: []',
+  '---',
+  '# Upstream STAT3 hypothesis\n\nA long body that must not be in a neighbor card.\n',
+].join('\n') + '\n'
+
+const OTHER_RESULT_FILE = [
+  '---',
+  `id: ${OTHER_RES}`,
+  'status: validated',
+  'observed_at: "2026-08-30"',
+  '---',
+  '# Downstream assay result\n\nAnother body that must not be in a neighbor card.\n',
+].join('\n') + '\n'
+
+const UNRELATED_NODE_FILE = [
+  '---',
+  `id: ${UNRELATED_NODE}`,
+  'kind: hypothesis',
+  'confidence: low',
+  'evidence_refs: []',
+  '---',
+  '# Unrelated control hypothesis\n',
+].join('\n') + '\n'
+
+const INCOMING_EDGE_FILE = JSON.stringify({
+  id: INCOMING_EDGE,
+  from: OTHER_NODE,
+  to: NODE,
+  relation: 'supports',
+  basis: 'literature',
+  evidence_refs: [{ id: EV, role: 'supports' }],
+})
+
+const OUTGOING_EDGE_FILE = JSON.stringify({
+  id: OUTGOING_EDGE,
+  from: NODE,
+  to: OTHER_RES,
+  relation: 'associated_with',
+  basis: 'experiment',
+})
+
+const CONVERGING_EDGE_FILE = JSON.stringify({
+  id: CONVERGING_EDGE,
+  from: OTHER_NODE,
+  to: OTHER_RES,
   relation: 'associated_with',
   basis: 'experiment',
 })
@@ -123,6 +187,11 @@ describe('registerResearchTools', () => {
     ])
     const read = tools.definitions.find((d) => d.name === 'research_graph_read')!
     expect(read.parameters).toMatchObject({ type: 'object', required: ['operation'] })
+    const readProperties = (read.parameters as {
+      properties: { operation: { enum: string[] }; direction: { enum: string[] } }
+    }).properties
+    expect(readProperties.operation.enum).toContain('neighbors')
+    expect(readProperties.direction.enum).toEqual(['incoming', 'outgoing', 'both'])
     expect(read.output.schema).toEqual({})
     expect(read.timeoutMs).toBe(15000)
     expect(read.isConcurrencySafe?.({})).toBe(false)
@@ -242,6 +311,87 @@ describe('research_graph_read', () => {
     expect(edges[0]).toMatchObject({ from: EV, to: NODE, source: 'evidence_ref' })
   })
 
+  it('returns compact incoming, outgoing, or bidirectional neighbors without entity bodies', async () => {
+    const { byName } = await registered({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: NODE_FILE,
+      [`/proj/nodes/${OTHER_NODE}.md`]: OTHER_NODE_FILE,
+      [`/proj/nodes/${UNRELATED_NODE}.md`]: UNRELATED_NODE_FILE,
+      [`/proj/evidence/${EV}.md`]: EV_FILE,
+      [`/proj/results/${OTHER_RES}.md`]: OTHER_RESULT_FILE,
+      [`/proj/edges/${INCOMING_EDGE}.json`]: INCOMING_EDGE_FILE,
+      [`/proj/edges/${OUTGOING_EDGE}.json`]: OUTGOING_EDGE_FILE,
+      [`/proj/edges/${CONVERGING_EDGE}.json`]: CONVERGING_EDGE_FILE,
+    })
+    const read = byName.get('research_graph_read')!
+
+    const incoming = await read.execute(
+      { operation: 'neighbors', entityId: NODE, direction: 'incoming' },
+      execFor(),
+    )
+    expect(incoming).toMatchObject({ ok: true, entityId: NODE, direction: 'incoming' })
+    expect((incoming as { neighbors: unknown[] }).neighbors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          direction: 'incoming',
+          edge: expect.objectContaining({ from: EV, to: NODE, source: 'evidence_ref' }),
+          entity: expect.objectContaining({ id: EV, type: 'evidence' }),
+        }),
+        expect.objectContaining({
+          direction: 'incoming',
+          edge: expect.objectContaining({ from: OTHER_NODE, to: NODE }),
+          entity: expect.objectContaining({ id: OTHER_NODE, type: 'node' }),
+        }),
+      ]),
+    )
+    expect((incoming as { neighbors: unknown[] }).neighbors).toHaveLength(2)
+
+    const outgoing = await read.execute(
+      { operation: 'neighbors', entityId: NODE, direction: 'outgoing' },
+      execFor(),
+    )
+    expect(outgoing).toMatchObject({
+      ok: true,
+      entityId: NODE,
+      direction: 'outgoing',
+      neighbors: [
+        {
+          direction: 'outgoing',
+          edge: expect.objectContaining({ from: NODE, to: OTHER_RES }),
+          entity: expect.objectContaining({ id: OTHER_RES, type: 'result' }),
+        },
+      ],
+    })
+
+    const both = await read.execute(
+      { operation: 'neighbors', entityId: NODE },
+      execFor(),
+    )
+    expect(both).toMatchObject({ ok: true, entityId: NODE, direction: 'both' })
+    expect((both as { neighbors: unknown[] }).neighbors).toHaveLength(3)
+    expect(JSON.stringify(both)).not.toContain(UNRELATED_NODE)
+    expect(JSON.stringify(both)).not.toContain('A long body')
+    expect(JSON.stringify(both)).not.toContain('Another body')
+
+    const convergence = await read.execute(
+      { operation: 'neighbors', entityId: OTHER_RES, direction: 'incoming' },
+      execFor(),
+    )
+    expect(convergence).toMatchObject({ ok: true, entityId: OTHER_RES, direction: 'incoming' })
+    expect((convergence as { neighbors: unknown[] }).neighbors).toHaveLength(2)
+
+    const edge = await read.execute(
+      { operation: 'neighbors', entityId: INCOMING_EDGE, direction: 'both' },
+      execFor(),
+    )
+    expect(edge).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
+    const invalidDirection = await read.execute(
+      { operation: 'neighbors', entityId: NODE, direction: 'sideways' },
+      execFor(),
+    )
+    expect(invalidDirection).toMatchObject({ ok: false, code: 'INVALID_COMMAND' })
+  })
+
   it('reads and focuses stored edges', async () => {
     const { byName, storage } = await registered({
       '/proj/research.json': MANIFEST,
@@ -344,8 +494,16 @@ describe('research_graph_focus', () => {
     expect([...entries.keys()].every((path) => path.endsWith('research.json') || path.includes(`/${NODE}.md`))).toBe(true)
 
     const cleared = await focus.execute({ focusEntityId: '' }, execFor())
-    expect(cleared).toMatchObject({ ok: true, focus: undefined })
+    expect(cleared).toEqual({ ok: true })
+    expect(Object.keys(cleared as Record<string, unknown>)).toEqual(['ok'])
+    expect(cleared).toEqual(JSON.parse(JSON.stringify(cleared)))
     expect(table.records.size).toBe(0)
+
+    const read = byName.get('research_graph_read')!
+    const clearedRead = await read.execute({ operation: 'focus' }, execFor())
+    expect(clearedRead).toEqual({ ok: true })
+    expect(Object.keys(clearedRead as Record<string, unknown>)).toEqual(['ok'])
+    expect(clearedRead).toEqual(JSON.parse(JSON.stringify(clearedRead)))
   })
 
   it('rejects unknown focus entities', async () => {

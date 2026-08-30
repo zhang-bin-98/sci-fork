@@ -4,6 +4,8 @@
 > Date: 2026-08-31
 > Parent design: [product design v0.13](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.14](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
+> Action semantics: the historical `Simulate & Save` contract below is superseded
+> by [literature-grounded research expansion](progressive-research-expansion.md).
 
 ## Problem
 

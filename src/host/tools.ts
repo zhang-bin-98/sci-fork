@@ -57,10 +57,15 @@ const READ_PARAMETERS = {
   properties: {
     operation: {
       type: 'string',
-      enum: ['summary', 'focus', 'entity', 'neighborhood', 'find', 'checkpoint'],
-      description: 'summary | focus | entity | neighborhood | find | checkpoint',
+      enum: ['summary', 'focus', 'entity', 'neighborhood', 'neighbors', 'find', 'checkpoint'],
+      description: 'summary | focus | entity | neighborhood | neighbors | find | checkpoint',
     },
-    entityId: { type: 'string', description: 'entity id for entity/neighborhood reads' },
+    entityId: { type: 'string', description: 'entity id for entity/neighborhood/neighbors reads' },
+    direction: {
+      type: 'string',
+      enum: ['incoming', 'outgoing', 'both'],
+      description: 'direction for neighbors; defaults to both',
+    },
     query: { type: 'string', description: 'case-insensitive substring for find' },
     limit: { type: 'integer', description: 'result cap for find, 1-50' },
   },
@@ -137,6 +142,46 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
   return undefined
 }
 
+function boundedLabel(value: string, fallback: string): string {
+  const firstLine = value
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)
+  const normalized = (firstLine ?? fallback)
+    .replace(/^#{1,6}\s+/u, '')
+    .replace(/\s+/gu, ' ')
+    .trim()
+  return (normalized || fallback).slice(0, 240)
+}
+
+function compactEntity(entity: ProjectionEntity): Record<string, unknown> {
+  if (entity.type === 'node') {
+    return {
+      id: entity.id,
+      type: entity.type,
+      kind: entity.kind,
+      confidence: entity.confidence,
+      label: boundedLabel(entity.body, entity.kind),
+    }
+  }
+  if (entity.type === 'evidence') {
+    return {
+      id: entity.id,
+      type: entity.type,
+      direction: entity.direction,
+      reviewStatus: entity.reviewStatus,
+      label: boundedLabel(entity.assertion, 'Evidence Assertion'),
+    }
+  }
+  return {
+    id: entity.id,
+    type: entity.type,
+    status: entity.status,
+    observedAt: entity.observedAt,
+    label: boundedLabel(entity.body, 'Result'),
+  }
+}
+
 async function executeRead(
   deps: ResearchToolsDeps,
   args: Record<string, unknown>,
@@ -182,11 +227,13 @@ async function executeRead(
       return { ok: false, code: 'SESSION_UNAVAILABLE', message: 'no session or project context', recoverable: false }
     }
     const focus = await readFocus(deps.storage, info.sessionId, manifest.project_id)
-    return {
-      ok: true,
-      focus,
-      ...(focus !== undefined ? { entityExists: entityPayload(project, focus.focusEntityId) !== undefined } : {}),
-    }
+    return focus === undefined
+      ? { ok: true }
+      : {
+          ok: true,
+          focus,
+          entityExists: entityPayload(project, focus.focusEntityId) !== undefined,
+        }
   }
 
   if (operation === 'entity' || operation === 'neighborhood') {
@@ -205,6 +252,50 @@ async function executeRead(
     }
     const edges = buildProjection(project).edges.filter((edge) => edge.from === entityId || edge.to === entityId)
     return { ok: true, entityId, entity, edges }
+  }
+
+  if (operation === 'neighbors') {
+    const entityId = typeof args['entityId'] === 'string' ? args['entityId'] : ''
+    const direction = args['direction'] ?? 'both'
+    if (direction !== 'incoming' && direction !== 'outgoing' && direction !== 'both') {
+      return {
+        ok: false,
+        code: 'INVALID_COMMAND',
+        message: 'neighbors direction must be incoming, outgoing, or both',
+        recoverable: true,
+      }
+    }
+    const projection = buildProjection(project)
+    const requested = projection.entities.find((entity) => entity.id === entityId)
+    if (requested === undefined) {
+      return {
+        ok: false,
+        code: 'INVALID_ENTITY',
+        message: `neighbor endpoint ${entityId} must be an existing Node, Result, or Evidence Assertion`,
+        recoverable: true,
+        entityId,
+      }
+    }
+    const entities = new Map(projection.entities.map((entity) => [entity.id, entity]))
+    const neighbors = projection.edges.flatMap((edge) => {
+      const incoming = edge.to === entityId
+      const outgoing = edge.from === entityId
+      if (
+        (!incoming && !outgoing) ||
+        (direction === 'incoming' && !incoming) ||
+        (direction === 'outgoing' && !outgoing)
+      ) {
+        return []
+      }
+      const adjacent = entities.get(incoming ? edge.from : edge.to)
+      if (adjacent === undefined) return []
+      return [{
+        direction: incoming ? 'incoming' : 'outgoing',
+        edge,
+        entity: compactEntity(adjacent),
+      }]
+    })
+    return { ok: true, entityId, direction, neighbors }
   }
 
   if (operation === 'find') {
@@ -456,7 +547,7 @@ async function executeFocus(
   if (focusEntityId.length === 0) {
     const table = deps.storage.table('focus')
     await table.delete(`${info.sessionId}:${manifest.project_id}`)
-    return { ok: true, focus: undefined }
+    return { ok: true }
   }
   const record: FocusRecord = { focusEntityId, pathIds }
   await writeFocus(deps.storage, info.sessionId, manifest.project_id, record)
@@ -470,7 +561,8 @@ function readTool(deps: ResearchToolsDeps): ToolDefinition {
     name: 'research_graph_read',
     description:
       'Read the SciFork Research Graph for the current session project: summary, focus, entity, neighborhood, ' +
-      'find, or checkpoint state. Entity reads include fileVersion for guarded updates/deletes. Read-only; never writes files or Git.',
+      'directional neighbors, find, or checkpoint state. Neighbor reads return incident edges and compact adjacent cards without bodies. ' +
+      'Entity reads include fileVersion for guarded updates/deletes. Read-only; never writes files or Git.',
     parameters: READ_PARAMETERS,
     output: { schema: {}, render: renderJson },
     execute: (args, exec) => executeRead(deps, (args ?? {}) as Record<string, unknown>, exec),

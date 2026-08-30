@@ -56,9 +56,11 @@ describe('loadPackagedSkills', () => {
     expect(pubmed?.description).toMatch(/do not load both/i)
     expect(research?.description).toMatch(/already .*current .*Chat context/i)
     expect(research?.description).toMatch(/does not .*retriev/i)
-    expect(research?.description).toMatch(/simulate.*save/i)
+    expect(research?.description).toMatch(/research expansion/i)
+    expect(research?.description).toMatch(/progressive research/i)
     expect(research?.description).toMatch(/delete.*branch/i)
     expect(research?.whenToUse).toMatch(/existing .*graph/i)
+    expect(research?.whenToUse).toMatch(/explicit .*Chat/i)
   })
 
   it('keeps skill names kebab-case', () => {

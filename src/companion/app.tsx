@@ -24,14 +24,14 @@ import { DetailsMarkdown } from './details.js'
 import {
   focusViewportCenter,
   layoutGraph,
-  selectFocusNeighborhood,
   selectGraphView,
 } from './graph.js'
 import { clearStoredPageKey } from './page-key.js'
 import { startVisiblePolling } from './polling.js'
 import {
+  RESEARCH_EXPANSION_ACTION_LABEL,
   SimulationChannel,
-  buildSimulationPrompt,
+  buildResearchExpansionPrompt,
   type SimulationState,
 } from './simulation.js'
 
@@ -466,12 +466,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
     const focusEntityId = snapshotRef.current?.focus?.focusEntityId
     const latestGraph = graphRef.current
     if (focusEntityId === undefined || latestGraph === undefined) return
-    const visible = selectFocusNeighborhood({
-      ...latestGraph,
-      focus: snapshotRef.current!.focus!,
-    })
     simulationRef.current?.simulate(
-      buildSimulationPrompt({ focusEntityId, ...visible }),
+      buildResearchExpansionPrompt({ focusEntityId, ...latestGraph }),
     )
   }
 
@@ -525,7 +521,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
             disabled={focus === undefined || simulationState.phase === 'pending'}
             onClick={simulate}
           >
-            {simulationState.phase === 'pending' ? 'Submitting' : 'Simulate & Save'}
+            {simulationState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
           </button>
         </div>
       </header>

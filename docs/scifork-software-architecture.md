@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.14
+# SciFork 软件架构与实现设计 v0.15
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
-> 上位设计：[SciFork 产品设计 v0.13](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.14](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -13,16 +13,17 @@ MVP 采用以下决策：
 3. SciFork 是一个 DSH bundle、一个 package，不建设内部 npm monorepo。
 4. Core 保持纯 TypeScript，Host 和 Web 只是适配层。
 5. Graph 使用 DSH 同源的独立 Companion 页面，不占用 DSH single slot。
-6. DSH Bridge 只提供 Open action 和 Simulate 自动提交。
+6. DSH Bridge 只提供 Open action 和单步 Research Expansion 自动提交。
 7. 页面只有一套响应式布局。
 8. Page Key 直接绑定 session/project，不再做两阶段 token exchange。
 9. Git 使用当前分支，每次 mutation 仅尝试创建受管路径提交；SciFork 不维护
    undo/redo 或历史恢复状态。
 10. MVP 发布一个 SciFork 专用的 `SciFork Research` Skill，以及一个通用的 `pubmed-search` 检索 Skill。
-11. 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
-12. 文献 Evidence 直接保存 PMID/DOI，不建立 Source 实体；任何检索结果都必须经过 Draft 格式化与 SciFork 校验。
-13. `better-sidebar` 固定参考 v0.15.2，但不是运行依赖。
-14. v0.1 只支持 loopback DSH Web，不开放独立端口、CORS、登录或远程访问。
+11. 大模型先完成检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft` 或保存明确的连接关系；Skill 之间不互相调用。
+12. Companion 按钮只执行一个文献支撑的 Research Expansion Step；Progressive Research Run 只能由用户在当前 Chat 中明确请求，并由大模型逐轮编排。
+13. 文献 Evidence 直接保存 PMID/DOI，不建立 Source 实体；任何检索结果都必须经过 Draft 格式化与 SciFork 校验。
+14. `better-sidebar` 固定参考 v0.15.2，但不是运行依赖。
+15. v0.1 只支持 loopback DSH Web，不开放独立端口、CORS、登录或远程访问。
 
 ## 2. DSH 集成基线
 
@@ -52,7 +53,7 @@ DSH 仍是快速变化的预览接口。发布必须锁定精确 DSH commit 或 
 │ Open action / DSH Bridge    │       │ One responsive layout       │
 └──────────────┬──────────────┘       └──────────────┬──────────────┘
                │ tools / context                     │ /scifork/api/*
-               │ Simulate submit                     │ Page Key
+               │ Research step submit                │ Page Key
                └─────────────────┬───────────────────┘
                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -311,8 +312,11 @@ research_graph_apply
 research_graph_focus
 ```
 
-`research_graph_read` 支持 summary、focus、entity、neighborhood、find 和简短 checkpoint 状态；
-entity 读取同时返回目标文件的 `fileVersion`，供 update/delete 使用。
+`research_graph_read` 支持 summary、focus、entity、neighborhood、neighbors、find 和简短
+checkpoint 状态；entity 读取同时返回目标文件的 `fileVersion`，供 update/delete 使用。
+`neighbors` 按 incoming/outgoing/both 返回 incident Edge 与紧凑相邻实体卡片，不内联
+相邻正文；模型按需再用 entity 读取完整内容。它接受 Node、Result 或投影中的 Evidence
+endpoint；Edge Focus 先用 entity 读取 from/to，再对选定 endpoint 调用 neighbors。
 
 `research_graph_apply` 只接受 discriminated typed command；模型不能提供任意路径、文件正文或 Git argv。
 
@@ -413,13 +417,13 @@ Host 只返回受管实体文档。Companion 使用随 bundle 打包的 Markdown
 - 本地附件必须经过 Project Locator containment。
 - 外链需要真实用户点击。
 
-## 9. Simulate 自动运行
+## 9. Research Expansion 单步自动运行
 
 Open action 创建 Page Key 时，Bridge 同时记住该 key 对应的 Session scope，并监听由 Page Key 派生的不可猜测 BroadcastChannel 名称。
 
 ```text
-Companion `Simulate & Save` user click
-→ build bounded SimulationPrompt from the current Focus neighborhood
+Companion `Research & Expand` user click
+→ build bounded ResearchExpansionPrompt from the current Focus id/summary
 → broadcast { nonce, prompt }
 → matching DSH Bridge receives
 → conversation.input.for(scope).setDraft(prompt)
@@ -430,16 +434,20 @@ Companion `Simulate & Save` user click
 约束：
 
 - 只有 click handler 能发送，页面加载和后台刷新不能发送。
-- prompt 有字节上限，只包含当前 Focus、有界邻域摘要和明确任务；页面显示全图不扩大
-  模型提示上下文。
-- prompt 明确说明本次真实点击授权保存当前轮全部有效推演分支；每轮最多五条、深度一层。
+- prompt 有字节上限，只包含当前 Focus id/摘要、当前 Chat 研究目的约束、单步任务和
+  明确授权；不内联 Focus 邻域或完整图谱正文。
+- prompt 明确要求先完成默认 PubMed 检索和高价值记录 lookup，再通过方向邻居读取
+  最新图谱上下文；检索不足时不得用无依据猜测代替。
+- prompt 明确说明本次真实点击只授权保存当前步全部有效直接分支；每步最多五条、
+  深度一层、Focus 不变且不得递归。
 - Bridge 只接受自己打开的 Page Key channel。
 - nonce 在页面内只使用一次，重复消息被丢弃。
 - Session 空闲时 submit 启动；运行中使用 DSH 默认 Queue，不执行 steer 或 cancel。
 - Bridge ack 只表示已交给 DSH input transaction；发送拒绝由 DSH 在对应 composer 中显示并保留 draft。
 - Companion 未收到 Bridge ack 时显示 `Retry` 和 `Copy`。
 - 不再使用 DraftRequest、bridge secret、Host claim 或把科研正文存入 Host 临时队列。
-- Bridge 只负责提交；分支数量、类型、关系和错误恢复由对应 Chat 中的大模型按 Skill 决定。
+- Bridge 只负责提交；检索、分支数量/类型/关系、上下文选择和错误恢复由对应 Chat
+  中的大模型按 Skill 决定。
 
 ## 10. 大模型编排的 Skills
 
@@ -460,37 +468,53 @@ load selected retrieval Skill
 
 Skill 不直接调用另一个 Skill，也不共享 provider 生命周期或私有中间协议。检索结果不是 Draft；只有大模型加载 `scifork-research` 后生成的结构才是 Research Import Draft。
 
+同一原则用于研究扩展。按钮提交只授权一次“检索阶段 → 图谱阶段”；用户在 Chat
+中明确请求 Progressive Research Run 时，大模型才维护 frontier/visited state 并重复
+该顺序。每个检索阶段必须完成并把真实结果留在当前 Chat context，随后才加载
+`scifork-research` 判断可保存关系。按钮、Skill 或已保存节点不能自行触发下一轮。
+
 ### 10.2 SciFork Research Skill
 
 Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`。它的 catalog description 明确说明：只有真实检索或 PDF 结果已存在于当前 Chat context 后才加载；它不执行检索，也不配置 `resourceBase`：
 
 - Retrieval guidance。
 - Research Import Draft formatting。
-- Simulation。
+- Research Expansion Step。
+- Progressive Research Run。
 - Critique。
 - SciFork typed tools 调用规则。
 
 它在证据导入时读取当前 Chat context 中已有的检索结果，在已有 Research Graph 上
-也可独立执行推演和批判。Skill 不拥有网络客户端或文件写权限；它描述常见流程，
+也可独立执行研究扩展和批判。Skill 不拥有网络客户端或文件写权限；它描述常见流程，
 由大模型选择三个 SciFork tools 完成读取、逐实体写入和 Focus 管理。
 
-`Simulate & Save` 工作流：
+`Research & Expand` 单步工作流：
 
 ```text
-read Focus + neighborhood
+read current Chat objective + Focus + directional neighbors
 → choose an endpoint anchor when Focus is an Edge
-→ deduplicate against the visible graph
-→ propose at most five low-confidence Hypothesis/Prediction branches
+→ complete pubmed-search search + lookup
+→ deduplicate against the graph with neighbors/entity/find
+→ propose at most five direct low-confidence Hypothesis/Prediction branches
 → create_node, then immediately create_edge for each branch
 → use predicts for Finding/Hypothesis → Prediction; otherwise choose the narrowest valid relation
 → on edge failure, re-read/retry or delete the orphan node
 → re-read and report the exact persisted ids
 ```
 
-一次真实点击授权保存该轮所有通过 Core 校验的分支，不需要逐条确认，也不授权自动
-递归。若 Evidence Assertion 是 Focus 且没有可用的 Node/Result 锚点，Skill 不创建
-孤立分支。自动推演不得创建 Finding，所有新 Node 使用 `low` confidence，所有
-`ai_inference` Edge 必须带 provenance 与 Evidence Gap。
+一次真实点击授权保存该步所有通过 Core 校验的直接分支，不需要逐条确认，也不授权
+多轮或递归。单步结束不更新 Focus。若当前 Chat 研究目的不清楚、Evidence Assertion
+是 Focus 且没有可用 Node/Result 锚点，或检索不能支持明确关系，Skill 不创建孤立
+分支。自动扩展不得创建 Finding，所有新 Node 使用 `low` confidence，所有
+`ai_inference` Edge 必须带检索 provenance 与 Evidence Gap；PMID/DOI provenance
+不等于 reviewed Evidence Assertion。
+
+Progressive Research Run 工作流只接受当前 Chat 中的明确用户请求。模型先陈述用户
+目标和有界计划，维护 frontier/visited state，按“读取方向邻居 → 完成一个检索 Skill
+→ 读取高价值记录 → 加载 `scifork-research` → 保存明确连接 → 选择下一 frontier”
+逐轮执行。默认检索 provider 是 packaged PubMed Skill，也允许用户指定其他数据库、
+PDF Skill 或已有可靠 Chat 材料。模型达到用户范围、没有新关系、耗尽计划、遇到
+不可恢复错误或需要改变目标时停止并汇报；不得转为后台任务或静默扩大目标。
 
 删除分支工作流先读取目标、Focus 和关系，必要时清理 Focus，再逐条 `delete_edge`，
 最后按叶到根顺序 `delete_node`。工具拒绝仍有关联 Edge 的 Node、Finding 或删除后
@@ -500,7 +524,7 @@ read Focus + neighborhood
 
 Bundle 同时贡献通用 `pubmed-search` Skill。Host 只为它注册 directory `resourceBase`，精确指向 package-owned `skills/pubmed-search` 目录；`SKILL.md` 显式引用相对资源 `helper.mjs`，DSH 在模型加载 Skill 时提供基目录并要求按需解析，不列举目录。模型不得扫描安装目录、猜测包位置、把 helper 复制进 Research Project，或创建中间请求文件。
 
-它的 catalog description 明确说明这是紧凑的 PubMed search/PMID-or-DOI lookup Skill，必须在加载 `scifork-research` 前完成实际检索，检索未完成时不得同时加载二者。该描述借鉴通用生命科学检索 Skill 的路由原则：描述先限定适用任务，所有请求使用随包脚本，默认返回紧凑结构而非原始上游响应，失败明确且不合成记录。
+它的 catalog description 明确说明这是紧凑的 PubMed search/PMID-or-DOI lookup Skill，必须在对应检索阶段完成实际检索，随后才加载 `scifork-research`；检索未完成时不得同时加载二者。Progressive Research Run 可以由大模型在下一 frontier 重复该顺序，但 Skill 之间仍不互相调用。该描述借鉴通用生命科学检索 Skill 的路由原则：描述先限定适用任务，所有请求使用随包脚本，默认返回紧凑结构而非原始上游响应，失败明确且不合成记录。
 
 辅助脚本请求为：
 
@@ -652,7 +676,7 @@ interface SciForkError {
 | Layout | `@dagrejs/dagre` |
 | Details | `react-markdown` + `remark-gfm`，raw HTML disabled |
 | Web API | DSH `ctx.webServer.register` + typed JSON POST |
-| Simulate | scoped BroadcastChannel + public SessionInput |
+| Research Expansion submit | scoped BroadcastChannel + public SessionInput |
 | Git | DSH `ctx.subprocess` + system Git |
 | PubMed | packaged Skill helper + NCBI Entrez E-utilities |
 | Hash | Node crypto SHA-256 |
@@ -675,6 +699,8 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 
 - Project Locator containment 和 Git root equality。
 - 三个工具注册、卸载与参数上限。
+- directional neighbors 读取 incoming/outgoing/both Edge 与紧凑相邻实体卡片，且不返回
+  相邻正文或本地路径。
 - entity read 返回 `fileVersion`；apply 暴露 `delete_edge`/`delete_node`，删除只使用 Core 派生的受管路径。
 - 两个 packaged Skill 的发现、加载与卸载。
 - PubMed helper 的完整查询、300 条分页、lookup、空结果、超时和无效响应 fixture。
@@ -690,7 +716,8 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - 一套响应式布局在窄/宽 viewport 可用。
 - 页面隐藏暂停 snapshot polling。
 - Details 阻止 raw HTML、脚本、远程资源和路径逃逸。
-- Simulate & Save 真实点击后调用 `setDraft + submit`，prompt 明确保存全部有效分支、最多五条且不递归。
+- Research & Expand 真实点击后调用 `setDraft + submit`；prompt 使用 Focus id/摘要，要求
+  先检索、再方向读取、保存最多五条直接分支、保持 Focus 且不递归。
 - idle Session 启动、busy Session 排队。
 - 错误 Session/channel 不发送，ack timeout 显示 Retry/Copy。
 - 重复 nonce 不重复提交。
@@ -709,9 +736,12 @@ fresh DSH profile
 → format Research Import Draft
 → review Evidence Candidate
 → create Hypothesis
-→ click Simulate & Save
+→ state a research objective and click Research & Expand
 → verify corresponding Chat starts or queues
-→ verify up to five low-confidence branches persist with one Edge each
+→ verify PubMed search/lookup precedes mutation
+→ verify up to five direct low-confidence branches persist with one Edge each and Focus is unchanged
+→ explicitly ask Chat for a bounded Progressive Research Run across at least two levels
+→ verify every retained node is connected and the run stops with a frontier report
 → delete one rejected branch through Chat, Edge first and Node second
 → repeat with one alternative retrieval/PDF Skill
 → load scifork-research and import one formatted Draft item
@@ -747,14 +777,14 @@ fresh DSH profile
 - Page Key 和同源 API。
 - 全局 Graph、Focus 居中高亮、响应式布局和安全 Details。
 - visible-only polling。
-- Simulate BroadcastChannel 与自动 Chat submit。
+- Research Expansion BroadcastChannel 与单步自动 Chat submit。
 
 ### M3：Research
 
-- `SciFork Research` Draft 格式化、推演与批判。
+- `SciFork Research` Draft 格式化、单步/递进研究与批判。
 - `pubmed-search` helper、300 条分页和 PMID/DOI lookup。
 - 其他检索 Skill 结果的统一 Draft 格式化。
-- v0.0.1 follow-up：默认保存有界推演分支、`predicts`、typed Edge/Node 删除流程。
+- v0.0.1 follow-up：文献支撑的单步扩展、Chat 授权的递进研究、`predicts`、typed Edge/Node 删除流程。
 - E2E、release tarball、README/SECURITY。
 
 没有独立 SF 编号清单；实现任务从这四个里程碑拆 issue 即可。
@@ -765,12 +795,13 @@ fresh DSH profile
 | --- | --- |
 | DSH preview API 变化 | 锁定版本、薄 Bridge、M0 smoke |
 | 浏览器阻止新窗口 | 同步打开空窗口，失败时提供 `/research open` 链接 |
-| Simulate 发送到错误 Session | Page Key 绑定 scope，Bridge 只监听自己打开的 channel |
+| Research Expansion 发送到错误 Session | Page Key 绑定 scope，Bridge 只监听自己打开的 channel |
 | Bridge 不可用 | ack timeout，保留 Retry/Copy |
 | 两窗口 stale write | project queue + expectedProjectRevision |
 | PubMed 限流或格式变化 | 300 条分页、官方速率、POST/History、超时和响应校验 |
 | 检索 Skill 输出不可信 | 大模型再加载格式化 Skill，Draft 边界、PMID/DOI、locator、用户选择 |
-| 自动推演污染 Graph | 真实点击授权、单层最多五条、低置信、去重、每条必须有 Edge 与 Evidence Gap |
+| 自动扩展污染 Graph | 先检索、真实点击只授权单层最多五条、低置信、去重、每条必须有 Edge 与 Evidence Gap |
+| 递进研究失控或偏离目标 | 只接受明确 Chat 请求、声明有界计划、维护 frontier/visited、达到停止条件即汇报 |
 | Git 外部变化或冲突 | 当前分支检测、结构化诊断、只读模式 |
 | Markdown 注入 | raw HTML off、CSP、路径 containment |
 | 敏感数据进入 Git | README/SECURITY 提示，绝不自动远端同步 |
@@ -782,7 +813,10 @@ fresh DSH profile
 - 页面在窄窗和宽窗下使用同一响应式布局。
 - Companion 始终保留完整图谱内容，Focus 只改变视图中心、高亮与 Details。
 - Graph、文件、Focus 和 Chat context 一致。
-- Simulate & Save 点击后自动提交到对应 Chat；idle 启动、busy 排队，并默认保存最多五条有 Edge 的低置信推演分支。
+- Research & Expand 点击后自动提交到对应 Chat；idle 启动、busy 排队，并在先完成
+  PubMed 检索后默认保存最多五条有 Edge 的直接低置信分支，Focus 保持不变。
+- 用户可在 Chat 中明确请求 provider-neutral Progressive Research Run；按钮和已保存
+  节点不会自动递归。
 - Page Key 无二阶段交换，且不会暴露 cwd 或跨项目访问。
 - Publication Reference/Evidence Assertion/Result/Finding 边界通过 Core 校验。
 - `SciFork Research` 与 `pubmed-search` 两个 Skill 可被发现、顺序加载和卸载。

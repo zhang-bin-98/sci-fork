@@ -1,7 +1,7 @@
 {
   "name": "dsh-scifork",
   "version": "0.0.1",
-  "description": "A Git-native research graph for evidence-grounded scientific simulation inside DeepSeek Harness.",
+  "description": "A Git-native research graph for literature-grounded research expansion inside DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -17,7 +17,8 @@
     "README.md",
     "SECURITY.md",
     "docs/specs/m3-research.md",
-    "docs/specs/simulation-branches.md"
+    "docs/specs/simulation-branches.md",
+    "docs/specs/progressive-research-expansion.md"
   ],
   "keywords": [
     "dsh-plugin",
