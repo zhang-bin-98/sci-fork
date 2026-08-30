@@ -1,6 +1,6 @@
 # SciFork M3: Research Skills and PubMed helper
 
-> Status: Implementation slice complete; pinned DSH E2E remains approval-gated
+> Status: Implementation complete; selected pinned DSH E2E paths verified
 > Parent design: [product design v0.11](../scifork-product-design.md) sections 7-9; [software architecture v0.12](../scifork-software-architecture.md) sections 10 and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 
@@ -114,9 +114,14 @@ Draft before the user selects candidates for one-at-a-time typed persistence.
 Using the pinned DSH `0.1.1-rc.2` in a disposable profile, the Web origin
 returned `200` for `/`, `/scifork/`, `/scifork/app.js`, and
 `/scifork/styles.css`; `GET /scifork/api/snapshot` correctly returned `405`.
-This verifies the static entry and HTTP method guard only. The full DSH
-workflow (commands, Skill discovery, Draft import, and scoped simulation)
-remains approval-gated and is not claimed by this smoke.
+The approved end-to-end exercise also verified `/research init`, sequential
+model-mediated loading of `pubmed-search` followed by `scifork-research`, a
+single typed Hypothesis mutation with a current-branch checkpoint, and a
+Companion Focus followed by a real-user-click Simulate submission to the
+originating DSH Session. The generated simulation remained Chat-only and
+explicitly distinguished conjecture from Findings. This exercise did not invoke
+the PubMed helper or execute the Draft-import path; those actions remain
+explicit, action-time test gates.
 
 ## Test plan
 
@@ -130,4 +135,6 @@ remains approval-gated and is not claimed by this smoke.
 - An offline workflow test proves retrieval output formatted by
   `scifork-research` passes Core Draft validation and becomes one candidate-only
   typed import command; identifier-free PDF candidates remain non-importable.
-- Disposable pinned DSH E2E remains approval-gated and is not run implicitly.
+- Disposable pinned DSH E2E is never run implicitly. The approved exercise
+  covers Skill discovery/loading, typed mutation, Focus, and Simulate; PubMed
+  retrieval and Draft import require separate action-time approval.

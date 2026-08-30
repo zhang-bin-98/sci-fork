@@ -28,13 +28,14 @@ snapshot/entity/Focus APIs, safe Details rendering, visible-only polling, and
 the originating-Session `setDraft + submit` Bridge transaction. The current
 automated gates and desktop/narrow local browser checks pass. The disposable
 pinned-DSH-profile smoke remains a separate approval-gated verification.
-M3 Research implementation is complete for the offline slice ([M3 spec](docs/specs/m3-research.md)):
-the dependency-free PubMed helper supports full Entrez query pages up to 300
-metadata records and PMID/DOI lookup, and both packaged Skills contain the
-Draft, simulation, and critique protocol. A disposable DSH `0.1.1-rc.2` profile
-served `/scifork/` and its built assets successfully, and the snapshot method
-guard returned `405` for an invalid `GET`; the complete DSH workflow and release
-E2E remain approval-gated.
+M3 Research is implemented ([M3 spec](docs/specs/m3-research.md)): the
+dependency-free PubMed helper supports full Entrez query pages up to 300 metadata
+records and PMID/DOI lookup, and both packaged Skills contain the Draft,
+simulation, and critique protocol. An approved disposable DSH `0.1.1-rc.2`
+exercise verified the static entry and method guard, `/research init`, ordered
+Skill loading, a typed graph mutation/checkpoint, and originating-Session
+Simulate submission. PubMed retrieval and Draft import remain explicit
+action-time test gates; release-tarball E2E remains a separate release gate.
 
 All M0 gates remain recorded as passing: clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, sequential
