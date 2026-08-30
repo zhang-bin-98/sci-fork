@@ -1,4 +1,4 @@
-# SciFork 产品设计 v0.16
+# SciFork 产品设计 v0.17
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
@@ -103,6 +103,12 @@ Prediction 为紫色、Evidence Assertion 显示为 `EVIDENCE` 并使用蓝色�
 总数合并 Node 的 Evidence Assertion 引用与 incident Edge 的结构化 Publication
 References，reviewed 数只统计 reviewed Evidence Assertion 背后的去重文献。
 
+Companion 的通用视觉系统由 Tailwind theme tokens 和 utilities 统一负责，包括页面骨架、
+顶栏、按钮、通知、卡片、Details、间距、字号、边框、圆角、阴影和响应式布局。保留深
+鼠尾草绿品牌顶栏、暖中性画布、白色内容面和克制的科研工具风格。手写 CSS 只处理
+Preflight 禁用所需的最小文档基础归一化、React Flow 外部 DOM/Edge 状态、卡片有界展开
+以及 utilities 无法安全表达的 Markdown pseudo-element；不保留一套并行的通用组件样式。
+
 DSH 入口使用公开的 `sidebar.footer.action`：展开时在 Settings 上方显示 Graph
 图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，并保留
 `Open Research Graph` tooltip/accessible name。点击仍打开独立 Companion，
@@ -118,8 +124,10 @@ DSH 的 list-slot owner，不用私有 DOM/CSS 强制重排。
 - 页面不显示独立 Focus 面包屑栏；Graph 和 Details 使用顶栏以下的剩余高度。
 - Details 收起时，宽屏保留右侧竖向拉手，窄屏保留图下方横向拉手；展开状态只存在于
   当前页面，刷新后恢复默认打开。
-- Details 标题保持可见，显示 Finding/Hypothesis/Prediction/Evidence/Result/Edge 的精确
-  类型以及参考文献总数与 reviewed evidence 数；只有正文区域独立滚动，内容不会撑高整个页面。
+- Details 顶部固定为两行：第一行显示精确实体类型、紧凑的
+  `N ref/refs (M reviewed)`、Focus 状态和抽屉按钮；第二行显示完整等宽 ID 及内嵌复制
+  操作。可见的冗余 `Details` 大标题移除，但保留无障碍标题。只有正文区域独立滚动，
+  内容不会撑高整个页面。
 - Details 在右侧时使用左右方向箭头，在图下方时使用上下方向箭头；箭头方向表达
   当前操作将打开或收起抽屉的方向。
 - 不提供 Compact/Workspace 模式开关。
@@ -163,7 +171,11 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 
 ### Details
 
-Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程资源加载；附件路径必须位于 Research Project 根目录。Details 标题区显示精确实体类型、完整 ID、复制操作、Focus 状态，以及适用时的 `总参考数（reviewed evidence 数）`，正文在面板内部滚动。
+Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程资源加载；附件路径
+必须位于 Research Project 根目录。Details 的两行固定头部以实体类型为第一视觉层级，
+同一行显示适用的 `N ref/refs (M reviewed)` 和 Focus 状态；第二行显示完整 ID 和内嵌
+复制操作。`Details` 仅作为无障碍标题和收起拉手文字存在。正文在面板内部滚动，首个
+Markdown 标题使用克制的内容标题尺度，不与应用顶栏或实体类型竞争。
 
 ## 4. 领域模型
 
@@ -554,10 +566,12 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
 - Companion 默认显示完整图谱；Focus 只改变高亮、Details 和视图中心，不裁剪内容。
 - Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID 可见、可复制。
-- Details 默认打开且可收起；不宽于 1120 px 时位于 Graph 下方，标题固定、正文独立滚动，顶栏不随正文滚动。
+- Details 默认打开且可收起；不宽于 1120 px 时位于 Graph 下方，两行头部固定、正文独立滚动，顶栏不随正文滚动。
 - 截断的实体标签在鼠标悬停或键盘聚焦时由卡片本体展开显示完整文本。
-- Companion 使用 Tailwind CSS 的构建期 utilities 和 SciFork theme tokens 统一整体风格；
-  不增加浏览器 runtime 或 UI 组件库，React Flow/Markdown 专用规则保留少量手写 CSS。
+- Companion 的页面骨架、顶栏、按钮、通知、卡片、Details、排版和响应式布局都使用
+  Tailwind 构建期 utilities 与 SciFork theme tokens；不增加浏览器 runtime 或 UI
+  组件库，只为最小文档基础归一化、React Flow 外部选择器、卡片展开和必要 Markdown
+  规则保留少量手写 CSS。
 - Graph、文件、Focus 和 DSH Chat context 一致。
 - 点击 Research & Expand 后对应 Chat 自动开始；运行中正确进入 Queue。
 - 一次点击先检索再最多保存五条直接低置信 Hypothesis/Prediction；每条都有明确 Edge、provenance 和 Evidence Gap，不移动 Focus 且不会自动递归。

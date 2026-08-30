@@ -1,7 +1,7 @@
 # SciFork literature-grounded research expansion
 
 > Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31
-> Parent design: [product design v0.16](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.17](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
+> Parent design: [product design v0.17](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.18](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
 > Refines: [bounded simulation branches](simulation-branches.md) and [ADR-0001](../adr/0001-llm-orchestrated-simulation-branches.md)
 > Decision: [ADR-0002](../adr/0002-separate-step-expansion-from-progressive-research.md)
 

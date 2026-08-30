@@ -1,8 +1,8 @@
 # SciFork M2 Companion
 
-> Status: Implemented; Tailwind visual-system and reference-count extension specified on 2026-08-31
+> Status: Implemented; full Tailwind visual-system and two-line Details refinement verified on 2026-08-31
 > Date: 2026-08-31
-> Parent design: [product design v0.16](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.17](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
+> Parent design: [product design v0.17](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.18](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 > Action semantics: the historical `Simulate & Save` contract below is superseded
 > by [literature-grounded research expansion](progressive-research-expansion.md).
@@ -216,15 +216,22 @@ Details is open by default and may be collapsed for the lifetime of the current
 page. Its state is not persisted. Above 1120 px it is a right-side drawer with a
 vertical closed handle; at or below 1120 px it is a bottom drawer with a
 horizontal closed handle. The single-row app header remains outside scrolling
-content and no separate Focus breadcrumb is rendered. The Details heading remains visible and only its body scrolls,
-so long entity content never increases the page height.
+content and no separate Focus breadcrumb is rendered. The compact two-line
+Details header remains visible and only its body scrolls, so long entity content
+never increases the page height. At 480 px and below, failed Research Expansion
+recovery controls move from the app header into a compact strip directly below
+it, preserving both actions without wrapping or clipping the header.
 
-The heading exposes the precise selected entity type, full monospace id, a copy-id
-button, whether it is the current Focus, and applicable reference counts. Finding,
-Hypothesis, Prediction, `EVIDENCE`, and Result use a colored dot plus text in both
-cards and Details. A graph card expands its own body on pointer hover or keyboard
-focus to expose its complete wrapped label; it uses no detached tooltip and does
-not trigger graph relayout. Extremely long labels use bounded internal scrolling.
+The fixed Details header has exactly two information rows. Its first row exposes
+the precise selected entity type, applicable `N ref/refs (M reviewed)`, Focus
+state, and the direction-correct drawer control. Its second row exposes the full
+monospace id with an embedded icon copy action. The visible redundant `Details`
+heading is removed while a visually-hidden `<h2>` preserves the accessible
+structure; the collapsed handle still says `Details`. Finding, Hypothesis,
+Prediction, `EVIDENCE`, and Result use a colored dot plus text in both cards and
+Details. A graph card expands its own body on pointer hover or keyboard focus to
+expose its complete wrapped label; it uses no detached tooltip and does not
+trigger graph relayout. Extremely long labels use bounded internal scrolling.
 
 The header keeps project name, branch chip, status, and actions on one line at all
 supported widths; HEAD and long labels may be hidden or ellipsized before branch
@@ -234,8 +241,16 @@ up/down semantics below it.
 Node projection summaries expose `referenceCount` and `reviewedEvidenceCount`.
 The Host deduplicates total references from the Node and incident stored Edges by
 canonical PMID, otherwise normalized DOI. Reviewed count only includes publications
-behind reviewed Evidence Assertions. Cards format this as `N refs (M reviewed)`;
-Details exposes the same values with explicit labels.
+behind reviewed Evidence Assertions. Cards and Details format this as
+`1 ref (M reviewed)` for a singular total and `N refs (M reviewed)` otherwise.
+
+Tailwind theme tokens and utilities own the general Companion visual system:
+app shell, header, controls, banners, cards, Details, typography, spacing,
+borders, radii, shadows, interaction states, and responsive composition.
+Semantic class names may remain as stable hooks, but handwritten CSS is limited
+to base rules required with Preflight disabled, React Flow external selectors and
+edge states, bounded card expansion, and Markdown pseudo-elements that utilities
+cannot safely express. There is no parallel handwritten component theme.
 
 Static routing serves only `index.html`, `app.js`, and `styles.css` from a fixed
 build manifest. It rejects encoded or decoded traversal and API-shaped paths.
@@ -307,23 +322,30 @@ channels and nonce state close on bundle unload.
 - [x] Snapshot and Details stay consistent with M1 parsing, projection,
       diagnostics, Focus, branch, and HEAD behavior.
 - [x] The Companion always renders the complete projection; changing a Node,
-      Result, Evidence, or stored Edge Focus preserves graph membership and
+      Result, Evidence Assertion, or stored Edge Focus preserves graph membership and
       current zoom while centering the focused entity or Edge midpoint.
 - [x] The same React tree works at narrow and wide viewports; graph, path,
       selected Details, loading, empty, read-only, and invalid-key states fit
       without overlap.
 - [x] Only Host-confirmed Focus receives the solid graph highlight; rapid clicks
       are not dropped and settle on the last clicked entity.
-- [ ] Every selected entity type exposes a full copyable id and precise type with
+- [x] Every selected entity type exposes a full copyable id and precise type with
       text plus a color dot; graph cards expand themselves on pointer hover and
       keyboard focus without a detached tooltip or graph relayout.
-- [ ] Node cards and Details show deduplicated `N refs (M reviewed)` derived from
+- [x] Node cards and Details show deduplicated `1 ref`/`N refs (M reviewed)` derived from
       structured Publication References and reviewed Evidence Assertions.
-- [ ] The top bar remains one line with an inline branch chip, and the standalone
+- [x] Open Details uses exactly two fixed information rows: type/count/Focus/drawer
+      first, then full id/embedded copy; the visible `Details` heading is absent,
+      its accessible heading remains, and body H1 typography does not compete.
+- [x] The top bar remains one line with an inline branch chip, and the standalone
       Focus breadcrumb is absent.
-- [ ] Details defaults open, collapses with direction-correct responsive chevrons, moves below Graph
+- [x] Tailwind utilities own every general layout, color, typography, spacing,
+      border, radius, shadow, control-state, and responsive rule; handwritten CSS
+      is limited to the documented React Flow, bounded-expansion, base, and
+      Markdown exceptions.
+- [x] Details defaults open, collapses with direction-correct responsive chevrons, moves below Graph
       at 1120 px, and keeps long content in an internal scroll region while the
-      app header and Details heading remain visible.
+      app header and two-line Details header remain visible.
 - [x] Hidden pages issue no polling requests and refresh immediately when shown.
 - [x] Details executes no raw HTML/script and performs no automatic remote or
       uncontained resource load.
@@ -349,11 +371,12 @@ channels and nonce state close on bundle unload.
 - Companion unit: fragment consumption/storage clearing, API error mapping,
   global graph membership, bounded prompt-neighborhood selection, Focus center
   resolution, serialized latest-click selection, layout determinism, visible-only
-  polling, safe link and image rendering, Details id/copy/type/reference/drawer semantics,
+  polling, safe link and image rendering, Details two-row id/copy/type/reference/drawer semantics,
   prompt content/byte cap, ack timeout/retry nonce behavior.
 - Browser: built static assets served locally with fixture API responses at
   desktop, 1120 px boundary, and narrow viewports; inspect the fixed single-row header,
-  graph pixels, card expansion, Focus/pending states, Details drawer and internal scroll.
+  graph pixels, card expansion, Focus/pending states, two-row Details header,
+  restrained body heading scale, drawer and internal scroll.
 - DSH smoke (separate explicit approval): disposable pinned `0.1.1-rc.2`
   profile, one package install, `/research init`, Open action, snapshot/entity/
   Focus, idle and busy Simulate, reload, unload, and project readability.

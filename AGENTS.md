@@ -49,7 +49,7 @@ observable behavior, failure behavior, acceptance criteria, and test cases.
 Identify conflicts with the product design, architecture, or domain model before
 implementation.
 
-The v0.16 product design and v0.17 architecture are the umbrella MVP specification.
+The v0.17 product design and v0.18 architecture are the umbrella MVP specification.
 For a non-trivial change, update an existing authoritative design or, only when
 the feature needs durable implementation detail, add
 `docs/specs/<feature>.md`. A feature spec must contain Problem, Goals/Non-goals,
@@ -120,7 +120,7 @@ regression risks are covered.
   Node filesystem APIs. Host and Web remain adapters.
 - Use only public DSH contracts verified by M0. Do not use private React
   components, simulated DOM clicks, or unexported send functions.
-- Discuss any production dependency not already approved by the v0.17
+- Discuss any production dependency not already approved by the v0.18
   architecture before adding or replacing it.
 
 ## Scientific model invariants

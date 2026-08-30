@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.17
+# SciFork 软件架构与实现设计 v0.18
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
-> 上位设计：[SciFork 产品设计 v0.16](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.17](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -403,8 +403,11 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
 - 视口宽度大于 1120 px：Graph 与 Details 抽屉并列。
 - Details 默认打开；关闭后分别保留右侧竖向拉手或图下方横向拉手。该状态只存在于
   当前 React tree，刷新后恢复打开，不进入 storage。
-- 页面保持 `100dvh`；单行顶栏位于滚动区域之外，Details 标题固定且正文
-  独立滚动，不允许实体正文改变页面整体高度。
+- 页面保持 `100dvh`；单行顶栏位于滚动区域之外，Details 两行 header 固定且正文
+  独立滚动；没有可见的 `Details` 大标题，也不允许实体正文改变页面整体高度。
+- 通用布局、颜色、字号、间距、边框、圆角、阴影、按钮状态和响应式组合由 Tailwind
+  utilities 与 `@theme` token 表达。语义 class 可保留为测试/第三方选择器 hook，但不得
+  在手写 CSS 中再实现一套通用视觉系统。
 - 项目名、分支 chip 和操作处于同一顶栏；窄窗口不得把分支元数据换到第二行。
 - 不渲染独立 Focus 面包屑栏；Focus path 仍用于图内路径高亮。
 - Graph 始终渲染 snapshot 的完整投影；Focus 不参与实体或 Edge 筛选。
@@ -430,11 +433,13 @@ Host 只返回受管实体文档。Companion 使用随 bundle 打包的 Markdown
 - 本地附件必须经过 Project Locator containment。
 - 外链需要真实用户点击。
 
-Details 标题区对 Node、Result、Evidence Assertion 和 Edge 显示精确类型、完整等宽 ID、
-复制操作和 Focus 状态。Node 不显示笼统的 `NODE`，而显示 Finding、Hypothesis 或
-Prediction；Evidence Assertion 显示 `EVIDENCE`。适用时还显示去重后的总参考文献数和
-reviewed evidence 文献数。这些显示值只来自已解析的 projection/entity 响应，不接受
-浏览器构造的路径或标识。
+Details 使用固定的两行 header。第一行对 Node、Result、Evidence Assertion 和 Edge
+显示精确类型、适用的 `N ref/refs (M reviewed)`、Focus 状态和方向正确的抽屉操作；
+第二行显示完整等宽 ID 与内嵌复制操作。Node 不显示笼统的 `NODE`，而显示 Finding、
+Hypothesis 或 Prediction；Evidence Assertion 显示 `EVIDENCE`。可见的 `Details` 标题
+移除，但 `<h2>` 仍以 visually-hidden 方式保留无障碍结构，收起拉手继续显示
+`Details`。这些显示值只来自已解析的 projection/entity 响应，不接受浏览器构造的路径
+或标识。引用数使用英语单复数：`1 ref`，其他数量为 `N refs`。
 
 `referenceCount` 合并 Node 自身 `evidence_refs` 以及 incident stored Edge 上的结构化
 `publication_refs`/`evidence_refs`，按 PMID 优先、否则规范化 DOI 去重；
@@ -698,7 +703,7 @@ interface SciForkError {
 | Graph | `@xyflow/react` |
 | Layout | `@dagrejs/dagre` |
 | Details | `react-markdown` + `remark-gfm`，raw HTML disabled |
-| Companion styling | Tailwind CSS build-time utilities + SciFork theme tokens；无浏览器 runtime，React Flow/Markdown 保留专用 CSS |
+| Companion styling | Tailwind CSS build-time utilities + SciFork theme tokens 负责全部通用 UI；无浏览器 runtime，手写 CSS 仅保留 Preflight 禁用所需的最小文档基础归一化、React Flow 外部选择器、卡片展开和必要 Markdown pseudo-element |
 | Web API | DSH `ctx.webServer.register` + typed JSON POST |
 | Research Expansion submit | scoped BroadcastChannel + public SessionInput |
 | Git | DSH `ctx.subprocess` + system Git |
@@ -739,9 +744,12 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - Page Key 绑定、fragment 清除、失效和错误项目访问。
 - 一套响应式布局在窄/宽 viewport 可用。
 - Focus 正式高亮只来自 Host 确认状态，连续实体点击不会被丢弃或与模型可读 Focus 分叉。
-- 实体完整 ID 可见、可复制；卡片 hover/focus 本体展开完整标签并保持全图布局稳定。
+- 实体完整 ID 可见、可复制；Details 两行固定头部突出精确类型并合并引用/Focus 元数据；
+  卡片 hover/focus 本体展开完整标签并保持全图布局稳定。
 - 精确实体类型用文字和颜色圆点共同显示；Node 卡片与 Details 的去重参考总数、reviewed
   evidence 数和结构化 `publication_refs` 一致。
+- Tailwind utilities 覆盖页面骨架、顶栏、按钮、通知、卡片、Details、排版和响应式布局，
+  手写 CSS 不重复这些通用样式。
 - Details 抽屉默认打开、页面内可收起；1120 px 断点、固定单行顶栏和内部正文滚动
   在宽窄 viewport 都不产生页面撑高或重叠。
 - 页面隐藏暂停 snapshot polling。
