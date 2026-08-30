@@ -127,7 +127,7 @@ function memoryAssets(): CompanionAssets {
 
 function fakeApi(): CompanionApiPort {
   return {
-    launch: vi.fn(async () => ({ ok: true as const, url: `/scifork/#key=${PAGE_KEY}` })),
+    launch: vi.fn(async () => ({ ok: true as const, url: `/scifork#key=${PAGE_KEY}` })),
     snapshot: vi.fn(async () => ({
       ok: true as const,
       unchanged: false,
@@ -203,7 +203,7 @@ describe('M2 route table and request guards', () => {
 
 describe('static Companion route', () => {
   it.each([
-    ['/scifork/', 'index.html', 'text/html; charset=utf-8'],
+    ['/scifork', 'index.html', 'text/html; charset=utf-8'],
     ['/scifork/index.html', 'index.html', 'text/html; charset=utf-8'],
     ['/scifork/app.js', 'app.js', 'text/javascript; charset=utf-8'],
     ['/scifork/styles.css', 'styles.css', 'text/css; charset=utf-8'],
@@ -224,13 +224,13 @@ describe('static Companion route', () => {
     )
   })
 
-  it('redirects the bare Companion path to the canonical slash URL', async () => {
+  it('redirects the legacy slash path to the canonical bare Companion URL', async () => {
     const response = await invokeRoute(routeAt(testRoutes(), ROUTE_COMPANION), {
-      path: ROUTE_COMPANION,
+      path: `${ROUTE_COMPANION}/`,
       headers: (port) => ({ host: '127.0.0.1:' + port }),
     })
     expect(response.status).toBe(308)
-    expect(response.headers.location).toBe(`${ROUTE_COMPANION}/`)
+    expect(response.headers.location).toBe(ROUTE_COMPANION)
     expect(response.headers['content-security-policy']).toBe(STATIC_CONTENT_SECURITY_POLICY)
     expect(response.body).toBe('')
   })
@@ -281,7 +281,7 @@ describe('static Companion route', () => {
     }
     const response = await invokeRoute(
       routeAt(testRoutes(fakeApi(), assets), ROUTE_COMPANION),
-      { path: '/scifork/', headers: (port) => ({ host: '127.0.0.1:' + port }) },
+      { path: '/scifork', headers: (port) => ({ host: '127.0.0.1:' + port }) },
     )
     expect(response.status).toBe(503)
     expect(response.body).not.toContain('secret')

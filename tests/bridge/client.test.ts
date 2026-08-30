@@ -29,7 +29,7 @@ type MessageListener =
   | { handleEvent(event: MessageEvent<unknown>): unknown }
 
 const PAGE_KEY = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8'
-const LAUNCH_URL = `/scifork/#key=${PAGE_KEY}`
+const LAUNCH_URL = `/scifork#key=${PAGE_KEY}`
 const NONCE = 'AQIDBAUGBwgJCgsMDQ4PEA'
 const PROMPT = 'Use this exact, bounded simulation prompt.'
 
@@ -363,7 +363,7 @@ describe('SciFork DSH bridge', () => {
 
   it('rejects a launch response without one valid fragment Page Key', async () => {
     const services = createServices()
-    const browser = installBrowser(async () => launchResponse('/scifork/#key=short'))
+    const browser = installBrowser(async () => launchResponse('/scifork#key=short'))
     const captured = captureRegistrations({
       sessions: services.sessions,
       conversation: services.conversation,

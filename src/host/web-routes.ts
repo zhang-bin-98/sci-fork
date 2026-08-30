@@ -368,9 +368,9 @@ function staticHandler(assets: CompanionAssets): WebRoute['handler'] {
     }
 
     const target = req.url
-    if (target === ROUTE_COMPANION) {
+    if (target === `${ROUTE_COMPANION}/`) {
       res.statusCode = 308
-      res.setHeader('location', `${ROUTE_COMPANION}/`)
+      res.setHeader('location', ROUTE_COMPANION)
       res.end()
       return
     }

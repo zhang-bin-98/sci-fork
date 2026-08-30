@@ -134,7 +134,7 @@ describe('CompanionService launch and binding', () => {
 
     expect(result).toMatchObject({ ok: true })
     if (!result.ok) throw new Error('launch failed')
-    expect(result.url).toMatch(/^\/scifork\/#key=[A-Za-z0-9_-]{43}$/)
+    expect(result.url).toMatch(/^\/scifork#key=[A-Za-z0-9_-]{43}$/)
     expect(result.url).not.toContain('?')
     const key = new URL(result.url, 'http://127.0.0.1').hash.slice('#key='.length)
     expect(pageKeys.resolve(key)).toEqual({

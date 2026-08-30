@@ -340,7 +340,8 @@ Focus 保存 `focusEntityId` 和当前路径。Git 历史状态由 DSH 或用户
 Host 使用 `ctx.webServer.register()` 注册：
 
 ```text
-/scifork/              Companion static assets
+/scifork               Companion SPA entry
+/scifork/*             Companion static assets
 /scifork/api/launch    create Page Key
 /scifork/api/snapshot  read projection
 /scifork/api/entity    read Details
@@ -357,7 +358,7 @@ Host 使用 `ctx.webServer.register()` 注册：
 → POST /scifork/api/launch with current session
 → Host 验证 session / project / loopback socket / exact same-origin Origin
 → Host 创建 256-bit random Page Key
-→ 返回 /scifork/#key=<page-key>
+→ 返回 /scifork#key=<page-key>
 → 新窗口导航
 → Companion 把 key 放入 sessionStorage
 → history.replaceState 清除 fragment

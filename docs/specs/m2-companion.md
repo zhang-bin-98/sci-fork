@@ -8,7 +8,7 @@
 ## Problem
 
 M1 provides the rebuildable projection, project locator, Focus sidecar, and
-current-branch Git behavior, but `/scifork/` is not yet a usable Companion.
+current-branch Git behavior, but `/scifork` is not yet a usable Companion.
 The M0 client still opens an unauthenticated placeholder and exposes a direct
 spike Simulate button. M2 must add the standalone graph experience without
 creating another backend, trusting browser-supplied paths, or sending a prompt
@@ -77,7 +77,7 @@ Session scope, then POSTs `{ sessionId }` to `/scifork/api/launch`. The Host:
    existing Project Locator;
 4. creates 32 cryptographically random bytes encoded as unpadded base64url; and
 5. stores an in-memory binding `{ sessionId, sessionCwd, projectRoot,
-   projectId? }` and returns `/scifork/#key=<page-key>`.
+   projectId? }` and returns `/scifork#key=<page-key>`.
 
 The Bridge creates the key-derived channel before navigating the blank window.
 If popup creation or launch fails, it retains no channel, closes the blank page
@@ -111,8 +111,11 @@ POST   /scifork/api/entity      read one managed entity document
 POST   /scifork/api/focus       update Focus sidecar
 ```
 
-An exact request for the bare `/scifork` path returns HTTP `308` with
-`Location: /scifork/`; the slash form is the canonical Companion entry.
+The bare `/scifork` path is the canonical Companion entry and serves the SPA
+shell directly. A request for the legacy directory-style `/scifork/` path
+returns HTTP `308` with `Location: /scifork`. Static assets remain absolute
+allowlisted paths below `/scifork/`, so entry-path resolution does not depend on
+directory URL semantics.
 
 The M0 `/scifork/api/spike` route is removed; M1 real Git tests supersede its
 runtime probe. Exact API routes remain registered separately from the static
@@ -235,7 +238,7 @@ channels and nonce state close on bundle unload.
 
 ## Acceptance Criteria
 
-- [x] A fresh live Session/project click opens `/scifork/`, stores and clears the
+- [x] A fresh live Session/project click opens `/scifork`, stores and clears the
       fragment key, and cannot use the key after Session disposal or Host unload.
 - [x] Missing, malformed, wrong-project, and replaced-project keys fail closed
       without exposing paths or keys.
