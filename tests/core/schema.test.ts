@@ -255,6 +255,7 @@ describe('edge data', () => {
 
   it('accepts experiment edges without evidence refs', () => {
     expect(parseEdgeFile(JSON.stringify(base)).ok).toBe(true)
+    expect(parseEdgeFile(JSON.stringify({ ...base, relation: 'predicts' })).ok).toBe(true)
   })
 
   it('requires evidence refs for literature basis', () => {

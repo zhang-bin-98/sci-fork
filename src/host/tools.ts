@@ -1,7 +1,8 @@
 import type { LoadedProject } from '../core/parser.js'
 import { buildProjection, type ProjectionEdge, type ProjectionEntity } from '../core/projection.js'
 import { parseCommand, type ResearchCommand } from '../core/commands.js'
-import { entityTypeOfId } from '../core/schema.js'
+import { fileVersion } from '../core/revision.js'
+import { entityFilePath, entityTypeOfId } from '../core/schema.js'
 import {
   applyCommand,
   loadProjectState,
@@ -190,7 +191,14 @@ async function executeRead(
     if (entity === undefined) {
       return { ok: false, code: 'INVALID_ENTITY', message: `entity ${entityId} does not exist`, recoverable: true, entityId }
     }
-    if (operation === 'entity') return { ok: true, entityId, entity }
+    if (operation === 'entity') {
+      const path = entityFilePath(entityId)
+      const content = path === undefined ? undefined : project.files.get(path)
+      if (content === undefined) {
+        return { ok: false, code: 'INVALID_ENTITY', message: `entity ${entityId} has no managed file`, recoverable: false, entityId }
+      }
+      return { ok: true, entityId, entity, fileVersion: fileVersion(content, deps.hash) }
+    }
     const edges = buildProjection(project).edges.filter((edge) => edge.from === entityId || edge.to === entityId)
     return { ok: true, entityId, entity, edges }
   }
@@ -291,7 +299,7 @@ const APPLY_COMMAND_SCHEMA = {
         id: ID,
         from: ID,
         to: ID,
-        relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with'] },
+        relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with', 'predicts'] },
         basis: { type: 'string', enum: ['literature', 'experiment', 'ai_inference'] },
         evidenceRefs: EVIDENCE_REFS,
         provenance: { type: 'string' },
@@ -304,7 +312,7 @@ const APPLY_COMMAND_SCHEMA = {
       {
         id: ID,
         expectedFileVersion: VERSION,
-        relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with'] },
+        relation: { type: 'string', enum: ['supports', 'contradicts', 'causes', 'associated_with', 'predicts'] },
         basis: { type: 'string', enum: ['literature', 'experiment', 'ai_inference'] },
         evidenceRefs: EVIDENCE_REFS,
         provenance: { type: 'string' },
@@ -333,6 +341,16 @@ const APPLY_COMMAND_SCHEMA = {
       { id: ID, index: { type: 'integer' }, draft: { type: 'object' } },
       ['id', 'index', 'draft'],
     ),
+    commandBranch(
+      'delete_edge',
+      { id: ID, expectedFileVersion: VERSION },
+      ['id', 'expectedFileVersion'],
+    ),
+    commandBranch(
+      'delete_node',
+      { id: ID, expectedFileVersion: VERSION },
+      ['id', 'expectedFileVersion'],
+    ),
   ],
 }
 
@@ -343,9 +361,10 @@ const APPLY_PARAMETERS = {
       ...APPLY_COMMAND_SCHEMA,
       description:
         'One typed single-entity command. kind: create_evidence_assertion | review_evidence_assertion | ' +
-        'create_node | update_node | create_edge | update_edge | create_result | update_result | import_draft_item. ' +
+        'create_node | update_node | create_edge | update_edge | create_result | update_result | import_draft_item | ' +
+        'delete_edge | delete_node. ' +
         'Creates take id plus entity fields; updates/reviews take id + expectedFileVersion + at least one change; ' +
-        'import_draft_item takes id, index, and the full validated Research Import Draft.',
+        'deletes take id + expectedFileVersion; import_draft_item takes id, index, and the full validated Research Import Draft.',
     },
     expectedProjectRevision: { type: 'string', description: 'projectRevision from the last research_graph_read' },
   },
@@ -449,7 +468,7 @@ function readTool(deps: ResearchToolsDeps): ToolDefinition {
     name: 'research_graph_read',
     description:
       'Read the SciFork Research Graph for the current session project: summary, focus, entity, neighborhood, ' +
-      'find, or checkpoint state. Read-only; never writes files or Git.',
+      'find, or checkpoint state. Entity reads include fileVersion for guarded updates/deletes. Read-only; never writes files or Git.',
     parameters: READ_PARAMETERS,
     output: { schema: {}, render: renderJson },
     execute: (args, exec) => executeRead(deps, (args ?? {}) as Record<string, unknown>, exec),
@@ -464,7 +483,7 @@ function applyTool(deps: ResearchHostDeps): ToolDefinition {
     description:
       'Apply one typed single-entity command to the SciFork Research Graph and create a local git checkpoint. ' +
       'Requires the current projectRevision. Model-proposed evidence stays candidate; only user-reviewed evidence ' +
-      'supports Findings.',
+      'supports Findings. Edge and detached Hypothesis/Prediction deletion is guarded by fileVersion and Core invariants.',
     parameters: APPLY_PARAMETERS,
     output: { schema: {}, render: renderJson },
     execute: (args, exec) => executeApply(deps, (args ?? {}) as Record<string, unknown>, exec),

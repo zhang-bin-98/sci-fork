@@ -75,7 +75,7 @@ export type NodeKind = 'finding' | 'hypothesis' | 'prediction'
 export type ConfidenceBand = 'low' | 'moderate' | 'high'
 export type EvidenceReview = 'candidate' | 'reviewed' | 'rejected'
 export type ResultStatus = 'draft' | 'validated' | 'superseded'
-export type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with'
+export type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with' | 'predicts'
 export type EdgeBasis = 'literature' | 'experiment' | 'ai_inference'
 export type EvidenceDirection = 'supports' | 'contradicts' | 'context'
 /** Node/edge evidence references only accept supporting or contradicting roles. */
@@ -215,7 +215,7 @@ const EDGE_COMMON = {
   id: z.string().regex(EDGE_ID_RE, 'must be an edge_<uuid> id'),
   from: z.string().regex(ENDPOINT_ID_RE, 'must be a node_ or res_ id'),
   to: z.string().regex(ENDPOINT_ID_RE, 'must be a node_ or res_ id'),
-  relation: z.enum(['supports', 'contradicts', 'causes', 'associated_with']),
+  relation: z.enum(['supports', 'contradicts', 'causes', 'associated_with', 'predicts']),
   evidence_refs: z.array(EVIDENCE_REF_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
 }
 

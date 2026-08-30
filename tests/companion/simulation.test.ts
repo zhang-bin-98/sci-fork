@@ -95,6 +95,14 @@ describe('bounded simulation prompt', () => {
     expect(normalized).toContain('predictions')
     expect(normalized).toContain('ai_inference')
     expect(normalized).toContain('findings')
+    expect(normalized).toContain('authorizes')
+    expect(normalized).toContain('save every valid')
+    expect(normalized).toContain('five')
+    expect(normalized).toContain('depth one')
+    expect(normalized).toContain('low confidence')
+    expect(normalized).toContain('create_node')
+    expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('do not recurse')
   })
 
   it('preserves the task and scientific guardrails within the 12 KiB UTF-8 cap', () => {
@@ -120,6 +128,11 @@ describe('bounded simulation prompt', () => {
     expect(normalized).toContain('interpretation')
     expect(normalized).toContain('ai_inference')
     expect(normalized).toContain('findings')
+    expect(normalized).toContain('save every valid')
+    expect(normalized).toContain('five')
+    expect(normalized).toContain('create_node')
+    expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('do not recurse')
   })
 })
 

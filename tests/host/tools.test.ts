@@ -133,7 +133,14 @@ describe('registerResearchTools', () => {
     const command = (apply.parameters as { properties: { command: Record<string, unknown> } }).properties.command
     expect(command).toMatchObject({ type: 'object', oneOf: expect.any(Array) })
     expect((command.oneOf as Array<{ properties: { kind: { const: string } } }>).map((branch) => branch.properties.kind.const))
-      .toEqual(expect.arrayContaining(['create_node', 'update_edge', 'import_draft_item']))
+      .toEqual(expect.arrayContaining(['create_node', 'update_edge', 'import_draft_item', 'delete_edge', 'delete_node']))
+    const edgeBranches = command.oneOf as Array<{ properties: Record<string, { enum?: string[]; const?: string }> }>
+    for (const branch of edgeBranches.filter(({ properties }) => {
+      const kind = properties['kind']?.const
+      return kind === 'create_edge' || kind === 'update_edge'
+    })) {
+      expect(branch.properties['relation']?.enum).toContain('predicts')
+    }
     const focus = tools.definitions.find((d) => d.name === 'research_graph_focus')!
     expect(focus.output.schema).toEqual({})
     dispose()
@@ -210,7 +217,11 @@ describe('research_graph_read', () => {
     })
     const read = byName.get('research_graph_read')!
     const entity = await read.execute({ operation: 'entity', entityId: NODE }, execFor())
-    expect(entity).toMatchObject({ ok: true, entity: { type: 'node', kind: 'hypothesis' } })
+    expect(entity).toMatchObject({
+      ok: true,
+      entity: { type: 'node', kind: 'hypothesis' },
+      fileVersion: sha256(NODE_FILE),
+    })
     const missing = await read.execute({ operation: 'entity', entityId: `node_${UUID_B.replace('b', 'c')}` }, execFor())
     expect(missing).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
     const neighborhood = await read.execute({ operation: 'neighborhood', entityId: NODE }, execFor())

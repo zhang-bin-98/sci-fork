@@ -48,7 +48,7 @@ observable behavior, failure behavior, acceptance criteria, and test cases.
 Identify conflicts with the product design, architecture, or domain model before
 implementation.
 
-The product design and v0.12 architecture are the umbrella MVP specification.
+The product design and v0.13 architecture are the umbrella MVP specification.
 For a non-trivial change, update an existing authoritative design or, only when
 the feature needs durable implementation detail, add
 `docs/specs/<feature>.md`. A feature spec must contain Problem, Goals/Non-goals,

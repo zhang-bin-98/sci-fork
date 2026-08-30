@@ -40,7 +40,7 @@ import {
   type ResultData,
   type ResultStatus,
 } from './schema.js'
-import { evidenceRefIssues, findingHasSupport } from './validator.js'
+import { evidenceRefIssues, findingHasSupport, predictsEndpointsValid } from './validator.js'
 
 /**
  * Typed single-entity commands (architecture §6.1). One command persists
@@ -69,7 +69,7 @@ const HASH_SCHEMA = z.string().regex(HASH_RE, 'must be a 64-char lowercase hex S
 
 const NODE_KIND_SCHEMA = z.enum(['finding', 'hypothesis', 'prediction'])
 const CONFIDENCE_SCHEMA = z.enum(['low', 'moderate', 'high'])
-const RELATION_SCHEMA = z.enum(['supports', 'contradicts', 'causes', 'associated_with'])
+const RELATION_SCHEMA = z.enum(['supports', 'contradicts', 'causes', 'associated_with', 'predicts'])
 const BASIS_SCHEMA = z.enum(['literature', 'experiment', 'ai_inference'])
 const DIRECTION_SCHEMA = z.enum(['supports', 'contradicts', 'context'])
 const LIMITATIONS_SCHEMA = z.array(z.string().min(1).max(LIMITATION_MAX)).max(LIMITATIONS_MAX)
@@ -190,6 +190,20 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       draft: z.unknown(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal('delete_edge'),
+      id: z.string().regex(EDGE_ID_RE, 'must be an edge_<uuid> id'),
+      expectedFileVersion: HASH_SCHEMA,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('delete_node'),
+      id: z.string().regex(NODE_ID_RE, 'must be a node_<uuid> id'),
+      expectedFileVersion: HASH_SCHEMA,
+    })
+    .strict(),
 ])
 export type ResearchCommand = z.infer<typeof RESEARCH_COMMAND_SCHEMA>
 
@@ -207,6 +221,7 @@ export interface CommandIssue {
 
 export type PlanResult =
   | { ok: true; path: string; content: string; entityId: string; kind: string; writeKind: 'create' | 'update' }
+  | { ok: true; path: string; entityId: string; kind: string; writeKind: 'delete' }
   | { ok: false; issues: CommandIssue[] }
 
 interface CommandView {
@@ -471,6 +486,15 @@ function validateEdgeShape(project: LoadedProject, shape: EdgeShape, issues: Com
   if (project.nodes.get(shape.to) === undefined && project.results.get(shape.to) === undefined) {
     issues.push(commandIssue('INVALID_ENTITY', `edge endpoint ${shape.to} does not exist`, shape.id))
   }
+  if (shape.relation === 'predicts' && !predictsEndpointsValid(project, shape.from, shape.to)) {
+    issues.push(
+      commandIssue(
+        'INVALID_ENTITY',
+        `predicts edge ${shape.id} must connect a Finding/Hypothesis to a Prediction`,
+        shape.id,
+      ),
+    )
+  }
   pushEvidenceRefIssues(project, entityFilePath(shape.id) ?? '', shape.evidence_refs, issues)
   return parsed.data
 }
@@ -603,14 +627,73 @@ function planImportDraftItem(project: LoadedProject, command: Extract<ResearchCo
   return { content: renderMarkdown(evidenceFrontMatter(data), '') }
 }
 
+function planDeleteEdge(
+  project: LoadedProject,
+  command: Extract<ResearchCommand, { kind: 'delete_edge' }>,
+  hash: HashFn,
+  issues: CommandIssue[],
+): { delete: true } | undefined {
+  if (checkVersion(project, command.id, command.expectedFileVersion, hash, issues) === undefined) return undefined
+  if (!project.edges.has(command.id)) {
+    issues.push(commandIssue('INVALID_ENTITY', `edge ${command.id} does not exist`, command.id))
+    return undefined
+  }
+
+  const remainingEdges = new Map(project.edges)
+  remainingEdges.delete(command.id)
+  const afterRemoval = { ...project, edges: remainingEdges }
+  for (const node of project.nodes.values()) {
+    if (node.kind === 'finding' && !findingHasSupport(afterRemoval, node.id, node.evidence_refs)) {
+      issues.push(
+        commandIssue(
+          'INVALID_ENTITY',
+          `edge ${command.id} cannot be deleted because finding ${node.id} would lose required support`,
+          command.id,
+        ),
+      )
+    }
+  }
+  return { delete: true }
+}
+
+function planDeleteNode(
+  project: LoadedProject,
+  command: Extract<ResearchCommand, { kind: 'delete_node' }>,
+  hash: HashFn,
+  issues: CommandIssue[],
+): { delete: true } | undefined {
+  if (checkVersion(project, command.id, command.expectedFileVersion, hash, issues) === undefined) return undefined
+  const node = project.nodes.get(command.id)
+  if (node === undefined) {
+    issues.push(commandIssue('INVALID_ENTITY', `node ${command.id} does not exist`, command.id))
+    return undefined
+  }
+  if (node.kind === 'finding') {
+    issues.push(commandIssue('INVALID_ENTITY', `finding ${command.id} cannot be physically deleted`, command.id))
+  }
+  const incident = [...project.edges.values()].filter(
+    (edge) => edge.from === command.id || edge.to === command.id,
+  )
+  if (incident.length > 0) {
+    issues.push(
+      commandIssue(
+        'INVALID_ENTITY',
+        `node ${command.id} still has incident edges: ${incident.map((edge) => edge.id).sort().join(', ')}`,
+        command.id,
+      ),
+    )
+  }
+  return { delete: true }
+}
+
 /**
- * Validate one command against the loaded project and render the exact file
- * content to write. Never mutates the project; the returned path is derived
- * from the entity id and stays inside the managed directory layout.
+ * Validate one command against the loaded project and plan one exact managed
+ * file create, update, or deletion. Never mutates the project; the returned
+ * path is derived from the entity id and stays inside the managed layout.
  */
 export function planCommand(project: LoadedProject, command: ResearchCommand, hash: HashFn): PlanResult {
   const issues: CommandIssue[] = []
-  let planned: { content: string } | undefined
+  let planned: { content: string } | { delete: true } | undefined
   switch (command.kind) {
     case 'create_evidence_assertion':
       planned = planCreateEvidence(project, command, issues)
@@ -639,6 +722,12 @@ export function planCommand(project: LoadedProject, command: ResearchCommand, ha
     case 'import_draft_item':
       planned = planImportDraftItem(project, command, issues)
       break
+    case 'delete_edge':
+      planned = planDeleteEdge(project, command, hash, issues)
+      break
+    case 'delete_node':
+      planned = planDeleteNode(project, command, hash, issues)
+      break
   }
   if (issues.length > 0 || planned === undefined) {
     return {
@@ -652,6 +741,15 @@ export function planCommand(project: LoadedProject, command: ResearchCommand, ha
   const path = entityFilePath(id)
   if (path === undefined) {
     return { ok: false, issues: [commandIssue('INVALID_ENTITY', `invalid entity id ${id}`, id)] }
+  }
+  if ('delete' in planned) {
+    return {
+      ok: true,
+      path,
+      entityId: id,
+      kind: command.kind,
+      writeKind: 'delete',
+    }
   }
   const writeKind: 'create' | 'update' =
     command.kind.startsWith('create') || command.kind === 'import_draft_item' ? 'create' : 'update'

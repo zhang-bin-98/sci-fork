@@ -104,12 +104,16 @@ when formatting or reasoning is needed. Skills never call each other. If
 `scifork-research` is loaded before real retrieval output exists, it waits for
 that context and does not fabricate a Draft.
 
-`scifork-research` may produce only a candidate `ResearchImportDraft`, a
-simulation proposal, or a critique. A Draft must use `formatterSkill:
+`scifork-research` may produce a candidate `ResearchImportDraft`, execute the
+approved [bounded simulation branch workflow](simulation-branches.md), or
+produce a critique. A Draft must use `formatterSkill:
 "scifork-research"`, preserve the actual retrieval Skill name, include a
 locator for every candidate, and never claim `review_status: reviewed` or
 directly create a Finding, Edge, or Result. SciFork Core validates the complete
 Draft before the user selects candidates for one-at-a-time typed persistence.
+The Draft restriction does not prevent a real `Simulate & Save` click from
+authorizing low-confidence Hypothesis/Prediction plus Edge commands under the
+separate bounded simulation contract.
 
 ## Constraints and interfaces
 

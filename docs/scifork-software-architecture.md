@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.12
+# SciFork 软件架构与实现设计 v0.13
 
 > 状态：Proposed（MVP 精简版）
-> 日期：2026-08-24
-> 上位设计：[SciFork 产品设计 v0.11](./scifork-product-design.md)
+> 日期：2026-08-30
+> 上位设计：[SciFork 产品设计 v0.12](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -158,7 +158,7 @@ type NodeKind = 'finding' | 'hypothesis' | 'prediction'
 type ConfidenceBand = 'low' | 'moderate' | 'high'
 type EvidenceReview = 'candidate' | 'reviewed' | 'rejected'
 type ResultStatus = 'draft' | 'validated' | 'superseded'
-type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with'
+type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with' | 'predicts'
 type EdgeBasis = 'literature' | 'experiment' | 'ai_inference'
 
 interface PublicationReference {
@@ -178,7 +178,9 @@ interface PublicationReference {
 - Result 直接投影为 Graph entity，不创建 Evidence 或 Node 包装。
 - Confidence Band 是支持强度，不是统计概率。
 - 任何 `ai_inference` 都必须保留 provenance 和 Evidence Gap。
-- 不物理删除；使用 rejected 或 superseded。
+- `predicts` 只能从 Finding/Hypothesis 指向 Prediction。
+- Evidence Assertion 和 Result 不物理删除，分别使用 rejected 或 superseded；Finding 也不可物理删除。
+- 无关联 Edge 的 Hypothesis/Prediction 可以通过 typed command 删除；Edge 可以删除，但删除后项目仍须满足全部科研不变量。
 
 ### 5.3 版本
 
@@ -221,9 +223,13 @@ type ResearchCommand =
   | CreateResult
   | UpdateResult
   | ImportDraftItem
+  | DeleteEdge
+  | DeleteNode
 ```
 
-每条命令只持久化一个实体。`ImportDraftItem` 只能转换已经通过整体校验且被用户选择的一个 Evidence Candidate。
+每条命令只创建、修改或删除一个实体。`ImportDraftItem` 只能转换已经通过整体校验且被用户选择的一个 Evidence Candidate。
+`DeleteEdge` 和 `DeleteNode` 都需要 `expectedFileVersion`；`DeleteNode` 只接受无关联
+Edge 的 Hypothesis/Prediction。删除 Finding、Evidence Assertion 或 Result 不在工具契约中。
 
 写入顺序：
 
@@ -231,8 +237,8 @@ type ResearchCommand =
 parse current project
 → verify expectedProjectRevision / expectedFileVersion
 → validate command
-→ render one target file
-→ atomic replace
+→ render one target file or plan one exact deletion
+→ guarded create/replace, or argv-only `git rm -- <core-derived-path>`
 → parse and validate again
 → create Git checkpoint
 ```
@@ -305,7 +311,8 @@ research_graph_apply
 research_graph_focus
 ```
 
-`research_graph_read` 支持 summary、focus、entity、neighborhood、find 和简短 checkpoint 状态。
+`research_graph_read` 支持 summary、focus、entity、neighborhood、find 和简短 checkpoint 状态；
+entity 读取同时返回目标文件的 `fileVersion`，供 update/delete 使用。
 
 `research_graph_apply` 只接受 discriminated typed command；模型不能提供任意路径、文件正文或 Git argv。
 
@@ -408,7 +415,7 @@ Host 只返回受管实体文档。Companion 使用随 bundle 打包的 Markdown
 Open action 创建 Page Key 时，Bridge 同时记住该 key 对应的 Session scope，并监听由 Page Key 派生的不可猜测 BroadcastChannel 名称。
 
 ```text
-Companion user click
+Companion `Simulate & Save` user click
 → build bounded SimulationPrompt from current Focus snapshot
 → broadcast { nonce, prompt }
 → matching DSH Bridge receives
@@ -421,12 +428,14 @@ Companion user click
 
 - 只有 click handler 能发送，页面加载和后台刷新不能发送。
 - prompt 有字节上限，只包含当前 Focus、邻域摘要和明确任务。
+- prompt 明确说明本次真实点击授权保存当前轮全部有效推演分支；每轮最多五条、深度一层。
 - Bridge 只接受自己打开的 Page Key channel。
 - nonce 在页面内只使用一次，重复消息被丢弃。
 - Session 空闲时 submit 启动；运行中使用 DSH 默认 Queue，不执行 steer 或 cancel。
 - Bridge ack 只表示已交给 DSH input transaction；发送拒绝由 DSH 在对应 composer 中显示并保留 draft。
 - Companion 未收到 Bridge ack 时显示 `Retry` 和 `Copy`。
 - 不再使用 DraftRequest、bridge secret、Host claim 或把科研正文存入 Host 临时队列。
+- Bridge 只负责提交；分支数量、类型、关系和错误恢复由对应 Chat 中的大模型按 Skill 决定。
 
 ## 10. 大模型编排的 Skills
 
@@ -457,7 +466,31 @@ Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`。它的 cata
 - Critique。
 - SciFork typed tools 调用规则。
 
-它读取当前 Chat context 中已有的检索结果，负责格式化、推理和提案；不拥有网络客户端，不直接写文件，也不绕过用户确认。
+它在证据导入时读取当前 Chat context 中已有的检索结果，在已有 Research Graph 上
+也可独立执行推演和批判。Skill 不拥有网络客户端或文件写权限；它描述常见流程，
+由大模型选择三个 SciFork tools 完成读取、逐实体写入和 Focus 管理。
+
+`Simulate & Save` 工作流：
+
+```text
+read Focus + neighborhood
+→ choose an endpoint anchor when Focus is an Edge
+→ deduplicate against the visible graph
+→ propose at most five low-confidence Hypothesis/Prediction branches
+→ create_node, then immediately create_edge for each branch
+→ use predicts for Finding/Hypothesis → Prediction; otherwise choose the narrowest valid relation
+→ on edge failure, re-read/retry or delete the orphan node
+→ re-read and report the exact persisted ids
+```
+
+一次真实点击授权保存该轮所有通过 Core 校验的分支，不需要逐条确认，也不授权自动
+递归。若 Evidence Assertion 是 Focus 且没有可用的 Node/Result 锚点，Skill 不创建
+孤立分支。自动推演不得创建 Finding，所有新 Node 使用 `low` confidence，所有
+`ai_inference` Edge 必须带 provenance 与 Evidence Gap。
+
+删除分支工作流先读取目标、Focus 和关系，必要时清理 Focus，再逐条 `delete_edge`，
+最后按叶到根顺序 `delete_node`。工具拒绝仍有关联 Edge 的 Node、Finding 或删除后
+使 Finding 失去支持的 Edge；大模型根据结构化错误重新读取并决定是否继续。
 
 ### 10.3 PubMed Search Skill
 
@@ -518,6 +551,9 @@ detached HEAD、unmerged entries 或 Git root 与项目根不一致时拒绝 mut
 - 不使用 `git add .`。
 - 不改变不相关 staged files。
 - mutation 前若受管路径已有外部 dirty change，则返回 stale/只读诊断。
+- create/update 的内容访问继续通过 `ctx.fs`。由于 pinned DSH filesystem contract
+  没有 delete，Core 校验后的单文件删除使用固定 Git executable 和 argv-only
+  `git rm -- <core-derived-managed-path>`；模型不能提供路径或 Git argv。
 
 ### 11.3 Git 历史边界
 
@@ -626,12 +662,14 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - Markdown round-trip 与 Publication Reference 规范化、PMID/DOI 一致性。
 - projectRevision/fileVersion guard。
 - Research Import Draft schema、标识准入、locator 和禁止字段。
-- 单实体命令失败不写文件。
+- `predicts` 端点约束、删除版本保护、关联 Edge 阻止 Node 删除，以及删除后 Finding 支持门槛。
+- 单实体命令失败不写入或删除文件。
 
 ### 15.2 Host / Git / Skills
 
 - Project Locator containment 和 Git root equality。
 - 三个工具注册、卸载与参数上限。
+- entity read 返回 `fileVersion`；apply 暴露 `delete_edge`/`delete_node`，删除只使用 Core 派生的受管路径。
 - 两个 packaged Skill 的发现、加载与卸载。
 - PubMed helper 的完整查询、300 条分页、lookup、空结果、超时和无效响应 fixture。
 - checkpoint 只提交受管路径且不改变无关 staged files；失败只返回结构化诊断。
@@ -646,7 +684,7 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - 一套响应式布局在窄/宽 viewport 可用。
 - 页面隐藏暂停 snapshot polling。
 - Details 阻止 raw HTML、脚本、远程资源和路径逃逸。
-- Simulate 真实点击后调用 `setDraft + submit`。
+- Simulate & Save 真实点击后调用 `setDraft + submit`，prompt 明确保存全部有效分支、最多五条且不递归。
 - idle Session 启动、busy Session 排队。
 - 错误 Session/channel 不发送，ack timeout 显示 Retry/Copy。
 - 重复 nonce 不重复提交。
@@ -665,8 +703,10 @@ fresh DSH profile
 → format Research Import Draft
 → review Evidence Candidate
 → create Hypothesis
-→ click Simulate
+→ click Simulate & Save
 → verify corresponding Chat starts or queues
+→ verify up to five low-confidence branches persist with one Edge each
+→ delete one rejected branch through Chat, Edge first and Node second
 → repeat with one alternative retrieval/PDF Skill
 → load scifork-research and import one formatted Draft item
 → create validated Result and support Edge
@@ -708,6 +748,7 @@ fresh DSH profile
 - `SciFork Research` Draft 格式化、推演与批判。
 - `pubmed-search` helper、300 条分页和 PMID/DOI lookup。
 - 其他检索 Skill 结果的统一 Draft 格式化。
+- v0.0.1 follow-up：默认保存有界推演分支、`predicts`、typed Edge/Node 删除流程。
 - E2E、release tarball、README/SECURITY。
 
 没有独立 SF 编号清单；实现任务从这四个里程碑拆 issue 即可。
@@ -723,6 +764,7 @@ fresh DSH profile
 | 两窗口 stale write | project queue + expectedProjectRevision |
 | PubMed 限流或格式变化 | 300 条分页、官方速率、POST/History、超时和响应校验 |
 | 检索 Skill 输出不可信 | 大模型再加载格式化 Skill，Draft 边界、PMID/DOI、locator、用户选择 |
+| 自动推演污染 Graph | 真实点击授权、单层最多五条、低置信、去重、每条必须有 Edge 与 Evidence Gap |
 | Git 外部变化或冲突 | 当前分支检测、结构化诊断、只读模式 |
 | Markdown 注入 | raw HTML off、CSP、路径 containment |
 | 敏感数据进入 Git | README/SECURITY 提示，绝不自动远端同步 |
@@ -733,7 +775,7 @@ fresh DSH profile
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面在窄窗和宽窗下使用同一响应式布局。
 - Graph、文件、Focus 和 Chat context 一致。
-- Simulate 点击后自动提交到对应 Chat；idle 启动、busy 排队。
+- Simulate & Save 点击后自动提交到对应 Chat；idle 启动、busy 排队，并默认保存最多五条有 Edge 的低置信推演分支。
 - Page Key 无二阶段交换，且不会暴露 cwd 或跨项目访问。
 - Publication Reference/Evidence Assertion/Result/Finding 边界通过 Core 校验。
 - `SciFork Research` 与 `pubmed-search` 两个 Skill 可被发现、顺序加载和卸载。

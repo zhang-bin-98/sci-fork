@@ -14,6 +14,7 @@ import {
   gitInit,
   gitInitPreflight,
   gitPreflight,
+  gitRemoveManagedPath,
   gitShowToplevel,
   initCheckpointMessage,
   type GitPreflightResult,
@@ -24,7 +25,7 @@ import { MutationQueue } from './ui-state.js'
 
 /**
  * Mutation pipeline (architecture §6.1/§11):
- * parse -> revision guard -> Git preflight -> command plan -> atomic write ->
+ * parse -> revision guard -> Git preflight -> command plan -> guarded mutation ->
  * re-parse -> checkpoint. A failed checkpoint is reported to DSH/the user;
  * this adapter never performs destructive history or file compensation.
  */
@@ -141,7 +142,7 @@ export type ApplyOutcome =
   | { ok: true; kind: string; entityId: string; revision: string; checkpointId: string }
   | SciForkFailure
 
-/** Apply one typed command: exactly one entity file plus one checkpoint. */
+/** Apply one typed command: exactly one entity file mutation plus one checkpoint. */
 export async function applyCommand(
   deps: ResearchHostDeps,
   input: ApplyCommandInput,
@@ -184,17 +185,21 @@ export async function applyCommand(
       return fail(code, first.message, true, first.entityId)
     }
 
-    const written = await writeManagedFile(
-      deps.fs,
-      located.root,
-      plan.path,
-      plan.content,
-      plan.writeKind,
-      input.signal,
-      snapshot.versions.get(plan.path),
-    )
-    if (!written.ok) {
-      return fail(written.code, 'the target file changed; re-read the graph before applying', true, plan.entityId)
+    const mutated = plan.writeKind === 'delete'
+      ? await gitRemoveManagedPath(deps.subprocess, located.root, plan.path, input.signal)
+        ? { ok: true as const }
+        : { ok: false as const, code: 'STALE_TARGET' as const }
+      : await writeManagedFile(
+          deps.fs,
+          located.root,
+          plan.path,
+          plan.content,
+          plan.writeKind,
+          input.signal,
+          snapshot.versions.get(plan.path),
+        )
+    if (!mutated.ok) {
+      return fail(mutated.code, 'the target file changed or could not be removed; re-read the graph before applying', true, plan.entityId)
     }
 
     let afterFiles: ReadonlyMap<string, string>
@@ -203,18 +208,19 @@ export async function applyCommand(
     } catch {
       return fail(
         'CHECKPOINT_FAILED',
-        'the written entity could not be re-read; the file was left in place and manual recovery may be required',
+        'the mutated project could not be re-read; the file mutation was left in place and manual recovery may be required',
         false,
         plan.entityId,
       )
     }
 
     const expectedFiles = new Map(snapshot.files)
-    expectedFiles.set(plan.path, plan.content)
+    if (plan.writeKind === 'delete') expectedFiles.delete(plan.path)
+    else expectedFiles.set(plan.path, plan.content)
     if (!sameManagedFiles(afterFiles, expectedFiles)) {
       return fail(
         'STALE_REVISION',
-        'the project changed while the command was being applied; the written file was left in place for DSH or the user to inspect',
+        'the project changed while the command was being applied; the file mutation was left in place for DSH or the user to inspect',
         true,
         plan.entityId,
       )
@@ -225,7 +231,7 @@ export async function applyCommand(
       const first = after.diagnostics[0]!
       return fail(
         'INVALID_ENTITY',
-        `the written entity left the project invalid (${first.code}); the file was left in place for DSH or the user to repair`,
+        `the entity mutation left the project invalid (${first.code}); the file mutation was left in place for DSH or the user to repair`,
         false,
         plan.entityId,
       )
@@ -249,7 +255,7 @@ export async function applyCommand(
       }
       return fail(
         'CHECKPOINT_FAILED',
-        'the git checkpoint failed; the written file was left in place for DSH or the user to inspect and recover',
+        'the git checkpoint failed; the file mutation was left in place for DSH or the user to inspect and recover',
         true,
         plan.entityId,
       )

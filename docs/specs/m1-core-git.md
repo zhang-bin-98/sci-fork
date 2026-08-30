@@ -103,8 +103,10 @@ contains(parent, child): boolean
 - 所有项目文件内容读写经 `ctx.fs`（受 DSH 观察/沙箱策略约束），不使用裸
   `node:fs` 读写文件内容；仅 init 时用 `node:fs` mkdir 物化四个空目录。
 - `FsError` 码 `FS_STALE_VERSION`/`FS_NOT_OBSERVED` 映射为 `STALE_TARGET`。
-- 无 delete/rename 能力；M1 不据此引入 Git 补偿删除或恢复路径。检查点失败时
-  保留写入并返回结构化诊断，由 DSH Chat 或用户处理。
+- 无 delete/rename 能力；M1 不据此引入 Git 补偿删除或恢复路径。后续经批准的
+  [bounded simulation branches](simulation-branches.md) 只为 Core 派生的单个
+  Edge/Hypothesis/Prediction 路径增加 argv-only `git rm`，不改变检查点失败时由
+  DSH Chat 或用户处理的恢复边界。
 
 ### 4. `ctx.commands`（dsh-commands/lib/types/index.d.ts、types.d.ts）
 
@@ -279,12 +281,17 @@ interface ResearchProject {
 | `create_result` | id、observedAt、body | 落盘 status 强制 draft |
 | `update_result` | id、expectedFileVersion、status?、observedAt?、body?（至少一项） | 按状态机转移 |
 | `import_draft_item` | id、draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须可导入；转换为 candidate EA 的单实体命令 |
+| `delete_edge` | id、expectedFileVersion | 删除后项目仍须有效，不能使 Finding 失去唯一 Result 支持 |
+| `delete_node` | id、expectedFileVersion | 只允许无关联 Edge 的 Hypothesis/Prediction；Finding 不可删除 |
 
 - Create*：目标 id 必须不存在；文件写入用 `createIfAbsent` intent。
 - Update*/review：必须携带 `expectedFileVersion`（目标文件当前 SHA-256），
   不符 → `STALE_TARGET`。
-- `planCommand(project, command)` 输出 `{ path, content }`：相对路径由
-  Core 从实体 id 构造（绝不接受调用方路径）。
+- Delete*：同样验证 `expectedFileVersion`，并只计划一个由 id 派生的现有路径；
+  Host 删除边界见 [simulation branches spec](simulation-branches.md)。
+- `planCommand(project, command)` 为 create/update 输出 `{ path, content }`，
+  为 delete 输出 `{ path, writeKind: 'delete' }`；相对路径都由 Core 从实体 id
+  构造（绝不接受调用方路径）。
 - `import_draft_item` 转换后的 EA：publication_ref、locator、assertion、
   direction、limitations 来自候选项；正文为空。
 

@@ -101,6 +101,32 @@ describe('validateProject', () => {
     expect(project.diagnostics).toEqual([])
   })
 
+  it('accepts predicts only from a finding or hypothesis to a prediction', () => {
+    const valid = build([
+      nodeFile(NODE, 'hypothesis', ''),
+      nodeFile(NODE_B, 'prediction', ''),
+      edgeJsonFile(EDGE, NODE, NODE_B, {
+        relation: 'predicts',
+        basis: 'ai_inference',
+        provenance: 'bounded simulation',
+        evidence_gap: 'not experimentally tested',
+      }),
+    ])
+    expect(valid.diagnostics).toEqual([])
+
+    const invalid = build([
+      nodeFile(NODE, 'prediction', ''),
+      nodeFile(NODE_B, 'hypothesis', ''),
+      edgeJsonFile(EDGE, NODE, NODE_B, {
+        relation: 'predicts',
+        basis: 'ai_inference',
+        provenance: 'bounded simulation',
+        evidence_gap: 'not experimentally tested',
+      }),
+    ])
+    expect(invalid.diagnostics.some((diagnostic) => diagnostic.code === 'invalid_predicts_endpoints')).toBe(true)
+  })
+
   it('flags references to unknown evidence', () => {
     const project = build([
       nodeFile(NODE, 'hypothesis', `evidence_refs:\n  - id: ${EV}\n    role: supports\n`),

@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 import type { SubprocessPort } from './contracts.js'
-import { MANAGED_PATHS } from '../core/schema.js'
+import { EDGE_ID_RE, MANAGED_PATHS, NODE_ID_RE, entityFilePath } from '../core/schema.js'
 
 /** Fixed executable name resolved through the provider's scrubbed PATH. */
 export const GIT_EXECUTABLE = 'git'
@@ -229,6 +229,34 @@ export async function gitCheckpoint(
     return committed
       ? { ok: false, code: 'CHECKPOINT_FAILED', committed: true }
       : { ok: false, code: 'CHECKPOINT_FAILED' }
+  }
+}
+
+function deletableManagedPath(path: string): boolean {
+  const name = path.split('/').at(-1)
+  if (name === undefined) return false
+  const id = name.endsWith('.md')
+    ? name.slice(0, -'.md'.length)
+    : name.endsWith('.json')
+      ? name.slice(0, -'.json'.length)
+      : ''
+  if (!NODE_ID_RE.test(id) && !EDGE_ID_RE.test(id)) return false
+  return entityFilePath(id) === path
+}
+
+/** Remove one Core-derived Node/Edge path through fixed, argv-only Git. */
+export async function gitRemoveManagedPath(
+  subprocess: SubprocessPort,
+  cwd: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (!deletableManagedPath(path)) return false
+  try {
+    const result = await runGit(subprocess, ['rm', '--', path], cwd, signal)
+    return result.exitCode === 0
+  } catch {
+    return false
   }
 }
 

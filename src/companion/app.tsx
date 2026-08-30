@@ -507,7 +507,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
             disabled={focus === undefined || simulationState.phase === 'pending'}
             onClick={simulate}
           >
-            {simulationState.phase === 'pending' ? 'Submitting' : 'Simulate'}
+            {simulationState.phase === 'pending' ? 'Submitting' : 'Simulate & Save'}
           </button>
         </div>
       </header>

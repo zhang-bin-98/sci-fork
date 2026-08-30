@@ -1,7 +1,7 @@
-# SciFork 产品设计 v0.11
+# SciFork 产品设计 v0.12
 
 > 状态：Proposed（MVP 精简版）
-> 日期：2026-08-24
+> 日期：2026-08-30
 
 ## 1. 产品结论
 
@@ -24,7 +24,7 @@ MVP 边界：
 - 页面只有一套响应式布局；窄窗口适合悬放，宽窗口适合系统分屏。
 - 浏览器不承诺系统级“始终置顶”，悬浮和并列由操作系统窗口管理。
 - SciFork 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件。
-- 点击 `Simulate` 后，提示自动提交到对应 DSH Chat；Chat 空闲时立即开始，运行中则进入 Queue。
+- 点击 `Simulate & Save` 后，提示自动提交到对应 DSH Chat；Chat 空闲时立即开始，运行中则进入 Queue。一次真实点击授权大模型生成并保存最多五条低置信推演分支。
 - SciFork 只保留一个统一的 `SciFork Research` Skill；PubMed 是独立、可替换的通用检索 Skill。
 - PubMed Skill 支持完整查询语法、单批最多 300 条元数据、分页和 PMID/DOI 查找。
 - 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
@@ -86,7 +86,7 @@ DSH 或用户。
 ```
 
 页面只包含以 Focus 为中心的局部图、当前路径和一层邻居、只读 Details，以及
-`Simulate`、`Details` 两个英语操作。Git 历史恢复通过对应 DSH Chat 完成。
+`Simulate & Save`、`Details` 两个英语操作。Git 历史恢复通过对应 DSH Chat 完成。
 
 DSH 入口使用公开的 `sidebar.footer.action`：展开时在 Settings 上方显示 Graph
 图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，并保留
@@ -107,19 +107,25 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 直接在 DSH Chat 中请求 Git 操作或使用现有 Git 工具；SciFork 在后续读取时
 检测外部 HEAD 或分支变化并重新解析项目。
 
-### Simulate
+### Simulate & Save
 
 ```text
-用户点击 Simulate
+用户点击 Simulate & Save
 → Companion 根据 Focus 生成结构化提示
 → DSH Bridge 写入对应 Session composer
 → DSH Bridge 调用公开 submit
 → Chat 空闲：立即开始
 → Chat 运行中：进入 Queue
 → Companion 显示 Started 或 Queued
+→ 大模型加载 SciFork Research Skill，读取最新 Focus 与邻域
+→ 生成最多五条不重复、可解释的推演分支
+→ 每条分支以低置信 Hypothesis/Prediction + 来源 Edge 保存
 ```
 
 自动运行只能由真实用户点击触发，不能由页面加载、轮询、模型输出或后台事件触发。
+一次点击只授权一次、单层、有界的展开；不得由已保存分支自动递归触发下一轮。
+大模型默认保存它实际提出且通过 Core 校验的全部分支，不再逐条等待用户确认；
+若没有科学上可辩护的新方向，可以不创建实体并说明原因。
 
 若 DSH 页面、Session 或 Bridge 不可用，Companion 保留提示并显示 `Retry` 和 `Copy`，不能静默丢失，也不能另建 Session 或发送到其他 Chat。
 
@@ -163,9 +169,16 @@ draft | validated | superseded
 
 从 Finding 或 Hypothesis 推导出的可检验后果。
 
+### Simulation Branch
+
+一次用户发起的推演所保留的低置信 Hypothesis 或 Prediction。它不是新的实体类型，
+也不代表用户接受其科学内容。每条推演分支必须通过一条持久化 Edge 连接到产生它
+的图谱锚点，并在 `ai_inference` 上保留 provenance 与 Evidence Gap。
+
 ### Edge
 
-MVP 只保留 `supports`、`contradicts`、`causes`、`associated_with` 四类科学关系。
+MVP 只保留 `supports`、`contradicts`、`causes`、`associated_with`、`predicts`
+五类科学关系。`predicts` 只能从 Finding/Hypothesis 指向 Prediction。
 
 `ai_inference` 是来源标记，不是科学关系：
 
@@ -292,17 +305,19 @@ research_graph_focus
 
 ```text
 读取当前 Focus
-→ SciFork Research Skill 形成 typed proposal
-→ 用户确认
+→ SciFork Research Skill 选择基本 typed tools
+→ 普通修改或 Evidence 导入按相应审核边界等待用户确认
+→ Simulate & Save 点击已授权的推演分支直接进入有界持久化流程
 → Core 校验
-→ 写入实体
-→ 创建本地检查点
+→ 每个实体分别写入并创建本地检查点
 → Companion 刷新
 ```
 
 ### 6.3 Graph → Chat
 
-点击实体更新 Focus。点击 `Simulate` 后，Companion 生成包含实体 ID、Claim、现有支持、反对和 Evidence Gap 的提示，并自动提交到启动该页面的 DSH Session。
+点击实体更新 Focus。点击 `Simulate & Save` 后，Companion 生成包含实体 ID、Claim、
+现有支持、反对、Evidence Gap 和明确保存授权的提示，并自动提交到启动该页面的
+DSH Session。Graph 不增加编辑或删除控件；用户通过 DSH Chat 要求修改或删除分支。
 
 ## 7. SciFork Research Skill
 
@@ -310,10 +325,13 @@ MVP 只发布一个 SciFork 专用的 `SciFork Research` Skill：
 
 - **Retrieval guidance**：根据 Focus 建议检索式和需要补齐的信息。
 - **Import formatting**：把当前 Chat 中的检索或 PDF 解析结果格式化为 Research Import Draft。
-- **Simulation**：生成 Hypothesis、Prediction、机制路径和下一步实验建议。
+- **Simulation and save**：读取 Focus/邻域，生成最多五条不重复分支，并以低置信 Node + Edge 逐条保存。
+- **Branch deletion**：读取目标及关系，先删除 Edge，再删除无关联的 Hypothesis/Prediction，并处理当前 Focus。
 - **Critique**：检查矛盾、Evidence Gap、过度推断、重复实体和缺失 locator。
 
-Skill 负责推理、格式化和提案，不联网检索，也不直接写文件。持久化仍通过 SciFork typed tools 和用户确认。
+Skill 负责推理、格式化和常见流程，不联网检索，也不直接写文件；大模型通过
+SciFork typed tools 执行持久化。Evidence 导入和普通科研修改仍服从用户审核，
+而真实 `Simulate & Save` 点击本身就是对本轮有界推演分支的保存授权。
 
 检索 Skill 保持独立、可替换，由大模型根据任务先行使用；只有真实检索或 PDF 解析结果已进入当前 Chat context 后，大模型才加载 `SciFork Research` 完成格式化。两个 packaged Skill 的 catalog description 必须在加载正文前表达这个先后边界。Skill 之间不互相调用，SciFork 不维护检索 provider 生命周期或跨 Skill 私有协议。
 
@@ -444,6 +462,8 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 - 把 SciFork Research 拆成多套 Skill，或让 Skill 直接调用另一个 Skill。
 - 自动 MeSH 扩展、PubTator、全文下载、缓存或 RAG。
 - 外部 Skill 直接写 Research Project。
+- 后台或递归式自动推演、单次保存超过五条分支，或把自动推演提升为 Finding。
+- 在 Companion 中增加图谱编辑、删除或批量确认界面。
 - SciFork-owned undo/redo、Timeline Panel 或 Graph 搜索框。
 - 独立后端、额外端口、登录系统或云同步。
 - 自动 Git 分支策略、PR 或远端同步。
@@ -460,11 +480,12 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 7. SciFork 校验文献标识，用户审核 Evidence Candidate
 8. 用户创建 Hypothesis 或 Finding
 9. Companion 显示 Focus 局部图
-10. 用户点击 Simulate
+10. 用户点击 Simulate & Save
 11. 对应 DSH Chat 自动开始或进入 Queue
-12. 用户确认新的 Hypothesis、Prediction 或 Result
-13. SciFork 写入文件并创建本地检查点
-14. 用户在需要时通过 DSH Chat 或现有 Git 工具恢复历史
+12. 大模型读取最新邻域并保存全部有效、非重复的低置信推演分支及其 Edge
+13. 用户通过 Chat 修改或删除不合适的分支；Evidence 与 Result 仍走各自审核状态
+14. SciFork 为每个实体修改创建本地检查点
+15. 用户在需要时通过 DSH Chat 或现有 Git 工具恢复历史
 ```
 
 ## 15. MVP 完成标准
@@ -472,7 +493,9 @@ Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
 - Graph、文件、Focus 和 DSH Chat context 一致。
-- 点击 Simulate 后对应 Chat 自动开始；运行中正确进入 Queue。
+- 点击 Simulate & Save 后对应 Chat 自动开始；运行中正确进入 Queue。
+- 一次点击最多保存五条低置信 Hypothesis/Prediction，每条都有 Edge、provenance 和 Evidence Gap，且不会自动递归。
+- 大模型能用单实体 typed commands 删除 Edge 及无关联的 Hypothesis/Prediction；Finding、Evidence 和 Result 不提供物理删除。
 - 提交失败时 Retry/Copy 可恢复。
 - 统一 SciFork Research Skill 能完成检索建议、Draft 格式化、推演和批判。
 - PubMed Search Skill 能执行完整查询、按 300 条分页并按 PMID/DOI 查找，且不会伪造记录。

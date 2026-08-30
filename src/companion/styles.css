@@ -319,6 +319,11 @@ button:disabled {
   stroke: #3f7194;
 }
 
+.graph-edge-predicts .react-flow__edge-path {
+  stroke: #7257a8;
+  stroke-dasharray: 6 4;
+}
+
 .graph-edge-focus .react-flow__edge-path {
   stroke-width: 3;
 }

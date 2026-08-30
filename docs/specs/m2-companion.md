@@ -211,13 +211,16 @@ The Companion performs one snapshot read on mount when visible, repeats every
 while hidden, and refreshes immediately when visibility returns. It has at most
 one snapshot request in flight and disposes timers/listeners on unmount.
 
-### Simulate
+### Simulate & Save
 
-`buildSimulationPrompt` runs only from the `Simulate` click path and uses the
+`buildSimulationPrompt` runs only from the `Simulate & Save` click path and uses the
 latest snapshot. It includes the Focus id and summary, visible support and
 contradiction summaries, stored Evidence Gaps, and a clear simulation/critique
 task. It preserves Result versus Interpretation and instructs the model not to
-promote hypotheses, predictions, or `ai_inference` to Findings. The encoded
+promote hypotheses, predictions, or `ai_inference` to Findings. The v0.0.1
+[bounded simulation extension](simulation-branches.md) also makes that real
+click the explicit authorization to save every valid branch from a single-layer,
+zero-to-five branch run, with a low-confidence Node and an Edge for each. The encoded
 prompt is at most 12 KiB; the Bridge rejects messages above 16 KiB.
 
 The page sends `{ type: 'simulate', nonce, prompt }` on the key-derived channel.

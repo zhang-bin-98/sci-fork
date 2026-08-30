@@ -224,6 +224,81 @@ describe('applyCommand', () => {
     expect(a.ok).toBe(true)
     expect(b).toMatchObject({ ok: false, code: 'STALE_REVISION' })
   })
+
+  it('deletes one Core-derived managed path with git rm and checkpoints it', async () => {
+    const nodeFile = `---\nid: ${NODE}\nkind: hypothesis\nconfidence: low\n---\n# Disposable branch\n`
+    const fs = new FakeFs({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: nodeFile,
+    })
+    let currentHead = OLD_SHA
+    const git = scriptedGit((argv, cwd) => {
+      const sub = argv[1]
+      if (sub === 'symbolic-ref') return { stdout: 'main\n' }
+      if (sub === 'rev-parse') {
+        if (argv.includes('--show-toplevel')) return { stdout: `${cwd}\n` }
+        return { stdout: `${currentHead}\n` }
+      }
+      if (sub === 'ls-files' || sub === 'status' || sub === 'add') return { stdout: '' }
+      if (sub === 'rm') {
+        fs.deleteFile(`/proj/${argv[3]}`)
+        return { stdout: '' }
+      }
+      if (sub === 'commit') {
+        currentHead = NEW_SHA
+        return { stdout: '' }
+      }
+      return { stdout: '' }
+    })
+    const result = await applyCommand(deps(fs, git.port), {
+      sessionCwd: '/proj',
+      command: {
+        kind: 'delete_node',
+        id: NODE,
+        expectedFileVersion: sha256(nodeFile),
+      },
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result).toMatchObject({ ok: true, kind: 'delete_node', entityId: NODE, checkpointId: NEW_SHA })
+    expect(fs.contentOf(`/proj/nodes/${NODE}.md`)).toBeUndefined()
+    expect(git.calls.find((call) => call[1] === 'rm')).toEqual([
+      'C:\\git\\git.exe', 'rm', '--', `nodes/${NODE}.md`,
+    ])
+    expect(git.calls.find((call) => call[1] === 'commit')?.slice(5)).toEqual(['--', `nodes/${NODE}.md`])
+  })
+
+  it('does not claim a deletion when git rm fails', async () => {
+    const nodeFile = `---\nid: ${NODE}\nkind: hypothesis\nconfidence: low\n---\n# Keep\n`
+    const fs = new FakeFs({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: nodeFile,
+    })
+    const git = scriptedGit((argv, cwd) => {
+      const sub = argv[1]
+      if (sub === 'symbolic-ref') return { stdout: 'main\n' }
+      if (sub === 'rev-parse') {
+        if (argv.includes('--show-toplevel')) return { stdout: `${cwd}\n` }
+        return { stdout: `${OLD_SHA}\n` }
+      }
+      if (sub === 'ls-files' || sub === 'status') return { stdout: '' }
+      if (sub === 'rm') return { exitCode: 1, stdout: '' }
+      return { stdout: '' }
+    })
+
+    const result = await applyCommand(deps(fs, git.port), {
+      sessionCwd: '/proj',
+      command: {
+        kind: 'delete_node',
+        id: NODE,
+        expectedFileVersion: sha256(nodeFile),
+      },
+      expectedProjectRevision: revisionOf(fs),
+    })
+    expect(result).toMatchObject({ ok: false, code: 'STALE_TARGET', entityId: NODE })
+    expect(fs.contentOf(`/proj/nodes/${NODE}.md`)).toBe(nodeFile)
+    expect(git.calls.some((call) => call[1] === 'commit')).toBe(false)
+  })
 })
 
 describe('initProject', () => {

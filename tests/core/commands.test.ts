@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { parseCommand, planCommand } from '../../src/core/commands.js'
-import type { ResearchCommand } from '../../src/core/commands.js'
+import type { PlanResult, ResearchCommand } from '../../src/core/commands.js'
 import { parseAndValidateProject } from '../../src/core/validator.js'
 import { fileVersion } from '../../src/core/revision.js'
 
 const sha256 = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex')
+
+function writeContent(plan: PlanResult): string {
+  if (!plan.ok || plan.writeKind === 'delete') {
+    throw new Error('expected a write plan')
+  }
+  return plan.content
+}
 
 const UUID_A = 'aaaaaaaa-1111-4111-8111-111111111111'
 const UUID_B = 'bbbbbbbb-2222-4222-8222-222222222222'
@@ -93,6 +100,8 @@ describe('parseCommand', () => {
       { kind: 'create_result', id: RES, observedAt: '2026-08-24', body: 'body' },
       { kind: 'update_result', id: RES, expectedFileVersion: 'd'.repeat(64), status: 'validated' },
       { kind: 'import_draft_item', id: EV, index: 0, draft: { unused: true } },
+      { kind: 'delete_edge', id: EDGE, expectedFileVersion: 'e'.repeat(64) },
+      { kind: 'delete_node', id: NODE, expectedFileVersion: 'f'.repeat(64) },
     ]
     for (const raw of commands) {
       const parsed = parseCommand(raw)
@@ -101,7 +110,7 @@ describe('parseCommand', () => {
   })
 
   it('rejects unknown kinds, extra fields, and missing fields', () => {
-    expect(parseCommand({ kind: 'delete_node', id: NODE }).ok).toBe(false)
+    expect(parseCommand({ kind: 'delete_result', id: RES, expectedFileVersion: 'a'.repeat(64) }).ok).toBe(false)
     expect(parseCommand({
       kind: 'create_node', id: NODE, nodeKind: 'hypothesis', confidence: 'moderate', body: 'x', extra: 1,
     }).ok).toBe(false)
@@ -138,8 +147,8 @@ describe('planCommand: create_evidence_assertion', () => {
     if (!plan.ok) return
     expect(plan.path).toBe(`evidence/${EV}.md`)
     expect(plan.writeKind).toBe('create')
-    expect(plan.content).toContain('review_status: candidate')
-    expect(plan.content).toContain('doi: 10.1000/ABC')
+    expect(writeContent(plan)).toContain('review_status: candidate')
+    expect(writeContent(plan)).toContain('doi: 10.1000/ABC')
   })
 
   it('renders files that re-parse without diagnostics', () => {
@@ -172,7 +181,7 @@ describe('planCommand: create_evidence_assertion', () => {
       if (!command.ok) throw new Error('parse failed')
       const plan = planCommand(project, command.value, sha256)
       if (!plan.ok) throw new Error('plan failed')
-      const reparsed = parseAndValidateProject(new Map([['research.json', MANIFEST], [plan.path, plan.content]]), sha256)
+      const reparsed = parseAndValidateProject(new Map([['research.json', MANIFEST], [plan.path, writeContent(plan)]]), sha256)
       expect(reparsed.diagnostics).toEqual([])
     }
   })
@@ -214,7 +223,7 @@ describe('planCommand: review_evidence_assertion', () => {
     }, sha256)
     expect(plan.ok).toBe(true)
     if (!plan.ok) return
-    expect(plan.content).toContain('review_status: reviewed')
+    expect(writeContent(plan)).toContain('review_status: reviewed')
     expect(plan.writeKind).toBe('update')
   })
 
@@ -310,10 +319,10 @@ describe('planCommand: nodes', () => {
     }, sha256)
     expect(plan.ok).toBe(true)
     if (!plan.ok) return
-    expect(plan.content).toContain('kind: finding')
-    expect(plan.content).toContain(`id: ${EV}`)
+    expect(writeContent(plan)).toContain('kind: finding')
+    expect(writeContent(plan)).toContain(`id: ${EV}`)
     // body survives the update
-    expect(plan.content).toContain('Body.')
+    expect(writeContent(plan)).toContain('Body.')
   })
 
   it('rejects demotion-relevant invalid updates and stale versions', () => {
@@ -391,6 +400,33 @@ describe('planCommand: edges', () => {
     expect(missingEndpoint.ok).toBe(false)
   })
 
+  it('enforces predicts endpoint kinds', () => {
+    const project = projectWithEndpoints()
+    const valid = planCommand(project, {
+      kind: 'create_edge',
+      id: EDGE,
+      from: NODE,
+      to: NODE_B,
+      relation: 'predicts',
+      basis: 'ai_inference',
+      provenance: 'bounded simulation',
+      evidenceGap: 'not experimentally tested',
+    }, sha256)
+    expect(valid.ok).toBe(true)
+
+    const invalid = planCommand(project, {
+      kind: 'create_edge',
+      id: EDGE,
+      from: NODE_B,
+      to: NODE,
+      relation: 'predicts',
+      basis: 'ai_inference',
+      provenance: 'bounded simulation',
+      evidenceGap: 'not experimentally tested',
+    }, sha256)
+    expect(invalid.ok).toBe(false)
+  })
+
   it('updates relation and re-renders while keeping endpoints', () => {
     const project = projectWithEndpoints()
     const created = planCommand(project, {
@@ -407,7 +443,7 @@ describe('planCommand: edges', () => {
       nodeFile(NODE, 'hypothesis'),
       nodeFile(NODE_B, 'prediction'),
       resultFile(RES, 'validated'),
-      [`edges/${EDGE}.json`, created.content],
+      [`edges/${EDGE}.json`, writeContent(created)],
     ])
     const version = versionOf(withEdge.files, EDGE, 'edge')
     const updated = planCommand(withEdge, {
@@ -418,8 +454,8 @@ describe('planCommand: edges', () => {
     }, sha256)
     expect(updated.ok).toBe(true)
     if (!updated.ok) return
-    expect(updated.content).toContain('"relation": "associated_with"')
-    expect(updated.content).toContain(`"from": "${NODE}"`)
+    expect(writeContent(updated)).toContain('"relation": "associated_with"')
+    expect(writeContent(updated)).toContain(`"from": "${NODE}"`)
   })
 
   it('drops ai-inference-only fields when changing basis', () => {
@@ -439,7 +475,7 @@ describe('planCommand: edges', () => {
       nodeFile(NODE, 'hypothesis'),
       nodeFile(NODE_B, 'prediction'),
       resultFile(RES, 'validated'),
-      [`edges/${EDGE}.json`, created.content],
+      [`edges/${EDGE}.json`, writeContent(created)],
     ])
     const version = versionOf(withEdge.files, EDGE, 'edge')
     const updated = planCommand(withEdge, {
@@ -450,8 +486,83 @@ describe('planCommand: edges', () => {
     }, sha256)
     expect(updated.ok).toBe(true)
     if (!updated.ok) return
-    expect(updated.content).not.toContain('provenance')
-    expect(updated.content).not.toContain('evidence_gap')
+    expect(writeContent(updated)).not.toContain('provenance')
+    expect(writeContent(updated)).not.toContain('evidence_gap')
+  })
+})
+
+describe('planCommand: deletion', () => {
+  it('plans one detached Hypothesis/Prediction or Edge deletion with a current file version', () => {
+    const detached = build([nodeFile(NODE, 'hypothesis')])
+    const deleteNode = planCommand(detached, {
+      kind: 'delete_node',
+      id: NODE,
+      expectedFileVersion: versionOf(detached.files, NODE, 'node'),
+    }, sha256)
+    expect(deleteNode).toMatchObject({
+      ok: true,
+      path: `nodes/${NODE}.md`,
+      writeKind: 'delete',
+      entityId: NODE,
+    })
+    expect(deleteNode).not.toHaveProperty('content')
+
+    const withEdge = build([
+      nodeFile(NODE, 'hypothesis'),
+      nodeFile(NODE_B, 'prediction'),
+      edgeFile(EDGE, NODE, NODE_B),
+    ])
+    const deleteEdge = planCommand(withEdge, {
+      kind: 'delete_edge',
+      id: EDGE,
+      expectedFileVersion: versionOf(withEdge.files, EDGE, 'edge'),
+    }, sha256)
+    expect(deleteEdge).toMatchObject({
+      ok: true,
+      path: `edges/${EDGE}.json`,
+      writeKind: 'delete',
+      entityId: EDGE,
+    })
+  })
+
+  it('rejects stale targets, connected nodes, Findings, and support-critical Edges', () => {
+    const connected = build([
+      nodeFile(NODE, 'hypothesis'),
+      nodeFile(NODE_B, 'prediction'),
+      edgeFile(EDGE, NODE, NODE_B),
+    ])
+    expect(planCommand(connected, {
+      kind: 'delete_node',
+      id: NODE,
+      expectedFileVersion: versionOf(connected.files, NODE, 'node'),
+    }, sha256).ok).toBe(false)
+    expect(planCommand(connected, {
+      kind: 'delete_node',
+      id: NODE_B,
+      expectedFileVersion: '0'.repeat(64),
+    }, sha256).ok).toBe(false)
+
+    const finding = build([
+      evidenceFile(EV, 'reviewed', 'supports'),
+      nodeFile(NODE, 'finding', `evidence_refs:\n  - id: ${EV}\n    role: supports\n`),
+    ])
+    expect(planCommand(finding, {
+      kind: 'delete_node',
+      id: NODE,
+      expectedFileVersion: versionOf(finding.files, NODE, 'node'),
+    }, sha256).ok).toBe(false)
+
+    const supportedFinding = build([
+      resultFile(RES, 'validated'),
+      nodeFile(NODE, 'finding'),
+      edgeFile(EDGE, RES, NODE),
+    ])
+    expect(supportedFinding.diagnostics).toEqual([])
+    expect(planCommand(supportedFinding, {
+      kind: 'delete_edge',
+      id: EDGE,
+      expectedFileVersion: versionOf(supportedFinding.files, EDGE, 'edge'),
+    }, sha256).ok).toBe(false)
   })
 })
 
@@ -468,7 +579,7 @@ describe('planCommand: results', () => {
     }, sha256)
     expect(create.ok).toBe(true)
     if (!create.ok) return
-    expect(create.content).toContain('status: draft')
+    expect(writeContent(create)).toContain('status: draft')
 
     const version = versionOf(project.files, RES, 'result')
     const validate = planCommand(project, {
@@ -531,8 +642,8 @@ describe('planCommand: import_draft_item', () => {
     expect(plan.ok).toBe(true)
     if (!plan.ok) return
     expect(plan.path).toBe(`evidence/${EV}.md`)
-    expect(plan.content).toContain('review_status: candidate')
-    expect(plan.content).toContain("pmid: '12345678'")
+    expect(writeContent(plan)).toContain('review_status: candidate')
+    expect(writeContent(plan)).toContain("pmid: '12345678'")
   })
 
   it('rejects invalid drafts, unimportable candidates, and bad indices', () => {

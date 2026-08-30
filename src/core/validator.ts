@@ -73,6 +73,17 @@ export function findingHasSupport(project: ResearchProject, nodeId: string, refs
   )
 }
 
+/** `predicts` is directional: a Finding/Hypothesis yields a Prediction. */
+export function predictsEndpointsValid(project: ResearchProject, from: string, to: string): boolean {
+  const source = project.nodes.get(from)
+  const target = project.nodes.get(to)
+  return (
+    source !== undefined &&
+    (source.kind === 'finding' || source.kind === 'hypothesis') &&
+    target?.kind === 'prediction'
+  )
+}
+
 /**
  * Validate every cross-entity invariant and return the diagnostics. The
  * caller decides how to surface them; a non-empty result means read-only.
@@ -97,6 +108,15 @@ export function validateProject(project: ResearchProject): Diagnostic[] {
     }
     if (project.nodes.get(edge.to) === undefined && project.results.get(edge.to) === undefined) {
       diagnostics.push(diag(path, 'unknown_endpoint', `edge endpoint ${edge.to} does not exist`))
+    }
+    if (edge.relation === 'predicts' && !predictsEndpointsValid(project, edge.from, edge.to)) {
+      diagnostics.push(
+        diag(
+          path,
+          'invalid_predicts_endpoints',
+          `predicts edge ${edge.id} must connect a Finding/Hypothesis to a Prediction`,
+        ),
+      )
     }
     diagnostics.push(...evidenceRefIssues(project, path, edge.evidence_refs))
   }

@@ -21,9 +21,9 @@ export const PACKAGED_SKILLS = [
   {
     name: 'scifork-research',
     description:
-      'Format actual retrieval or PDF results already present in the current DSH Chat context into Research Import Drafts, simulations, or critiques; this Skill does not perform retrieval.',
+      'Format actual retrieval or PDF results already present in the current DSH Chat context into Research Import Drafts; simulate and save bounded branches from an existing Research Graph; critique or delete a branch; this Skill does not perform retrieval.',
     whenToUse:
-      'Load only after a retrieval or PDF Skill has completed and its real results are present in the current Chat context.',
+      'Use for simulation, critique, or deletion on an existing Research Graph; for evidence import, load only after a retrieval or PDF Skill has completed and its real results are present in the current Chat context.',
     file: 'scifork-research/SKILL.md',
   },
   {

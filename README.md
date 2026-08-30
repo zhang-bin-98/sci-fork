@@ -38,6 +38,13 @@ single-candidate import, typed mutation/checkpoint, Focus, idle and queued
 Simulate submission, Page Key invalidation on restart, and uninstall with the
 Git Research Project preserved.
 
+The approved [bounded simulation branch extension](docs/specs/simulation-branches.md)
+keeps orchestration in the LLM: one real `Simulate & Save` click may persist up
+to five distinct low-confidence Hypothesis/Prediction branches, each with an
+Edge. The same typed apply tool exposes guarded Edge and unverified-node deletion
+so users can remove unsuitable branches through DSH Chat; Evidence, Result, and
+Finding deletion boundaries remain unchanged.
+
 All M0 gates remain recorded as passing: clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, sequential
 Skill loading, and scoped Simulate submission.
@@ -57,8 +64,11 @@ The lean MVP design has these boundaries:
 - The Companion uses `/scifork/*` on the existing DSH Web origin, is
   loopback-only, and opens no extra port.
 - The page has one responsive layout; there are no Compact/Workspace modes.
-- Clicking `Simulate` automatically submits to the corresponding DSH Chat.
+- Clicking `Simulate & Save` automatically submits to the corresponding DSH Chat.
   An idle Chat starts immediately; a running Chat queues the request.
+- The click authorizes one non-recursive run to save every valid branch the LLM
+  proposes, up to five. Each saved branch is a low-confidence Hypothesis or
+  Prediction connected by an Edge; users remove unsuitable branches through Chat.
 - A lightweight PubMed Skill supports full PubMed queries, paged metadata
   batches of up to 300 records, and PMID/DOI lookup. It does not implement
   automatic MeSH expansion, PubTator, full text, caching, or RAG.
