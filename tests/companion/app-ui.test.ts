@@ -2,10 +2,13 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
+  CompanionApp,
   DetailsPane,
   EntityNodeCard,
   HeaderIdentity,
   SimulationRecoveryControls,
+  copyEntityId,
+  settleEntityIdCopyFeedback,
 } from '../../src/companion/app.js'
 import type { EntityDocument, ProjectionEntitySummary } from '../../src/shared/companion-contract.js'
 
@@ -73,9 +76,10 @@ describe('Companion graph UI', () => {
     )
 
     expect(header).toContain('data-simulation-recovery="header"')
-    expect(header).toContain('[@media(max-width:480px)]:hidden')
+    expect(header).toContain('hidden sm:contents')
     expect(narrow).toContain('data-simulation-recovery="narrow"')
-    expect(narrow).toContain('[@media(max-width:480px)]:flex')
+    expect(narrow).toContain('<section class="flex ')
+    expect(narrow).toContain(' sm:hidden"')
     expect(narrow).toContain('Research step failed')
     expect(narrow).toContain('Retry')
     expect(narrow).toContain('Copy')
@@ -98,7 +102,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain('2 refs (1 reviewed)')
   })
 
-  it('uses two information rows with a hidden accessible heading in open Details', () => {
+  it('makes the complete quiet identity row the copy control in open Details', () => {
     const html = renderToStaticMarkup(
       createElement(DetailsPane, {
         entity,
@@ -109,7 +113,6 @@ describe('Companion graph UI', () => {
     )
 
     expect(html).toContain(ENTITY_ID)
-    expect(html).toContain('Copy ID')
     expect(html).toContain('Focused')
     expect(html).toContain('HYPOTHESIS')
     expect(html).toContain('2 refs (1 reviewed)')
@@ -118,8 +121,96 @@ describe('Companion graph UI', () => {
     expect(html.match(/data-details-row=/g)).toHaveLength(2)
     expect(html).toContain('data-details-row="primary"')
     expect(html).toContain('data-details-row="identity"')
+    expect(html).toContain(`aria-label="Copy entity ID ${ENTITY_ID}"`)
+    expect(html).toContain('role="status"')
+    expect(html).toContain('aria-live="polite"')
+    expect(html).toContain('aria-atomic="true"')
+    const identityControl = html.match(
+      /<button[^>]*data-details-row="identity"[\s\S]*?<\/button>/,
+    )?.[0]
+    expect(identityControl).toBeDefined()
+    expect(identityControl).toContain(`<code`)
+    expect(identityControl).toContain(ENTITY_ID)
+    expect(identityControl).not.toContain('<svg')
+    expect(identityControl).not.toContain('border-sf-border bg-sf-surface-muted')
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('aria-label="Details content"')
+  })
+
+  it('reports exact entity ID copy success and handles unavailable or failed clipboards', async () => {
+    let written = ''
+    const success = await copyEntityId(ENTITY_ID, {
+      writeText: async (value) => {
+        written = value
+      },
+    })
+
+    expect(success).toBe('success')
+    expect(written).toBe(ENTITY_ID)
+    await expect(
+      copyEntityId(ENTITY_ID, {
+        writeText: async () => Promise.reject(new Error('denied')),
+      }),
+    ).resolves.toBe('failure')
+    await expect(copyEntityId(ENTITY_ID, undefined)).resolves.toBe('failure')
+  })
+
+  it('ignores stale copy results and gives repeated copies a fresh feedback request', () => {
+    const firstRequest = {
+      entityId: ENTITY_ID,
+      requestId: 1,
+      status: 'idle' as const,
+    }
+    const firstSuccess = settleEntityIdCopyFeedback(firstRequest, ENTITY_ID, {
+      entityId: ENTITY_ID,
+      requestId: 1,
+      status: 'success',
+    })
+    const otherEntityId = 'node_cccccccc-3333-4333-8333-333333333333'
+
+    expect(
+      settleEntityIdCopyFeedback(firstRequest, otherEntityId, {
+        entityId: ENTITY_ID,
+        requestId: 1,
+        status: 'success',
+      }),
+    ).toBe(firstRequest)
+
+    const secondRequest = {
+      entityId: ENTITY_ID,
+      requestId: 2,
+      status: 'idle' as const,
+    }
+    expect(
+      settleEntityIdCopyFeedback(secondRequest, ENTITY_ID, {
+        entityId: ENTITY_ID,
+        requestId: 1,
+        status: 'failure',
+      }),
+    ).toBe(secondRequest)
+    expect(
+      settleEntityIdCopyFeedback(secondRequest, ENTITY_ID, {
+        entityId: ENTITY_ID,
+        requestId: 2,
+        status: 'success',
+      }),
+    ).toEqual({ entityId: ENTITY_ID, requestId: 2, status: 'success' })
+    expect(firstSuccess).toEqual({ entityId: ENTITY_ID, requestId: 1, status: 'success' })
+  })
+
+  it('uses a calm inverted treatment for the research action', () => {
+    const html = renderToStaticMarkup(
+      createElement(CompanionApp, { pageKey: 'K'.repeat(43) }),
+    )
+    const action = html.match(/<button[^>]*>Research &amp; Expand<\/button>/)?.[0]
+    const actionClasses = action?.match(/class="([^"]+)"/)?.[1]?.split(' ')
+
+    expect(action).toBeDefined()
+    expect(actionClasses).toContain('bg-sf-header-foreground')
+    expect(actionClasses).toContain('text-sf-header')
+    expect(actionClasses).not.toContain('bg-sf-accent')
+    expect(actionClasses).not.toContain('text-white')
+    expect(actionClasses).not.toContain('shadow-sm')
   })
 
   it('uses singular reference grammar on cards and in Details', () => {

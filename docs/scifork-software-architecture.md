@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.18
+# SciFork 软件架构与实现设计 v0.19
 
 > 状态：Proposed（MVP 精简版）
 > 日期：2026-08-31
-> 上位设计：[SciFork 产品设计 v0.17](./scifork-product-design.md)
+> 上位设计：[SciFork 产品设计 v0.18](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -399,8 +399,13 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
 
 一个 React tree、一套状态和一套路由：
 
-- 视口宽度不大于 1120 px：Graph 主区，Details 抽屉在下方。
-- 视口宽度大于 1120 px：Graph 与 Details 抽屉并列。
+- Companion 只使用 Tailwind 默认 viewport breakpoints：`sm=40rem/640px`、
+  `md=48rem/768px`、`xl=80rem/1280px`，不得再引入任意 viewport media threshold。
+- mobile/base（`<sm`）使用紧凑顶栏、下方失败恢复条与单列 Edge Details；`sm` 及以上
+  显示分支 chip 并恢复顶栏恢复操作，`md` 及以上再显示项目名。
+- Graph 的 Dagre `rankdir` 在 `<md` 为 TB，在 `md` 及以上为 LR。
+- Details 在 `<xl` 位于 Graph 下方并使用横向拉手/上下箭头，在 `xl` 及以上与 Graph
+  并列并使用竖向拉手/左右箭头。
 - Details 默认打开；关闭后分别保留右侧竖向拉手或图下方横向拉手。该状态只存在于
   当前 React tree，刷新后恢复打开，不进入 storage。
 - 页面保持 `100dvh`；单行顶栏位于滚动区域之外，Details 两行 header 固定且正文
@@ -409,6 +414,8 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
   utilities 与 `@theme` token 表达。语义 class 可保留为测试/第三方选择器 hook，但不得
   在手写 CSS 中再实现一套通用视觉系统。
 - 项目名、分支 chip 和操作处于同一顶栏；窄窗口不得把分支元数据换到第二行。
+- `Research & Expand` 使用 semantic warm-surface 背景与 accent-green 文字，不使用填充
+  accent 背景；hover、focus 和 disabled 状态仍由 Tailwind theme tokens 表达。
 - 不渲染独立 Focus 面包屑栏；Focus path 仍用于图内路径高亮。
 - Graph 始终渲染 snapshot 的完整投影；Focus 不参与实体或 Edge 筛选。
 - 初始视口适配完整图谱；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
@@ -435,11 +442,13 @@ Host 只返回受管实体文档。Companion 使用随 bundle 打包的 Markdown
 
 Details 使用固定的两行 header。第一行对 Node、Result、Evidence Assertion 和 Edge
 显示精确类型、适用的 `N ref/refs (M reviewed)`、Focus 状态和方向正确的抽屉操作；
-第二行显示完整等宽 ID 与内嵌复制操作。Node 不显示笼统的 `NODE`，而显示 Finding、
-Hypothesis 或 Prediction；Evidence Assertion 显示 `EVIDENCE`。可见的 `Details` 标题
-移除，但 `<h2>` 仍以 visually-hidden 方式保留无障碍结构，收起拉手继续显示
-`Details`。这些显示值只来自已解析的 projection/entity 响应，不接受浏览器构造的路径
-或标识。引用数使用英语单复数：`1 ref`，其他数量为 `N refs`。
+第二行是无背景、无边框的原生 button，完整等宽 ID 文本本身是复制目标，支持 click、
+Enter 和 Space。复制成功或失败以短暂、无布局位移的可见文字和 polite live region
+反馈，不增加第三行。Node 不显示笼统的 `NODE`，而显示 Finding、Hypothesis 或
+Prediction；Evidence Assertion 显示 `EVIDENCE`。可见的 `Details` 标题移除，但 `<h2>`
+仍以 visually-hidden 方式保留无障碍结构，收起拉手继续显示 `Details`。这些显示值只
+来自已解析的 projection/entity 响应，不接受浏览器构造的路径或标识。引用数使用英语
+单复数：`1 ref`，其他数量为 `N refs`。
 
 `referenceCount` 合并 Node 自身 `evidence_refs` 以及 incident stored Edge 上的结构化
 `publication_refs`/`evidence_refs`，按 PMID 优先、否则规范化 DOI 去重；
@@ -742,16 +751,19 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 
 - Open action 不占用 single slot。
 - Page Key 绑定、fragment 清除、失效和错误项目访问。
-- 一套响应式布局在窄/宽 viewport 可用。
+- 一套响应式布局在 Tailwind 默认 `sm/md/xl` 边界两侧可用；Graph 的 TB/LR 与 Details
+  的 bottom/side 切换分别严格对齐 `md` 和 `xl`。
 - Focus 正式高亮只来自 Host 确认状态，连续实体点击不会被丢弃或与模型可读 Focus 分叉。
-- 实体完整 ID 可见、可复制；Details 两行固定头部突出精确类型并合并引用/Focus 元数据；
+- 实体完整 ID 可见，ID 本身可通过 click/Enter/Space 复制并提供轻量状态反馈；Details
+  两行固定头部突出精确类型并合并引用/Focus 元数据；
   卡片 hover/focus 本体展开完整标签并保持全图布局稳定。
 - 精确实体类型用文字和颜色圆点共同显示；Node 卡片与 Details 的去重参考总数、reviewed
   evidence 数和结构化 `publication_refs` 一致。
 - Tailwind utilities 覆盖页面骨架、顶栏、按钮、通知、卡片、Details、排版和响应式布局，
   手写 CSS 不重复这些通用样式。
-- Details 抽屉默认打开、页面内可收起；1120 px 断点、固定单行顶栏和内部正文滚动
-  在宽窄 viewport 都不产生页面撑高或重叠。
+- Details 抽屉默认打开、页面内可收起；`<xl` bottom、`xl+` side、固定单行顶栏和内部
+  正文滚动在全部默认 breakpoint 边界都不产生页面撑高或重叠。
+- `Research & Expand` 的计算样式为暖白 surface 与绿色 accent 文字，不是实心绿色 CTA。
 - 页面隐藏暂停 snapshot polling。
 - Details 阻止 raw HTML、脚本、远程资源和路径逃逸。
 - Research & Expand 真实点击后调用 `setDraft + submit`；prompt 使用 Focus id/摘要，要求

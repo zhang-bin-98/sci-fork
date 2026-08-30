@@ -55,14 +55,14 @@ const BUTTON_HEADER =
   ' border-sf-header-control-border bg-sf-header-control text-sf-header-foreground hover:border-sf-header-control-hover-border hover:bg-sf-header-control-hover disabled:border-sf-header-disabled-border disabled:bg-sf-header-disabled disabled:text-sf-header-disabled-foreground focus-visible:ring-sf-header-focus focus-visible:ring-offset-sf-header'
 const BUTTON_PRIMARY =
   BUTTON_BASE +
-  ' border-sf-accent-border bg-sf-accent text-white shadow-sm hover:border-sf-accent-hover-border hover:bg-sf-accent-hover disabled:border-sf-header-disabled-border disabled:bg-sf-header-disabled disabled:text-sf-header-disabled-foreground focus-visible:ring-sf-header-focus focus-visible:ring-offset-sf-header'
+  ' border-sf-header-foreground bg-sf-header-foreground text-sf-header hover:border-sf-accent-soft hover:bg-sf-accent-soft hover:text-sf-accent disabled:border-sf-header-disabled-border disabled:bg-sf-header-disabled disabled:text-sf-header-disabled-foreground focus-visible:ring-sf-header-focus focus-visible:ring-offset-sf-header'
 const BUTTON_ICON =
   'inline-flex shrink-0 items-center justify-center rounded-md border border-sf-border-strong bg-sf-surface text-sf-muted transition-colors hover:border-sf-muted hover:bg-sf-surface-muted hover:text-sf-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sf-focus/45 disabled:pointer-events-none'
 const WORKSPACE_BASE = 'workspace grid min-h-0 flex-1 bg-sf-surface'
 const WORKSPACE_OPEN =
-  'grid-cols-[minmax(0,1fr)_minmax(320px,38vw)] [@media(max-width:1120px)]:grid-cols-[minmax(0,1fr)] [@media(max-width:1120px)]:grid-rows-[minmax(0,3fr)_minmax(220px,2fr)] [@media(max-width:480px)]:grid-rows-[minmax(0,55fr)_minmax(200px,45fr)]'
+  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,55fr)_minmax(200px,45fr)] sm:grid-rows-[minmax(0,3fr)_minmax(220px,2fr)] xl:grid-cols-[minmax(0,1fr)_minmax(320px,38vw)] xl:grid-rows-[minmax(0,1fr)]'
 const WORKSPACE_CLOSED =
-  'grid-cols-[minmax(0,1fr)_44px] [@media(max-width:1120px)]:grid-cols-[minmax(0,1fr)] [@media(max-width:1120px)]:grid-rows-[minmax(0,1fr)_44px]'
+  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_44px] xl:grid-cols-[minmax(0,1fr)_44px] xl:grid-rows-[minmax(0,1fr)]'
 
 type EntityVisualType = 'finding' | 'hypothesis' | 'prediction' | 'evidence' | 'result' | 'edge'
 
@@ -154,14 +154,14 @@ export function HeaderIdentity(props: {
   head?: string
 }): React.ReactElement {
   return (
-    <div className="header-identity flex min-w-0 flex-1 items-center gap-3 whitespace-nowrap">
+    <div className="header-identity flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap sm:gap-3">
       <h1 className="m-0 shrink-0 text-xl leading-none font-semibold tracking-tight">SciFork</h1>
-      <span className="min-w-0 max-w-[min(34vw,360px)] truncate text-sm text-sf-header-muted [@media(max-width:1120px)]:max-w-[24vw] [@media(max-width:480px)]:hidden">
+      <span className="hidden min-w-0 max-w-[24vw] truncate text-sm text-sf-header-muted md:block xl:max-w-[min(34vw,360px)]">
         {props.projectName}
       </span>
       {props.branch === undefined ? null : (
         <span
-          className="inline-flex min-w-0 max-w-[min(32vw,280px)] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-sf-header-chip [@media(max-width:1120px)]:max-w-[28vw] [@media(max-width:480px)]:max-w-[30vw] [@media(max-width:480px)]:px-2 [@media(max-width:360px)]:hidden"
+          className="hidden min-w-0 max-w-[30vw] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2 py-1 text-xs font-semibold text-sf-header-chip sm:inline-flex md:max-w-[28vw] md:px-2.5 xl:max-w-[min(32vw,280px)]"
           aria-label="Current branch"
           title={props.head === undefined ? props.branch : props.branch + ' @ ' + props.head}
         >
@@ -186,7 +186,7 @@ export function SimulationRecoveryControls(props: {
   if (props.placement === 'header') {
     return (
       <div
-        className="contents [@media(max-width:480px)]:hidden"
+        className="hidden sm:contents"
         data-simulation-recovery="header"
       >
         <button type="button" className={BUTTON_HEADER} onClick={props.onRetry}>
@@ -201,7 +201,7 @@ export function SimulationRecoveryControls(props: {
 
   return (
     <section
-      className="hidden min-h-11 shrink-0 items-center gap-2 border-b border-sf-danger-border bg-sf-danger-soft px-2.5 py-1.5 text-xs text-sf-danger-foreground [@media(max-width:480px)]:flex"
+      className="flex min-h-11 shrink-0 items-center gap-2 border-b border-sf-danger-border bg-sf-danger-soft px-2.5 py-1.5 text-xs text-sf-danger-foreground sm:hidden"
       data-simulation-recovery="narrow"
       role="alert"
       aria-label="Research expansion failed"
@@ -247,23 +247,24 @@ interface GraphPaneProps {
   onSelect(entityId: string): void
 }
 
-function useNarrowGraphLayout(): boolean {
-  const query = '(max-width: 760px)'
-  const [narrow, setNarrow] = React.useState(
-    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+const TAILWIND_MD_QUERY = '(min-width: 48rem)'
+
+function useWideGraphLayout(): boolean {
+  const [wide, setWide] = React.useState(
+    () => typeof window !== 'undefined' && window.matchMedia(TAILWIND_MD_QUERY).matches,
   )
   React.useEffect(() => {
-    const media = window.matchMedia(query)
-    const update = (): void => setNarrow(media.matches)
+    const media = window.matchMedia(TAILWIND_MD_QUERY)
+    const update = (): void => setWide(media.matches)
     media.addEventListener('change', update)
     return () => media.removeEventListener('change', update)
   }, [])
-  return narrow
+  return wide
 }
 
 function GraphPane(props: GraphPaneProps): React.ReactElement {
-  const narrow = useNarrowGraphLayout()
-  const direction = narrow ? 'TB' : 'LR'
+  const wide = useWideGraphLayout()
+  const direction = wide ? 'LR' : 'TB'
   const [flow, setFlow] = React.useState<
     ReactFlowInstance<EntityFlowNode, RelationFlowEdge> | undefined
   >()
@@ -326,7 +327,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
 
   return (
     <section
-      className="graph-pane relative min-h-0 min-w-0 border-r border-sf-border bg-sf-surface-muted [@media(max-width:1120px)]:border-r-0 [@media(max-width:1120px)]:border-b"
+      className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted xl:border-r xl:border-b-0"
       aria-label="Research Graph"
     >
       <ReactFlow<EntityFlowNode, RelationFlowEdge>
@@ -361,7 +362,7 @@ function EdgeDetails(props: {
 }): React.ReactElement {
   const { entity } = props
   return (
-    <dl className="m-0 grid grid-cols-[minmax(90px,0.32fr)_minmax(0,1fr)] gap-x-3.5 gap-y-2.5 p-5 text-sm leading-6 text-sf-ink [@media(max-width:480px)]:grid-cols-1 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[11px] [&_dt]:font-bold [&_dt]:tracking-wide [&_dt]:text-sf-muted [&_dt]:uppercase">
+    <dl className="m-0 grid grid-cols-1 gap-x-3.5 gap-y-2.5 p-5 text-sm leading-6 text-sf-ink sm:grid-cols-[minmax(90px,0.32fr)_minmax(0,1fr)] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[11px] [&_dt]:font-bold [&_dt]:tracking-wide [&_dt]:text-sf-muted [&_dt]:uppercase">
       <dt>Relation</dt>
       <dd>{humanize(entity.relation)}</dd>
       <dt>From</dt>
@@ -402,7 +403,7 @@ export interface DetailsPaneProps {
 function DrawerChevron(props: { action: 'open' | 'close' }): React.ReactElement {
   return (
     <svg
-      className="size-[18px] shrink-0 [@media(max-width:1120px)]:rotate-90"
+      className="size-[18px] shrink-0 rotate-90 xl:rotate-0"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -414,50 +415,120 @@ function DrawerChevron(props: { action: 'open' | 'close' }): React.ReactElement 
   )
 }
 
-function CopyIcon(props: { copied: boolean }): React.ReactElement {
-  return (
-    <svg
-      className="size-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden="true"
-    >
-      {props.copied ? (
-        <path d="m5 12 4 4L19 6" />
-      ) : (
-        <>
-          <rect x="8" y="8" width="11" height="11" rx="2" />
-          <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
-        </>
-      )}
-    </svg>
-  )
+interface ClipboardWriter {
+  writeText(value: string): Promise<void>
+}
+
+export type CopyFeedback = 'idle' | 'success' | 'failure'
+
+export interface EntityIdCopyFeedback {
+  entityId: string | undefined
+  requestId: number
+  status: CopyFeedback
+}
+
+interface SettledEntityIdCopy {
+  entityId: string
+  requestId: number
+  status: Exclude<CopyFeedback, 'idle'>
+}
+
+export async function copyEntityId(
+  entityId: string,
+  clipboard: ClipboardWriter | undefined,
+): Promise<Exclude<CopyFeedback, 'idle'>> {
+  if (clipboard === undefined) return 'failure'
+  try {
+    await clipboard.writeText(entityId)
+    return 'success'
+  } catch {
+    return 'failure'
+  }
+}
+
+export function settleEntityIdCopyFeedback(
+  current: EntityIdCopyFeedback,
+  activeEntityId: string | undefined,
+  settled: SettledEntityIdCopy,
+): EntityIdCopyFeedback {
+  if (
+    activeEntityId !== settled.entityId ||
+    current.entityId !== settled.entityId ||
+    current.requestId !== settled.requestId
+  ) {
+    return current
+  }
+  return settled
 }
 
 export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
   const { entity } = props
-  const [copied, setCopied] = React.useState(false)
-  React.useEffect(() => setCopied(false), [entity?.id])
+  const copyRequestRef = React.useRef(0)
+  const activeEntityIdRef = React.useRef(entity?.id)
+  activeEntityIdRef.current = entity?.id
+  const [copyFeedback, setCopyFeedback] = React.useState<EntityIdCopyFeedback>({
+    entityId: entity?.id,
+    requestId: 0,
+    status: 'idle',
+  })
+  React.useEffect(() => {
+    const requestId = ++copyRequestRef.current
+    setCopyFeedback({ entityId: entity?.id, requestId, status: 'idle' })
+  }, [entity?.id])
+  React.useEffect(() => {
+    if (
+      copyFeedback.status === 'idle' ||
+      copyFeedback.entityId !== entity?.id ||
+      typeof window === 'undefined'
+    ) {
+      return undefined
+    }
+    const requestId = copyFeedback.requestId
+    const timeout = window.setTimeout(
+      () =>
+        setCopyFeedback((current) =>
+          current.requestId === requestId ? { ...current, status: 'idle' } : current,
+        ),
+      1800,
+    )
+    return () => window.clearTimeout(timeout)
+  }, [copyFeedback, entity?.id])
 
   const copyId = (): void => {
-    if (entity === undefined || typeof navigator === 'undefined') return
-    void navigator.clipboard
-      ?.writeText(entity.id)
-      .then(() => setCopied(true))
-      .catch(() => undefined)
+    if (entity === undefined) return
+    const entityId = entity.id
+    const requestId = ++copyRequestRef.current
+    setCopyFeedback({ entityId, requestId, status: 'idle' })
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+    void copyEntityId(entityId, clipboard).then((status) =>
+      setCopyFeedback((current) =>
+        settleEntityIdCopyFeedback(current, activeEntityIdRef.current, {
+          entityId,
+          requestId,
+          status,
+        }),
+      ),
+    )
   }
+
+  const visibleCopyStatus =
+    copyFeedback.entityId === entity?.id ? copyFeedback.status : 'idle'
+  const copyMessage =
+    visibleCopyStatus === 'success'
+      ? 'Copied'
+      : visibleCopyStatus === 'failure'
+        ? 'Copy failed'
+        : ''
 
   if (!props.open) {
     return (
       <aside
-        className="details-pane details-pane-closed flex min-h-0 min-w-0 items-stretch justify-stretch border-l border-sf-border bg-sf-surface-muted [@media(max-width:1120px)]:border-t [@media(max-width:1120px)]:border-l-0"
+        className="details-pane details-pane-closed flex min-h-0 min-w-0 items-stretch justify-stretch border-t border-sf-border bg-sf-surface-muted xl:border-t-0 xl:border-l"
         aria-label="Details"
       >
         <button
           type="button"
-          className="flex size-full min-h-0 items-center justify-center gap-2 border-0 bg-transparent px-0 py-2 text-sm font-semibold text-sf-accent [writing-mode:vertical-rl] hover:bg-sf-accent-soft focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-sf-focus/45 [@media(max-width:1120px)]:px-3 [@media(max-width:1120px)]:py-0 [@media(max-width:1120px)]:[writing-mode:horizontal-tb]"
+          className="flex size-full min-h-0 items-center justify-center gap-2 border-0 bg-transparent px-3 py-0 text-sm font-semibold text-sf-accent hover:bg-sf-accent-soft focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-sf-focus/45 xl:px-0 xl:py-2 xl:[writing-mode:vertical-rl]"
           aria-label="Open Details"
           aria-expanded={false}
           data-drawer-action="open"
@@ -475,7 +546,7 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
       className="details-pane grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-sf-surface"
       aria-label="Details"
     >
-      <header className="pane-heading z-[2] grid grid-rows-[auto_auto] gap-2 border-b border-sf-border bg-sf-surface px-4 py-3">
+      <header className="pane-heading z-[2] grid grid-rows-[auto_auto] gap-1.5 border-b border-sf-border bg-sf-surface px-4 py-2.5">
         <h2 className="sr-only">Details</h2>
         <div
           className="details-primary-row flex min-w-0 items-center gap-2"
@@ -503,33 +574,30 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
             <DrawerChevron action="close" />
           </button>
         </div>
-        <div
-          className="details-id-row flex min-w-0 items-center gap-2 rounded-lg border border-sf-border bg-sf-surface-muted px-2.5 py-1.5"
-          data-details-row="identity"
-        >
-          {entity === undefined ? (
-            <span className="h-5" aria-hidden="true" />
-          ) : (
-            <>
-              <code
-                className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] whitespace-nowrap text-sf-ink [scrollbar-width:thin]"
-                title={entity.id}
-              >
-                {entity.id}
-              </code>
-              <button
-                type="button"
-                className={BUTTON_ICON + ' size-7'}
-                aria-label={copied ? 'Copied' : 'Copy ID'}
-                title={copied ? 'Copied' : 'Copy ID'}
-                onClick={copyId}
-              >
-                <CopyIcon copied={copied} />
-                <span className="sr-only">{copied ? 'Copied' : 'Copy ID'}</span>
-              </button>
-            </>
-          )}
-        </div>
+        {entity === undefined ? (
+          <div className="h-4" data-details-row="identity" aria-hidden="true" />
+        ) : (
+          <button
+            type="button"
+            className="details-id-row group flex w-full min-w-0 items-center gap-2 overflow-hidden border-0 bg-transparent p-0 text-left text-sf-muted hover:text-sf-accent focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sf-focus/45"
+            data-details-row="identity"
+            aria-label={`Copy entity ID ${entity.id}`}
+            onClick={copyId}
+          >
+            <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[10px] whitespace-nowrap [scrollbar-width:thin]">
+              {entity.id}
+            </code>
+            <span
+              className="w-14 shrink-0 text-right text-[10px] font-semibold text-sf-accent"
+              aria-hidden="true"
+            >
+              {copyMessage}
+            </span>
+          </button>
+        )}
+        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {copyMessage}
+        </span>
       </header>
       <div
         className="details-body min-h-0 overflow-auto overscroll-contain"
@@ -799,13 +867,13 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   return (
     <main className="companion-app flex h-dvh min-h-0 w-full flex-col bg-sf-canvas text-sf-ink">
-      <header className="app-header flex h-14 shrink-0 items-center gap-3 overflow-hidden border-b border-sf-header-border bg-sf-header px-4 text-sf-header-foreground [@media(max-width:480px)]:gap-2 [@media(max-width:480px)]:px-2.5">
+      <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground sm:gap-3 sm:px-4">
         <HeaderIdentity
           projectName={project?.name ?? 'Research Graph'}
           {...(project?.branch === undefined ? {} : { branch: project.branch })}
           {...(project?.head === undefined ? {} : { head: project.head })}
         />
-        <div className="ml-auto flex min-w-max items-center gap-2 [@media(max-width:480px)]:gap-1">
+        <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
           {acknowledgement === undefined ? null : (
             <output className="min-w-14 text-right text-xs font-bold text-sf-header-success">
               {acknowledgement}
@@ -820,7 +888,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           ) : null}
           <button
             type="button"
-            className={BUTTON_PRIMARY + ' [@media(max-width:480px)]:px-2.5'}
+            className={BUTTON_PRIMARY}
             disabled={focus === undefined || simulationState.phase === 'pending'}
             onClick={simulate}
           >
@@ -843,7 +911,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           aria-label="Read-only project"
         >
           <strong className="font-bold">Read-only</strong>
-          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap [@media(max-width:1120px)]:whitespace-normal">
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-normal xl:whitespace-nowrap">
             {project.diagnosticCount === 0
               ? project.gitError?.message ?? 'Project writes are unavailable.'
               : project.diagnostics

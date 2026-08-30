@@ -27,16 +27,18 @@ same-origin standalone React graph, Session/project-bound Page Keys, strict
 snapshot/entity/Focus APIs, safe Details rendering, visible-only polling, and
 the originating-Session `setDraft + submit` Bridge transaction. The Companion
 keeps the complete projection visible; Focus only recenters and highlights it.
-Its single-row project/branch header, typed color-dot cards, responsive Details
-drawer, and in-card hover expansion use one Tailwind-owned visual system plus only
-minimal document-base normalization and bounded React Flow/Markdown-specific CSS. Open Details uses a compact two-row
-header: exact type/reference/Focus metadata first and full ID with embedded copy
-second. Hypothesis/Prediction cards retain their exact scientific type and show
+Its single-row header, typed color-dot cards, responsive Details drawer, and
+in-card hover expansion use one Tailwind-owned visual system plus only minimal
+document-base normalization and bounded React Flow/Markdown-specific CSS. The
+specified refinement uses default `sm/md/xl` breakpoints, a warm-white/green
+Research action, and a compact two-row Details header: exact type/reference/Focus
+metadata first, then a borderless full-ID text control for click/keyboard copy.
+Hypothesis/Prediction cards retain their exact scientific type and show
 deduplicated research references as total count with the reviewed-evidence count
 in parentheses.
-The current automated gates and served-asset checks pass. Desktop, exact-breakpoint,
-narrow, and minimum-width browser checks pass, as does the approved disposable
-pinned DSH release-tarball exercise.
+The renewed automated, build, and package gates pass for the default-breakpoint
+and quiet-ID refinement; its browser breakpoint matrix remains pending. The
+approved disposable pinned DSH release-tarball exercise remains passed.
 M3 Research is implemented ([M3 spec](docs/specs/m3-research.md)): the
 dependency-free PubMed helper supports full Entrez query pages up to 300 metadata
 records and PMID/DOI lookup, and both packaged Skills contain the Draft,
