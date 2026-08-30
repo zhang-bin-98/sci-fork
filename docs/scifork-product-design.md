@@ -19,7 +19,8 @@ Markdown / JSON + local Git
 
 MVP 边界：
 
-- Graph 在 DSH 同源的独立浏览器页面打开，不占用 `sidebar`、`conversation` 或 `details`。
+- Graph 在 DSH 同源的独立浏览器页面打开，不在 `sidebar`、`conversation` 或
+  `details` 内渲染；DSH 侧栏底部只贡献一个公开的启动 action。
 - 页面只有一套响应式布局；窄窗口适合悬放，宽窗口适合系统分屏。
 - 浏览器不承诺系统级“始终置顶”，悬浮和并列由操作系统窗口管理。
 - SciFork 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件。
@@ -78,12 +79,20 @@ DSH 或用户。
 │ DeepSeek Harness Web         │  │ SciFork Graph Companion      │
 │ Sessions / Chat / Tools      │  │ Focus graph + Details        │
 │                              │  │                              │
-│ [Open Research Graph]        │  │ Simulate Details             │
+│ ...                          │  │ Simulate Details             │
+│ [Graph] Research Graph       │  │                              │
+│ [Gear] Settings              │  │                              │
 └──────────────────────────────┘  └──────────────────────────────┘
 ```
 
 页面只包含以 Focus 为中心的局部图、当前路径和一层邻居、只读 Details，以及
 `Simulate`、`Details` 两个英语操作。Git 历史恢复通过对应 DSH Chat 完成。
+
+DSH 入口使用公开的 `sidebar.footer.action`：展开时在 Settings 上方显示 Graph
+图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，并保留
+`Open Research Graph` tooltip/accessible name。点击仍打开独立 Companion，
+不会把 Graph 嵌入侧栏。若将来存在其他 footer actions，它们的相对布局服从
+DSH 的 list-slot owner，不用私有 DOM/CSS 强制重排。
 
 页面按宽度自动调整：
 

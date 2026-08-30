@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { ReactElement } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import { createElement } from 'react'
 import type {
   SimulateAckMessage,
@@ -15,12 +15,19 @@ export const inject = ['slots', 'sessions', 'conversation'] as const
 const MAX_PROMPT_BYTES = 16 * 1024
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{22}$/
 const OPEN_FAILURE_MESSAGE = 'SciFork could not open the Research Graph. Try again from DSH.'
+const OPEN_ACTION_LABEL = 'Open Research Graph'
+const OPEN_ACTION_TEXT = 'Research Graph'
 
-/** Public shell.overlay list-slot face pinned against DSH 0.1.1-rc.2. */
+interface SidebarFooterActionOwnerProps {
+  readonly wide: boolean
+}
+
+/** Public sidebar.footer.action list-slot face pinned against DSH 0.1.1-rc.2. */
 interface SlotsPort {
+  inject(name: 'sidebar.footer.action', callback: () => () => void): () => void
   register(
     entry: { name: string; id: string; order?: number; label?: string },
-    factory: () => ReactElement,
+    factory: (props: SidebarFooterActionOwnerProps) => ReactElement,
   ): () => void
 }
 
@@ -225,11 +232,98 @@ function handleOpen(state: BridgeState): void {
   void finishLaunch(state, popup, sessionId, sessionScope)
 }
 
-function OpenGraphButton(props: { readonly state: BridgeState }): ReactElement {
+function GraphIcon(props: { readonly size: number }): ReactElement {
+  return createElement(
+    'svg',
+    {
+      'aria-hidden': true,
+      'data-scifork-graph-icon': true,
+      fill: 'none',
+      focusable: 'false',
+      height: props.size,
+      viewBox: '0 0 16 16',
+      width: props.size,
+    },
+    createElement('path', {
+      d: 'M5.1 4.3l5.6.6M4.4 5.5l1.9 5.2m5-4.2L8.4 11',
+      stroke: 'currentColor',
+      strokeLinecap: 'round',
+      strokeWidth: 1.4,
+    }),
+    createElement('circle', { cx: 3.5, cy: 4, fill: 'currentColor', r: 1.8 }),
+    createElement('circle', { cx: 12.5, cy: 5.2, fill: 'currentColor', r: 1.8 }),
+    createElement('circle', { cx: 7.2, cy: 12.3, fill: 'currentColor', r: 1.8 }),
+  )
+}
+
+function openButtonStyle(wide: boolean): CSSProperties {
+  return {
+    alignItems: 'center',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: wide ? 12 : '50%',
+    boxSizing: 'border-box',
+    color: 'var(--dsw-alias-label-primary)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    flex: 'none',
+    fontFamily: 'inherit',
+    fontSize: 14,
+    gap: wide ? 8 : 0,
+    height: wide ? 42 : 36,
+    justifyContent: wide ? 'flex-start' : 'center',
+    lineHeight: '22px',
+    margin: wide ? '8px -2px 0' : 0,
+    overflow: 'hidden',
+    padding: wide ? '0 10px 0 8px' : 0,
+    width: wide ? 'calc(100% + 4px)' : 36,
+  }
+}
+
+function setOpenButtonHover(
+  event: ReactMouseEvent<HTMLButtonElement>,
+  hovered: boolean,
+): void {
+  event.currentTarget.style.background = hovered
+    ? 'var(--dsw-alias-interactive-bg-hover)'
+    : 'transparent'
+}
+
+function OpenGraphButton(props: {
+  readonly state: BridgeState
+  readonly wide: boolean
+}): ReactElement {
   return createElement(
     'button',
-    { type: 'button', onClick: () => handleOpen(props.state) },
-    'Open Research Graph',
+    {
+      'aria-label': OPEN_ACTION_LABEL,
+      'data-scifork-sidebar-action': props.wide ? 'wide' : 'rail',
+      type: 'button',
+      onClick: () => handleOpen(props.state),
+      onMouseEnter: (event: ReactMouseEvent<HTMLButtonElement>) => {
+        setOpenButtonHover(event, true)
+      },
+      onMouseLeave: (event: ReactMouseEvent<HTMLButtonElement>) => {
+        setOpenButtonHover(event, false)
+      },
+      style: openButtonStyle(props.wide),
+      title: props.wide ? undefined : OPEN_ACTION_LABEL,
+    },
+    createElement(GraphIcon, { size: props.wide ? 16 : 18 }),
+    props.wide
+      ? createElement(
+          'span',
+          {
+            style: {
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+          },
+          OPEN_ACTION_TEXT,
+        )
+      : null,
   )
 }
 
@@ -245,9 +339,9 @@ export function apply(ctx: Context): void {
     channels: new Set(),
     disposed: false,
   }
-  ctx.effect(() => slots.register(
-    { name: 'shell.overlay', id: 'scifork-open', order: 100, label: 'Open Research Graph' },
-    () => createElement(OpenGraphButton, { state }),
+  slots.inject('sidebar.footer.action', () => slots.register(
+    { name: 'sidebar.footer.action', id: 'scifork-open', order: 100, label: OPEN_ACTION_TEXT },
+    ({ wide }) => createElement(OpenGraphButton, { state, wide }),
   ))
   ctx.effect(() => () => {
     state.disposed = true

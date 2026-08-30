@@ -46,7 +46,7 @@ to a different DSH Session.
 ## Pinned DSH Contracts
 
 M0 contracts remain authoritative for `ctx.webServer.register`,
-`shell.overlay`, `ctx.sessions.scope(id)`, and
+`sidebar.footer.action`, `ctx.sessions.scope(id)`, and
 `ctx.conversation.input.for(scope).setDraft + submit`.
 
 M2 additionally pins these public `0.1.1-rc.2` faces:
@@ -59,6 +59,10 @@ M2 additionally pins these public `0.1.1-rc.2` faces:
 - `dsh-client-runtime/lib/types/client/sessions/service.d.ts`: the client
   Session list snapshot has `byId[id].running`, used only to label an accepted
   submit as `started` or `queued`.
+- `dsh-client-ui-sidebar/lib/types/client/contract/slots.d.ts`:
+  `sidebar.footer.action` is a root-scoped list slot rendered before
+  `sidebar.settings`; every entry receives `{ wide: boolean }`, with false
+  representing the collapsed rail.
 
 The Host adds `sessions` to its hard injections. These structural faces stay in
 `src/host/contracts.ts`; SciFork does not add a runtime dependency on a DSH
@@ -67,6 +71,13 @@ package.
 ## Behavioral Contract
 
 ### Page Key and Open
+
+SciFork registers exactly one `sidebar.footer.action` entry. In the wide
+sidebar it is a full-width row with a package-owned Graph icon and `Research
+Graph` label above Settings. In the collapsed rail it becomes a 36 px icon-only
+button with `Open Research Graph` as its tooltip and accessible name. It uses no
+private DSH component, class, DOM query, or layout mutation. The slot owner
+controls placement relative to any other footer actions.
 
 The click handler synchronously opens `about:blank`, captures the current
 Session scope, then POSTs `{ sessionId }` to `/scifork/api/launch`. The Host:
@@ -240,6 +251,9 @@ channels and nonce state close on bundle unload.
 
 - [x] A fresh live Session/project click opens `/scifork`, stores and clears the
       fragment key, and cannot use the key after Session disposal or Host unload.
+- [x] The Open action uses `sidebar.footer.action`, renders above Settings in
+      the pinned DSH composition, and follows wide/rail state with label/icon
+      and icon-only variants without private DOM or class hooks.
 - [x] Missing, malformed, wrong-project, and replaced-project keys fail closed
       without exposing paths or keys.
 - [x] Static, launch, snapshot, entity, and Focus routes enforce method, origin,
@@ -267,7 +281,8 @@ channels and nonce state close on bundle unload.
   binding; strict request admission; unchanged snapshot with fresh Focus;
   entity type/body boundary; Focus path truncation/cap; static allowlist and
   security headers; malformed/read-only projects; no path/key leakage.
-- Bridge unit: synchronous blank window, current Session captured at click,
+- Bridge unit: footer slot registration, wide/rail button rendering and Graph
+  icon accessibility; synchronous blank window, current Session captured at click,
   launch failure notification, key-derived channel, idle/busy submit, exact
   ordering, wrong shape/session, duplicate nonce, prompt limit, and disposal.
 - Companion unit: fragment consumption/storage clearing, API error mapping,

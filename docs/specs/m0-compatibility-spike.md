@@ -57,7 +57,7 @@ readonly host: '127.0.0.1' | '0.0.0.0'
 所有注册经 `ctx.effect` 挂在插件 fiber 上，卸载时由 disposer 移除。
 Host 只在 `webServer.host === '127.0.0.1'` 时激活。
 
-### 3. `shell.overlay` Open action（Client Slot）
+### 3. Client Open action slots
 
 `dsh-client-runtime/lib/types/client/slots.d.ts`：`ctx.slots.register`
 是 `SlotCore.register` 的 typed face。list slot 注册形态（
@@ -73,6 +73,14 @@ ctx.slots.register(
 `shell.overlay` 是 `{ kind: 'list'; scope: 'root' }` 的 root 级 slot，additive，
 点穿直到条目自行接收指针事件（`dsh-client-ui-layout/lib/types/client/index.d.ts`
 67-80）。root 级 occupant 收到 `GlobalStandardProps`（`useSessions` 等）。
+
+M2 后续钉住 `dsh-client-ui-sidebar/lib/types/client/contract/slots.d.ts` 的公开
+`sidebar.footer.action`：它同样是 root-scoped list slot，注册项使用必填 `id`、
+可选 `order`/`label`，owner 向每个 action 传递 `{ wide: boolean }`。DSH sidebar
+shell 在 `sidebar.settings` 前渲染 footer actions；`wide=false` 表示 56 px rail。
+SciFork 的正式 Open action 使用该 slot，而不再使用 `shell.overlay`。它自行渲染
+按钮 chrome、Graph icon、展开标签和折叠 tooltip，不引用 DSH 私有组件、class
+或 DOM 位置。
 
 ### 4. scoped `SessionInput.setDraft + submit`
 
@@ -277,6 +285,6 @@ smoke results 为准。
 | --- | --- |
 | `ctx.storageDomain` 直接保存 focus | 需 `open(defineDomain({name,version,tables}))`，zod schema（M1 再用） |
 | `conversation.input.for(scope)` | client 服务 `ctx.conversation.input`，`for(actx: ClientContext)`，actx 由 `ctx.sessions.scope(id)` 取得 |
-| `shell.overlay` 注册 additive action | 是 root 级 list Slot，`ctx.slots.register({name,id,order,label}, factory)` |
+| additive Open action | M0 spike 的 `shell.overlay` 与 M2 正式使用的 `sidebar.footer.action` 都是 root 级 list Slot；后者额外提供 `{wide}` |
 | 两个 Skill 由 `ctx.skills` 贡献 | `apply()` 内逐条 `ctx.skills.register`，文件系统 provider 不扫描 npm 包 |
 | `ctx.subprocess` 调 Git | `resolveExecutable` + `spawn({argv,cwd,stdio,graceMs})`，collect 模式读输出 |

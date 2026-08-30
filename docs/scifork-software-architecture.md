@@ -34,7 +34,8 @@ MVP 采用以下决策：
 - `ctx.webServer.register()`：注册 `/scifork/*` 同源 exact/prefix 路由。
 - `ctx.subprocess`：用 argv 数组调用本地 Git。
 - `ctx.skills`：贡献 package-owned `SciFork Research` 和 `pubmed-search` 两个 Skill，由大模型按步骤加载。
-- `shell.overlay`：注册 additive `Open Research Graph` 操作。
+- `sidebar.footer.action`：注册 additive `Open Research Graph` 操作；owner 提供
+  `wide`，展开时显示 Graph 图标和标签，折叠时显示图标。
 - `conversation.input.for(scope).setDraft()`：写入对应 Session composer。
 - `conversation.input.for(scope).submit()`：按 DSH 标准 Queue 模式提交并开始运行。
 
@@ -683,7 +684,7 @@ fresh DSH profile
 
 - 单 bundle load/unload。
 - `ctx.webServer` route/disposer。
-- `shell.overlay` Open action。
+- `sidebar.footer.action` Open action 和 `wide` 折叠语义。
 - scoped `SessionInput.setDraft + submit`。
 - 两个 packaged Skill 的发现与顺序加载。
 - argv-only Git 和 fresh-profile smoke。

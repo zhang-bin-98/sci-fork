@@ -12,7 +12,7 @@ interface SlotEntry {
 
 interface Registration {
   entry: SlotEntry
-  factory: () => ReactElement
+  factory: (props: { wide: boolean }) => ReactElement
 }
 
 interface ClickableProps {
@@ -87,13 +87,24 @@ function fakeContext(services: Record<string, unknown>): Context {
 
 function captureRegistrations(services: Record<string, unknown>): {
   ctx: Context
+  injectedKeys: string[]
   registrations: Registration[]
   dispose(): void
 } {
+  const injectedKeys: string[] = []
   const registrations: Registration[] = []
   const disposers: Array<() => void> = []
   const slots = {
-    register(entry: SlotEntry, factory: () => ReactElement): () => void {
+    inject(key: string, callback: () => () => void): () => void {
+      injectedKeys.push(key)
+      const disposer = callback()
+      disposers.push(disposer)
+      return disposer
+    },
+    register(
+      entry: SlotEntry,
+      factory: (props: { wide: boolean }) => ReactElement,
+    ): () => void {
       registrations.push({ entry, factory })
       return () => undefined
     },
@@ -110,6 +121,7 @@ function captureRegistrations(services: Record<string, unknown>): {
   } as unknown as Context
   return {
     ctx,
+    injectedKeys,
     registrations,
     dispose(): void {
       for (const disposer of disposers.reverse()) disposer()
@@ -117,11 +129,16 @@ function captureRegistrations(services: Record<string, unknown>): {
   }
 }
 
-function click(registration: Registration): void {
-  const component = registration.factory()
+function renderOpenButton(registration: Registration, wide = true): ReactElement {
+  const component = registration.factory({ wide })
   expect(typeof component.type).toBe('function')
   const button = (component.type as (props: unknown) => ReactElement)(component.props)
   expect(button.type).toBe('button')
+  return button
+}
+
+function click(registration: Registration): void {
+  const button = renderOpenButton(registration)
   ;(button.props as ClickableProps).onClick()
 }
 
@@ -258,23 +275,79 @@ afterEach(() => {
 })
 
 describe('SciFork DSH bridge', () => {
-  it('registers one additive Open action only', () => {
+  it('registers one additive sidebar footer Open action only', () => {
     const services = createServices()
-    const { ctx, registrations } = captureRegistrations({
+    const { ctx, injectedKeys, registrations } = captureRegistrations({
       sessions: services.sessions,
       conversation: services.conversation,
     })
 
     apply(ctx)
 
+    expect(injectedKeys).toEqual(['sidebar.footer.action'])
     expect(registrations.map(({ entry }) => entry)).toEqual([
       {
-        name: 'shell.overlay',
+        name: 'sidebar.footer.action',
         id: 'scifork-open',
         order: 100,
-        label: 'Open Research Graph',
+        label: 'Research Graph',
       },
     ])
+  })
+
+  it('renders a labeled Graph row when wide and an accessible icon when collapsed', () => {
+    const services = createServices()
+    const captured = captureRegistrations({
+      sessions: services.sessions,
+      conversation: services.conversation,
+    })
+    apply(captured.ctx)
+    const registration = openAction(captured.registrations)
+
+    const wide = renderOpenButton(registration, true)
+    expect(wide.props).toMatchObject({
+      'aria-label': 'Open Research Graph',
+      'data-scifork-sidebar-action': 'wide',
+      style: {
+        width: 'calc(100% + 4px)',
+        height: 42,
+        borderRadius: 12,
+        justifyContent: 'flex-start',
+      },
+    })
+    const wideProps = wide.props as { children: unknown[]; title?: unknown }
+    expect(wideProps.title).toBeUndefined()
+    const wideChildren = wideProps.children
+    const wideIconComponent = wideChildren[0] as ReactElement
+    const wideIcon = (wideIconComponent.type as (props: unknown) => ReactElement)(
+      wideIconComponent.props,
+    )
+    expect(wideIcon.type).toBe('svg')
+    expect(wideIcon.props).toMatchObject({
+      'aria-hidden': true,
+      'data-scifork-graph-icon': true,
+      height: 16,
+      width: 16,
+    })
+    expect(wideChildren[1]).toMatchObject({
+      type: 'span',
+      props: { children: 'Research Graph' },
+    })
+
+    const collapsed = renderOpenButton(registration, false)
+    expect(collapsed.props).toMatchObject({
+      'aria-label': 'Open Research Graph',
+      'data-scifork-sidebar-action': 'rail',
+      title: 'Open Research Graph',
+      style: {
+        width: 36,
+        height: 36,
+        borderRadius: '50%',
+        justifyContent: 'center',
+      },
+    })
+    const collapsedChildren = (collapsed.props as { children: unknown[] }).children
+    expect(collapsedChildren[1]).toBeNull()
   })
 
   it('opens about:blank and captures the originating Session before launch, then opens the key channel before navigation', async () => {
