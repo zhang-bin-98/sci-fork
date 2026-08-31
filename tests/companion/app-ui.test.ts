@@ -181,6 +181,8 @@ describe('Companion graph UI', () => {
     expect(identityControl).not.toContain('border-sf-border bg-sf-surface-muted')
     expect(html).toContain('aria-expanded="true"')
     expect(html).toContain('aria-label="Details content"')
+    expect(html).toContain('inline-flex shrink-0 items-center gap-1.5')
+    expect(html).toContain('overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-sf-muted')
   })
 
   it('reports exact entity ID copy success and handles unavailable or failed clipboards', async () => {
@@ -248,10 +250,14 @@ describe('Companion graph UI', () => {
     const html = renderToStaticMarkup(
       createElement(CompanionApp, { pageKey: 'K'.repeat(43) }),
     )
-    const action = html.match(/<button[^>]*>Research &amp; Expand<\/button>/)?.[0]
+    const action = html.match(/<button[^>]*aria-label="Research &amp; Expand"[\s\S]*?<\/button>/)?.[0]
     const actionClasses = action?.match(/class="([^"]+)"/)?.[1]?.split(' ')
 
     expect(action).toBeDefined()
+    expect(action).toContain('title="Research &amp; Expand"')
+    expect(action).toContain('size-9 px-0 sm:size-auto sm:px-3')
+    expect(action).toContain('class="size-4 sm:hidden"')
+    expect(action).toContain('class="hidden sm:inline"')
     expect(actionClasses).toContain('bg-sf-header-foreground')
     expect(actionClasses).toContain('text-sf-header')
     expect(actionClasses).not.toContain('bg-sf-accent')

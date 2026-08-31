@@ -1,6 +1,6 @@
 # SciFork M2 Companion
 
-> Status: Implemented; automated re-verification passed on 2026-08-31; renewed default-breakpoint browser check pending
+> Status: Implemented; automated and default-breakpoint browser verification passed on 2026-09-01
 > Date: 2026-08-31
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.19](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
@@ -372,8 +372,23 @@ channels and nonce state close on bundle unload.
 - [x] Ack failure retains the bounded prompt and offers working Retry and Copy.
 - [x] `pnpm check`, `node --check index.js`, `git diff --check`, and
       `pnpm pack --dry-run` pass with Companion assets in the tarball.
-- [ ] Desktop and default-breakpoint browser checks cover nonblank rendering,
+- [x] Desktop and default-breakpoint browser checks cover nonblank rendering,
       stable graph sizing, responsive Details, and no incoherent overlap.
+
+### Browser verification record (2026-09-01)
+
+The built Companion was served from a loopback fixture with a bounded snapshot
+containing Question, Hypothesis, Prediction, Result, and Evidence entities. At
+`320`, `639`, `640`, `767`, `768`, `1279`, `1280`, and `1440` pixels wide, each
+viewport rendered four visible non-Evidence nodes without document overflow or
+incoherent overlap. Graph direction changed from TB to LR at `md=768px` and
+Details changed from a bottom drawer to a side drawer at `xl=1280px`. The
+single-row header and Details primary row remained non-overlapping; Details body
+content remained in its internal scroll region. At 320px the icon-only actions
+retained accessible labels, Evidence toggling revealed the fifth node, and the
+Details close/open controls preserved the graph without overlap. Screenshots at
+320px, 768px, and 1280px confirmed nonblank graph pixels, stable node sizing,
+card rendering, and drawer placement.
 
 ## Test Plan
 

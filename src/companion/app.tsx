@@ -133,12 +133,12 @@ function entityMeta(entity: ProjectionEntitySummary): string {
 function EntityTypeMark(props: { entity: EntityTypeCarrier }): React.ReactElement {
   const typeClass = entityTypeClass(props.entity)
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-bold tracking-wide text-sf-muted">
+    <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wide text-sf-muted">
       <span
         className={'size-2 shrink-0 rounded-full ring-2 ' + ENTITY_DOT_CLASS[typeClass]}
         aria-hidden="true"
       />
-      <span>{entityTypeLabel(props.entity)}</span>
+      <span className="whitespace-nowrap">{entityTypeLabel(props.entity)}</span>
     </span>
   )
 }
@@ -716,7 +716,7 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
         >
           {entity === undefined ? null : <EntityTypeMark entity={entity} />}
           {entity === undefined || entityEvidenceCountLabel(entity) === undefined ? null : (
-            <span className="min-w-0 whitespace-nowrap text-[11px] text-sf-muted">
+            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-sf-muted">
               {entityEvidenceCountLabel(entity)}
             </span>
           )}
@@ -1045,11 +1045,24 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
         <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
           <button
             type="button"
-            className={BUTTON_HEADER}
+            className={BUTTON_HEADER + ' size-9 px-0 sm:size-auto sm:px-3'}
             aria-pressed={showEvidence}
+            aria-label={showEvidence ? 'Hide evidence' : 'Show evidence'}
+            title={showEvidence ? 'Hide evidence' : 'Show evidence'}
             onClick={() => setShowEvidence((visible) => !visible)}
           >
-            {showEvidence ? 'Hide evidence' : 'Show evidence'}
+            <svg
+              className="size-4 sm:hidden"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M1.5 8s2.2-3.5 6.5-3.5S14.5 8 14.5 8 12.2 11.5 8 11.5 1.5 8 1.5 8Z" />
+              <circle cx="8" cy="8" r="1.75" />
+            </svg>
+            <span className="hidden sm:inline">{showEvidence ? 'Hide evidence' : 'Show evidence'}</span>
           </button>
           {acknowledgement === undefined ? null : (
             <output className="min-w-14 text-right text-xs font-bold text-sf-header-success">
@@ -1065,13 +1078,28 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           ) : null}
           <button
             type="button"
-            className={BUTTON_PRIMARY}
+            className={BUTTON_PRIMARY + ' size-9 px-0 sm:size-auto sm:px-3'}
             disabled={focus === undefined || researchExpansionState.phase === 'pending'}
+            aria-label={researchExpansionState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
+            title={researchExpansionState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
             onClick={submitResearchExpansion}
           >
-            {researchExpansionState.phase === 'pending'
-              ? 'Submitting'
-              : RESEARCH_EXPANSION_ACTION_LABEL}
+            <svg
+              className="size-4 sm:hidden"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <circle cx="6.75" cy="6.75" r="3.75" />
+              <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
+            </svg>
+            <span className="hidden sm:inline">
+              {researchExpansionState.phase === 'pending'
+                ? 'Submitting'
+                : RESEARCH_EXPANSION_ACTION_LABEL}
+            </span>
           </button>
         </div>
       </header>
