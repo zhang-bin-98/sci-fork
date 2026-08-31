@@ -33,7 +33,9 @@ try {
 const files = new Set(metadata.files?.map((entry) => entry.path))
 const required = [
   'dist/client.js',
+  'dist/companion/app.js',
   'dist/companion/index.html',
+  'dist/companion/styles.css',
   'dist/host/index.js',
   'SECURITY.md',
   'docs/specs/m3-research.md',

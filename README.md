@@ -161,6 +161,11 @@ The dumped configuration should contain exactly one `scifork` loader entry.
   `SessionInput.setDraft + submit`, Skills, filesystem, and subprocess
   contracts.
 - Distribute one prebuilt, auditable `.tgz` from GitHub Releases.
+- GitHub Actions publishes that tarball and its `.sha256` checksum only from an
+  exact `v<package.json version>` tag whose commit is on the default branch. The
+  workflow refuses an unresolved license, a missing license file, `workspace:*`
+  dependencies, an existing Release or draft, or a failed repository/package
+  check.
 - Run `corepack pnpm pack --dry-run` and confirm the tarball contains
   `dist/host`, `dist/client.js`, Companion assets, the PubMed helper, and both
   Skill files.
@@ -170,6 +175,19 @@ The dumped configuration should contain exactly one `scifork` loader entry.
   Run, restart, and uninstall SciFork without any third-party plugin.
 - See [SECURITY.md](SECURITY.md) for loopback security, Git sharing,
   sensitive-data handling, compatibility, and upgrade behavior.
+
+After the project owner selects and adds a license, release an already-merged
+version by creating and pushing its exact tag, for example `v0.0.1`. The
+tag-triggered `.github/workflows/release.yml` workflow does not change the
+version, create a tag, publish to npm, or run the separately approved DSH profile
+exercise.
+
+Before enabling the workflow on GitHub, create an active tag ruleset for `v*`
+under **Settings -> Rules -> Rulesets**. Restrict tag creation, update, deletion,
+and bypass to the release maintainers. This is a security boundary: a tag-push
+run reads its workflow from the tagged commit, so the workflow's own default-
+branch ancestry check cannot replace server-side control over who may create
+release tags.
 
 ## License
 
