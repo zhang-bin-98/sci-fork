@@ -296,6 +296,9 @@ interface ResearchProject {
 - `planCommand(project, command)` 为 create/update 输出 `{ path, content }`，
   为 delete 输出 `{ path, writeKind: 'delete' }`；相对路径都由 Core 从实体 id
   构造（绝不接受调用方路径）。
+- 所有 create/update/delete 候选计划在返回前应用到临时受管文件映射并执行完整
+  parser + validator；会破坏任一跨实体科研不变量的命令必须在 Host 写入前失败。参见
+  [invariant-safe typed updates](invariant-safe-updates.md)。
 - `import_draft_item` 转换后的 EA：publication_ref、locator、assertion、
   direction、citation、machine_review_rationale、limitations 来自候选项；正文为空。
 

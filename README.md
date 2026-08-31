@@ -20,6 +20,9 @@ single-entity commands, and Research Import Draft validation), plus the Host
 Project Locator, the three model tools (`research_graph_read`,
 `research_graph_apply`, `research_graph_focus`), the `/research init | open |
 validate` commands, Focus storage, and current-branch managed-file checkpoints.
+Every create, update, and delete plan validates its complete candidate project
+before Host writes or checkpoints a file, so cross-entity invariant failures
+remain read-only.
 Git history recovery remains the responsibility of DSH Chat or the user.
 
 M2 Companion is implemented ([M2 spec](docs/specs/m2-companion.md)): the
@@ -36,9 +39,9 @@ Research action, and a compact two-row Details header: exact type/publication-re
 metadata first, then a borderless full-ID text control for click/keyboard copy.
 Hypothesis/Prediction cards retain their exact scientific type and distinguish
 unique publications, machine-reviewed Evidence, and human-reviewed Evidence.
-The renewed automated, build, and package gates pass for the default-breakpoint
-and quiet-ID refinement; its browser breakpoint matrix remains pending. The
-approved disposable pinned DSH release-tarball exercise remains passed.
+The renewed automated, build, package, and default-breakpoint browser gates pass
+for the quiet-ID refinement. The approved disposable pinned DSH release-tarball
+exercise remains passed.
 M3 Research is implemented ([M3 spec](docs/specs/m3-research.md)): the
 dependency-free PubMed helper supports full Entrez query pages up to 300 metadata
 records and PMID/DOI lookup with an optional bounded PubMed abstract, and both

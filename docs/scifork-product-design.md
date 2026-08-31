@@ -1,6 +1,6 @@
 # SciFork 产品设计 v0.19
 
-> 状态：Proposed（MVP 精简版）
+> 状态：Implemented（MVP baseline）
 > 日期：2026-08-31
 
 ## 1. 产品结论

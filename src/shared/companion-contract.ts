@@ -54,7 +54,9 @@ export type ProjectionEntitySummary =
       type: 'node'
       kind: NodeKind
       confidence: ConfidenceBand
+      /** @deprecated Use publicationCount. Retained for first-party bundle reload compatibility. */
       referenceCount: number
+      /** @deprecated Use humanReviewedEvidenceCount. Retained for first-party bundle reload compatibility. */
       reviewedEvidenceCount: number
       publicationCount: number
       machineReviewedEvidenceCount: number
@@ -144,7 +146,9 @@ export type EntityDocument =
       kind: NodeKind
       confidence: ConfidenceBand
       evidenceRefs: EvidenceRef[]
+      /** @deprecated Use publicationCount. Retained for first-party bundle reload compatibility. */
       referenceCount: number
+      /** @deprecated Use humanReviewedEvidenceCount. Retained for first-party bundle reload compatibility. */
       reviewedEvidenceCount: number
       publicationCount?: number
       machineReviewedEvidenceCount?: number

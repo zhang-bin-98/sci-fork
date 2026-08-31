@@ -1,11 +1,14 @@
 # SciFork M2 Companion
 
-> Status: Implemented; automated re-verification passed on 2026-08-31; renewed default-breakpoint browser check pending
+> Status: Implemented; automated and default-breakpoint browser verification passed on 2026-09-01
 > Date: 2026-08-31
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.19](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 > Action semantics: the historical `Simulate & Save` contract below is superseded
 > by [literature-grounded research expansion](progressive-research-expansion.md).
+> Historical baseline: parent-version references and the superseded wire section
+> record M2 as implemented at that time; current behavior is defined by the
+> linked refinements and the v0.19/v0.20 umbrella documents.
 
 ## Problem
 
@@ -245,7 +248,8 @@ ellipsized before metadata wraps. Drawer chevrons use left/right semantics besid
 the graph and up/down semantics below it. `Research & Expand` uses a warm-white
 action surface with accent-green text instead of a filled green CTA.
 
-Node projection summaries expose `referenceCount` and `reviewedEvidenceCount`.
+The original M2 projection summaries exposed `referenceCount` and
+`reviewedEvidenceCount`.
 The Host deduplicates total references from the Node and incident stored Edges by
 canonical PMID, otherwise normalized DOI. Reviewed count only includes publications
 behind reviewed Evidence Assertions. Cards and Details format this as
@@ -274,7 +278,11 @@ The Companion performs one snapshot read on mount when visible, repeats every
 while hidden, and refreshes immediately when visibility returns. It has at most
 one snapshot request in flight and disposes timers/listeners on unmount.
 
-### Simulate & Save
+### Historical: Simulate & Save (superseded)
+
+This subsection records the M2 wire baseline only. The visible action and prompt
+behavior are replaced by `Research & Expand`; only the documented v1 wire
+literals remain for an already-open first-party Companion during bundle reload.
 
 `buildSimulationPrompt` runs only from the `Simulate & Save` click path and uses the
 latest snapshot. It includes the Focus id and summary, bounded-neighborhood support and
@@ -364,8 +372,23 @@ channels and nonce state close on bundle unload.
 - [x] Ack failure retains the bounded prompt and offers working Retry and Copy.
 - [x] `pnpm check`, `node --check index.js`, `git diff --check`, and
       `pnpm pack --dry-run` pass with Companion assets in the tarball.
-- [ ] Desktop and default-breakpoint browser checks cover nonblank rendering,
+- [x] Desktop and default-breakpoint browser checks cover nonblank rendering,
       stable graph sizing, responsive Details, and no incoherent overlap.
+
+### Browser verification record (2026-09-01)
+
+The built Companion was served from a loopback fixture with a bounded snapshot
+containing Question, Hypothesis, Prediction, Result, and Evidence entities. At
+`320`, `639`, `640`, `767`, `768`, `1279`, `1280`, and `1440` pixels wide, each
+viewport rendered four visible non-Evidence nodes without document overflow or
+incoherent overlap. Graph direction changed from TB to LR at `md=768px` and
+Details changed from a bottom drawer to a side drawer at `xl=1280px`. The
+single-row header and Details primary row remained non-overlapping; Details body
+content remained in its internal scroll region. At 320px the icon-only actions
+retained accessible labels, Evidence toggling revealed the fifth node, and the
+Details close/open controls preserved the graph without overlap. Screenshots at
+320px, 768px, and 1280px confirmed nonblank graph pixels, stable node sizing,
+card rendering, and drawer placement.
 
 ## Test Plan
 

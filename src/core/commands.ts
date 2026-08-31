@@ -16,7 +16,10 @@ import {
   LIMITATION_MAX,
   LIMITATIONS_MAX,
   LOCATOR_SCHEMA,
+  MACHINE_REVIEW_RATIONALE_MAX,
   NODE_ID_RE,
+  PROVENANCE_MAX,
+  QUESTION_MAX,
   QUESTION_ID_RE,
   FRAMING_LINK_ID_RE,
   QUESTION_DATA_SCHEMA,
@@ -50,7 +53,7 @@ import {
   type ResultData,
   type ResultStatus,
 } from './schema.js'
-import { evidenceRefIssues, findingHasSupport, predictsEndpointsValid } from './validator.js'
+import { parseAndValidateProject } from './validator.js'
 
 /**
  * Typed single-entity commands (architecture §6.1). One command persists
@@ -94,7 +97,7 @@ const CREATE_EVIDENCE_COMMAND_SCHEMA = z
     direction: DIRECTION_SCHEMA,
     reviewStatus: z.literal('machine_reviewed').optional(),
     citation: CITATION_SNAPSHOT_SCHEMA.optional(),
-    machineReviewRationale: z.string().min(1).max(4000).optional(),
+    machineReviewRationale: z.string().min(1).max(MACHINE_REVIEW_RATIONALE_MAX).optional(),
     limitations: LIMITATIONS_SCHEMA.optional(),
     body: BODY_SCHEMA.optional(),
   })
@@ -115,7 +118,7 @@ const REVIEW_EVIDENCE_COMMAND_SCHEMA = z
     expectedFileVersion: HASH_SCHEMA,
     reviewStatus: z.enum(['machine_reviewed', 'reviewed', 'rejected']),
     citation: CITATION_SNAPSHOT_SCHEMA.optional(),
-    machineReviewRationale: z.string().min(1).max(4000).optional(),
+    machineReviewRationale: z.string().min(1).max(MACHINE_REVIEW_RATIONALE_MAX).optional(),
     limitations: LIMITATIONS_SCHEMA.optional(),
   })
   .strict()
@@ -134,7 +137,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('create_question'),
       id: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
-      question: z.string().min(1).max(4000),
+      question: z.string().min(1).max(QUESTION_MAX),
       scopeAssumptions: LIMITATIONS_SCHEMA.optional(),
       body: BODY_SCHEMA.optional(),
     })
@@ -144,7 +147,7 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       kind: z.literal('update_question'),
       id: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
       expectedFileVersion: HASH_SCHEMA,
-      question: z.string().min(1).max(4000).optional(),
+      question: z.string().min(1).max(QUESTION_MAX).optional(),
       scopeAssumptions: LIMITATIONS_SCHEMA.optional(),
       body: BODY_SCHEMA.optional(),
     })
@@ -209,8 +212,8 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       basis: BASIS_SCHEMA,
       evidenceRefs: z.array(EVIDENCE_REF_COMMAND_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
       publicationRefs: z.array(PUBLICATION_REF_COMMAND_SCHEMA).max(PUBLICATION_REFS_MAX).optional(),
-      provenance: z.string().min(1).max(2000).optional(),
-      evidenceGap: z.string().min(1).max(2000).optional(),
+      provenance: z.string().min(1).max(PROVENANCE_MAX).optional(),
+      evidenceGap: z.string().min(1).max(PROVENANCE_MAX).optional(),
     })
     .strict(),
   z
@@ -222,8 +225,8 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
       basis: BASIS_SCHEMA.optional(),
       evidenceRefs: z.array(EVIDENCE_REF_COMMAND_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
       publicationRefs: z.array(PUBLICATION_REF_COMMAND_SCHEMA).max(PUBLICATION_REFS_MAX).optional(),
-      provenance: z.string().min(1).max(2000).optional(),
-      evidenceGap: z.string().min(1).max(2000).optional(),
+      provenance: z.string().min(1).max(PROVENANCE_MAX).optional(),
+      evidenceGap: z.string().min(1).max(PROVENANCE_MAX).optional(),
     })
     .strict()
     .refine(
@@ -430,12 +433,6 @@ const RESULT_TRANSITIONS: Record<ResultStatus, readonly ResultStatus[]> = {
   superseded: [],
 }
 
-function pushEvidenceRefIssues(project: LoadedProject, path: string, refs: readonly EvidenceRef[] | undefined, issues: CommandIssue[]): void {
-  for (const diagnostic of evidenceRefIssues(project, path, refs)) {
-    issues.push(commandIssue('INVALID_ENTITY', diagnostic.message))
-  }
-}
-
 function planCreateEvidence(project: LoadedProject, command: Extract<ResearchCommand, { kind: 'create_evidence_assertion' }>, issues: CommandIssue[]): { content: string } | undefined {
   if (!checkAbsent(project, command.id, issues)) return undefined
   const reference = normalizeCommandPublicationRef(command.publicationRef)
@@ -478,24 +475,6 @@ function planReviewEvidence(project: LoadedProject, command: Extract<ResearchCom
       commandIssue('INVALID_ENTITY', `evidence ${command.id} cannot move from ${current.review_status} to ${command.reviewStatus}`, command.id),
     )
     return undefined
-  }
-  if (command.reviewStatus === 'rejected') {
-    const nodeOwners = [...project.nodes.values()]
-      .filter((node) => (node.evidence_refs ?? []).some((ref) => ref.id === command.id))
-      .map((node) => node.id)
-    const edgeOwners = [...project.edges.values()]
-      .filter((edge) => (edge.evidence_refs ?? []).some((ref) => ref.id === command.id))
-      .map((edge) => edge.id)
-    const owners = [...nodeOwners, ...edgeOwners].sort()
-    if (owners.length > 0) {
-      issues.push(
-        commandIssue(
-          'INVALID_ENTITY',
-          `evidence ${command.id} is still referenced by: ${owners.join(', ')}`,
-          command.id,
-        ),
-      )
-    }
   }
   const data: EvidenceData = {
     id: current.id,
@@ -576,15 +555,6 @@ function planCreateFramingLink(
   issues: CommandIssue[],
 ): { content: string } | undefined {
   if (!checkAbsent(project, command.id, issues)) return undefined
-  const source = project.nodes.get(command.from)
-  if (source === undefined) {
-    issues.push(commandIssue('INVALID_ENTITY', `framing link source ${command.from} does not exist`, command.id))
-  } else if (source.kind !== 'hypothesis' && source.kind !== 'finding') {
-    issues.push(commandIssue('INVALID_ENTITY', 'framing link source must be a Hypothesis or Finding', command.id))
-  }
-  if (!project.questions.has(command.to)) {
-    issues.push(commandIssue('INVALID_ENTITY', `framing link target ${command.to} does not exist`, command.id))
-  }
   const data: FramingLinkFile = {
     id: command.id,
     from: command.from,
@@ -617,7 +587,6 @@ function planDeleteFramingLink(
 
 function planCreateNode(project: LoadedProject, command: Extract<ResearchCommand, { kind: 'create_node' }>, issues: CommandIssue[]): { content: string } | undefined {
   if (!checkAbsent(project, command.id, issues)) return undefined
-  const refs = command.evidenceRefs ?? []
   const data: NodeData = {
     id: command.id,
     kind: command.nodeKind,
@@ -630,12 +599,6 @@ function planCreateNode(project: LoadedProject, command: Extract<ResearchCommand
       issues.push(commandIssue('INVALID_ENTITY', issueMessage, command.id))
     }
     return undefined
-  }
-  pushEvidenceRefIssues(project, entityFilePath(command.id) ?? '', refs, issues)
-  if (command.nodeKind === 'finding' && !findingHasSupport(project, command.id, refs)) {
-    issues.push(
-      commandIssue('INVALID_ENTITY', `finding ${command.id} needs a reviewed supporting assertion or a validated result edge`, command.id),
-    )
   }
   return { content: renderMarkdown(nodeFrontMatter(data), command.body) }
 }
@@ -660,12 +623,6 @@ function planUpdateNode(project: LoadedProject, command: Extract<ResearchCommand
       issues.push(commandIssue('INVALID_ENTITY', issueMessage, command.id))
     }
     return undefined
-  }
-  pushEvidenceRefIssues(project, entityFilePath(command.id) ?? '', refs, issues)
-  if (data.kind === 'finding' && !findingHasSupport(project, command.id, refs)) {
-    issues.push(
-      commandIssue('INVALID_ENTITY', `finding ${command.id} needs a reviewed supporting assertion or a validated result edge`, command.id),
-    )
   }
   return { content: renderMarkdown(nodeFrontMatter(data), command.body ?? current.body) }
 }
@@ -717,7 +674,7 @@ function edgeToDisk(command: {
   }
 }
 
-function validateEdgeShape(project: LoadedProject, shape: EdgeShape, issues: CommandIssue[]): EdgeFile | undefined {
+function validateEdgeShape(shape: EdgeShape, issues: CommandIssue[]): EdgeFile | undefined {
   const parsed = EDGE_FILE_SCHEMA.safeParse(shape)
   if (!parsed.success) {
     for (const issueMessage of parsed.error.issues.map((i) => i.message)) {
@@ -725,42 +682,12 @@ function validateEdgeShape(project: LoadedProject, shape: EdgeShape, issues: Com
     }
     return undefined
   }
-  if (project.nodes.get(shape.from) === undefined && project.results.get(shape.from) === undefined) {
-    issues.push(commandIssue('INVALID_ENTITY', `edge endpoint ${shape.from} does not exist`, shape.id))
-  }
-  if (project.nodes.get(shape.to) === undefined && project.results.get(shape.to) === undefined) {
-    issues.push(commandIssue('INVALID_ENTITY', `edge endpoint ${shape.to} does not exist`, shape.id))
-  }
-  if (shape.relation === 'predicts' && !predictsEndpointsValid(project, shape.from, shape.to)) {
-    issues.push(
-      commandIssue(
-        'INVALID_ENTITY',
-        `predicts edge ${shape.id} must connect a Finding/Hypothesis to a Prediction`,
-        shape.id,
-      ),
-    )
-  }
-  pushEvidenceRefIssues(project, entityFilePath(shape.id) ?? '', shape.evidence_refs, issues)
-  if (shape.basis === 'literature') {
-    for (const ref of shape.evidence_refs ?? []) {
-      const evidence = project.evidenceAssertions.get(ref.id)
-      if (evidence !== undefined && evidence.review_status !== 'reviewed') {
-        issues.push(
-          commandIssue(
-            'INVALID_ENTITY',
-            `literature edge ${shape.id} requires human-reviewed evidence; ${ref.id} is ${evidence.review_status}`,
-            shape.id,
-          ),
-        )
-      }
-    }
-  }
   return parsed.data
 }
 
 function planCreateEdge(project: LoadedProject, command: Extract<ResearchCommand, { kind: 'create_edge' }>, issues: CommandIssue[]): { content: string } | undefined {
   if (!checkAbsent(project, command.id, issues)) return undefined
-  const edge = validateEdgeShape(project, edgeToDisk(command), issues)
+  const edge = validateEdgeShape(edgeToDisk(command), issues)
   if (edge === undefined) return undefined
   return { content: renderEdge(edge) }
 }
@@ -847,7 +774,7 @@ function planUpdateEdge(project: LoadedProject, command: Extract<ResearchCommand
         }
       : {}),
   }
-  const edge = validateEdgeShape(project, shape, issues)
+  const edge = validateEdgeShape(shape, issues)
   if (edge === undefined) return undefined
   return { content: renderEdge(edge) }
 }
@@ -936,20 +863,6 @@ function planDeleteEdge(
     return undefined
   }
 
-  const remainingEdges = new Map(project.edges)
-  remainingEdges.delete(command.id)
-  const afterRemoval = { ...project, edges: remainingEdges }
-  for (const node of project.nodes.values()) {
-    if (node.kind === 'finding' && !findingHasSupport(afterRemoval, node.id, node.evidence_refs)) {
-      issues.push(
-        commandIssue(
-          'INVALID_ENTITY',
-          `edge ${command.id} cannot be deleted because finding ${node.id} would lose required support`,
-          command.id,
-        ),
-      )
-    }
-  }
   return { delete: true }
 }
 
@@ -1060,6 +973,23 @@ export function planCommand(project: LoadedProject, command: ResearchCommand, ha
   const path = entityFilePath(id)
   if (path === undefined) {
     return { ok: false, issues: [commandIssue('INVALID_ENTITY', `invalid entity id ${id}`, id)] }
+  }
+  const candidateFiles = new Map(project.files)
+  if ('delete' in planned) candidateFiles.delete(path)
+  else candidateFiles.set(path, planned.content)
+  const candidateProject = parseAndValidateProject(candidateFiles, hash)
+  if (candidateProject.diagnostics.length > 0) {
+    const diagnostic = candidateProject.diagnostics[0]!
+    return {
+      ok: false,
+      issues: [
+        commandIssue(
+          'INVALID_ENTITY',
+          `command would invalidate the project (${diagnostic.code} at ${diagnostic.path || 'project'}): ${diagnostic.message}`,
+          id,
+        ),
+      ],
+    }
   }
   if ('delete' in planned) {
     return {

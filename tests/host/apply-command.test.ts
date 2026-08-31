@@ -137,6 +137,41 @@ describe('applyCommand', () => {
     expect(result).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
   })
 
+  it('does not write or checkpoint an update that would break a cross-entity invariant', async () => {
+    const prediction = `node_${UUID_C}`
+    const edge = `edge_${UUID_C}`
+    const nodeFile = `---\nid: ${NODE}\nkind: hypothesis\nconfidence: low\n---\n# Source\n`
+    const predictionFile = `---\nid: ${prediction}\nkind: prediction\nconfidence: moderate\n---\n# Outcome\n`
+    const edgeFile = JSON.stringify({
+      id: edge,
+      from: NODE,
+      to: prediction,
+      relation: 'predicts',
+      basis: 'experiment',
+    })
+    const { fs, git, host } = await setup({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: nodeFile,
+      [`/proj/nodes/${prediction}.md`]: predictionFile,
+      [`/proj/edges/${edge}.json`]: edgeFile,
+    })
+
+    const result = await applyCommand(host, {
+      sessionCwd: '/proj',
+      command: {
+        kind: 'update_node',
+        id: NODE,
+        expectedFileVersion: sha256(nodeFile),
+        nodeKind: 'prediction',
+      },
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'INVALID_ENTITY', entityId: NODE })
+    expect(fs.contentOf(`/proj/nodes/${NODE}.md`)).toBe(nodeFile)
+    expect(git.calls.some((call) => call[1] === 'commit')).toBe(false)
+  })
+
   it('leaves the written file and reports a checkpoint failure without destructive cleanup', async () => {
     const { fs, git, host } = await setup({ '/proj/research.json': MANIFEST }, { failCommit: true })
     const result = await applyCommand(host, {
