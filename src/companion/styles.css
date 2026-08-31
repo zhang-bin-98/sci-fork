@@ -49,6 +49,21 @@
   --color-sf-edge: #6b746f;
   --color-sf-handle: #59655e;
   --color-sf-markdown-accent: #88a59a;
+  --color-sf-graph-focus-border: #16735f;
+  --color-sf-graph-focus-ring: rgb(36 139 113 / 14%);
+  --color-sf-graph-pending-border: #b0781e;
+  --color-sf-graph-pending-ring: rgb(190 133 42 / 14%);
+  --color-sf-graph-path-border: #477c9f;
+  --color-sf-graph-node-shadow: rgb(31 42 35 / 22%);
+  --color-sf-graph-edge-default: #707a74;
+  --color-sf-graph-edge-supports: #218467;
+  --color-sf-graph-edge-contradicts: #b44747;
+  --color-sf-graph-edge-causes: #3f7194;
+  --color-sf-graph-edge-predicts: #7257a8;
+  --color-sf-graph-edge-label: #3e4842;
+  --color-sf-graph-grid: #d4d8d5;
+  --color-sf-graph-controls-border: #c6ccc8;
+  --color-sf-graph-controls-divider: #d8ddda;
 }
 
 @layer base {
@@ -97,17 +112,17 @@
 }
 
 .react-flow__node-entity.graph-node-focus .entity-node-content {
-  border: 2px solid #16735f;
-  box-shadow: 0 0 0 3px rgb(36 139 113 / 14%);
+  border: 2px solid var(--color-sf-graph-focus-border);
+  box-shadow: 0 0 0 3px var(--color-sf-graph-focus-ring);
 }
 
 .react-flow__node-entity.graph-node-pending .entity-node-content {
-  border: 2px dashed #b0781e;
-  box-shadow: 0 0 0 3px rgb(190 133 42 / 14%);
+  border: 2px dashed var(--color-sf-graph-pending-border);
+  box-shadow: 0 0 0 3px var(--color-sf-graph-pending-ring);
 }
 
 .react-flow__node-entity.graph-node-path:not(.graph-node-focus) .entity-node-content {
-  border-color: #477c9f;
+  border-color: var(--color-sf-graph-path-border);
 }
 
 .react-flow__node-entity:hover,
@@ -121,7 +136,7 @@
   min-height: 100%;
   max-height: min(40vh, 320px);
   overflow-y: auto;
-  box-shadow: 0 9px 28px rgb(31 42 35 / 22%);
+  box-shadow: 0 9px 28px var(--color-sf-graph-node-shadow);
 }
 
 .entity-node-card:hover .entity-node-label,
@@ -133,24 +148,24 @@
 }
 
 .react-flow__edge-path {
-  stroke: #707a74;
+  stroke: var(--color-sf-graph-edge-default);
   stroke-width: 1.6;
 }
 
 .graph-edge-supports .react-flow__edge-path {
-  stroke: #218467;
+  stroke: var(--color-sf-graph-edge-supports);
 }
 
 .graph-edge-contradicts .react-flow__edge-path {
-  stroke: #b44747;
+  stroke: var(--color-sf-graph-edge-contradicts);
 }
 
 .graph-edge-causes .react-flow__edge-path {
-  stroke: #3f7194;
+  stroke: var(--color-sf-graph-edge-causes);
 }
 
 .graph-edge-predicts .react-flow__edge-path {
-  stroke: #7257a8;
+  stroke: var(--color-sf-graph-edge-predicts);
   stroke-dasharray: 6 4;
 }
 
@@ -159,13 +174,13 @@
 }
 
 .graph-edge-pending .react-flow__edge-path {
-  stroke: #b0781e;
+  stroke: var(--color-sf-graph-pending-border);
   stroke-width: 3;
   stroke-dasharray: 5 3;
 }
 
 .react-flow__edge-text {
-  fill: #3e4842;
+  fill: var(--color-sf-graph-edge-label);
   font-size: 10px;
 }
 
@@ -176,7 +191,7 @@
 
 .react-flow__controls {
   overflow: hidden;
-  border: 1px solid #c6ccc8;
+  border: 1px solid var(--color-sf-graph-controls-border);
   border-radius: 6px;
   box-shadow: none;
 }
@@ -184,7 +199,7 @@
 .react-flow__controls-button {
   min-height: 28px;
   border: 0;
-  border-bottom: 1px solid #d8ddda;
+  border-bottom: 1px solid var(--color-sf-graph-controls-divider);
   border-radius: 0;
 }
 

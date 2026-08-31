@@ -1,20 +1,22 @@
-import type {
-  ProjectionEdgeSummary,
-  ProjectionEntitySummary,
-  SimulateAckMessage,
-  SimulateErrorMessage,
-  SimulateRequestMessage,
+import {
+  RESEARCH_EXPANSION_REJECTED_WIRE_CODE,
+  RESEARCH_EXPANSION_REQUEST_WIRE_TYPE,
+  type ProjectionEdgeSummary,
+  type ProjectionEntitySummary,
+  type ResearchExpansionAckMessage,
+  type ResearchExpansionErrorMessage,
+  type ResearchExpansionRequestMessage,
 } from '../shared/companion-contract.js'
 
-export const SIMULATION_PROMPT_LIMIT = 12 * 1024
-export const SIMULATION_ACK_TIMEOUT_MS = 2_000
+export const RESEARCH_EXPANSION_PROMPT_LIMIT = 12 * 1024
+export const RESEARCH_EXPANSION_ACK_TIMEOUT_MS = 2_000
 export const RESEARCH_EXPANSION_ACTION_LABEL = 'Research & Expand'
 
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{22}$/u
 const BASE64URL_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
 
-export function createSimulationNonce(): string {
+export function createResearchExpansionNonce(): string {
   const bytes = new Uint8Array(16)
   globalThis.crypto.getRandomValues(bytes)
   let output = ''
@@ -103,18 +105,18 @@ export function buildResearchExpansionPrompt(input: ResearchExpansionPromptInput
     'the exact Node and Edge ids retained or rejected, assumptions, uncertainty, and remaining Evidence Gaps.\n'
 
   const fixedBytes = byteLength(title) + byteLength(instructions)
-  const contextBudget = Math.max(0, SIMULATION_PROMPT_LIMIT - fixedBytes)
+  const contextBudget = Math.max(0, RESEARCH_EXPANSION_PROMPT_LIMIT - fixedBytes)
   return title + truncateUtf8(focusContext, contextBudget) + instructions
 }
 
 interface ChannelPort {
-  postMessage(message: SimulateRequestMessage): void
+  postMessage(message: ResearchExpansionRequestMessage): void
   addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void
   removeEventListener(type: 'message', listener: (event: { data: unknown }) => void): void
   close?(): void
 }
 
-export type SimulationState =
+export type ResearchExpansionState =
   | { phase: 'idle' }
   | { phase: 'pending'; nonce: string; prompt: string }
   | {
@@ -126,19 +128,19 @@ export type SimulationState =
         | 'unavailable'
         | 'prompt_too_large'
         | 'invalid_nonce'
-        | SimulateErrorMessage['code']
+        | ResearchExpansionErrorMessage['code']
     }
   | {
       phase: 'acknowledged'
       nonce: string
       prompt: string
-      acknowledgement: SimulateAckMessage['status']
+      acknowledgement: ResearchExpansionAckMessage['status']
     }
 
-export interface SimulationChannelOptions {
+export interface ResearchExpansionChannelOptions {
   channel?: ChannelPort
   createNonce?: () => string
-  onStateChange?: (state: SimulationState) => void
+  onStateChange?: (state: ResearchExpansionState) => void
   ackTimeoutMs?: number
 }
 
@@ -148,7 +150,9 @@ function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): 
   return actual.length === expected.length && actual.every((key, index) => key === expected[index])
 }
 
-function parseReply(value: unknown): SimulateAckMessage | SimulateErrorMessage | undefined {
+function parseReply(
+  value: unknown,
+): ResearchExpansionAckMessage | ResearchExpansionErrorMessage | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
   const record = value as Record<string, unknown>
   if (
@@ -167,7 +171,10 @@ function parseReply(value: unknown): SimulateAckMessage | SimulateErrorMessage |
     record.type === 'error' &&
     hasExactKeys(record, ['type', 'nonce', 'code']) &&
     typeof record.nonce === 'string' &&
-    (record.code === 'SESSION_UNAVAILABLE' || record.code === 'SIMULATE_REJECTED')
+    (
+      record.code === 'SESSION_UNAVAILABLE'
+      || record.code === RESEARCH_EXPANSION_REJECTED_WIRE_CODE
+    )
   ) {
     return {
       type: 'error',
@@ -178,31 +185,31 @@ function parseReply(value: unknown): SimulateAckMessage | SimulateErrorMessage |
   return undefined
 }
 
-export class SimulationChannel {
-  private state: SimulationState = { phase: 'idle' }
+export class ResearchExpansionChannel {
+  private state: ResearchExpansionState = { phase: 'idle' }
   private timer: ReturnType<typeof setTimeout> | undefined
   private disposed = false
   private readonly channel: ChannelPort | undefined
   private readonly createNonce: () => string
-  private readonly onStateChange: ((state: SimulationState) => void) | undefined
+  private readonly onStateChange: ((state: ResearchExpansionState) => void) | undefined
   private readonly ackTimeoutMs: number
 
-  constructor(options: SimulationChannelOptions) {
+  constructor(options: ResearchExpansionChannelOptions) {
     this.channel = options.channel
-    this.createNonce = options.createNonce ?? createSimulationNonce
+    this.createNonce = options.createNonce ?? createResearchExpansionNonce
     this.onStateChange = options.onStateChange
-    this.ackTimeoutMs = options.ackTimeoutMs ?? SIMULATION_ACK_TIMEOUT_MS
+    this.ackTimeoutMs = options.ackTimeoutMs ?? RESEARCH_EXPANSION_ACK_TIMEOUT_MS
     this.channel?.addEventListener('message', this.onMessage)
   }
 
-  getState(): SimulationState {
+  getState(): ResearchExpansionState {
     return this.state
   }
 
-  simulate(prompt: string): void {
+  submit(prompt: string): void {
     if (this.disposed) return
     this.clearTimer()
-    if (byteLength(prompt) > SIMULATION_PROMPT_LIMIT) {
+    if (byteLength(prompt) > RESEARCH_EXPANSION_PROMPT_LIMIT) {
       this.update({ phase: 'failed', prompt, reason: 'prompt_too_large' })
       return
     }
@@ -225,7 +232,11 @@ export class SimulationChannel {
 
     this.update({ phase: 'pending', nonce, prompt })
     try {
-      this.channel.postMessage({ type: 'simulate', nonce, prompt })
+      this.channel.postMessage({
+        type: RESEARCH_EXPANSION_REQUEST_WIRE_TYPE,
+        nonce,
+        prompt,
+      })
     } catch {
       this.update({ phase: 'failed', nonce, prompt, reason: 'unavailable' })
       return
@@ -238,7 +249,7 @@ export class SimulationChannel {
 
   retry(): void {
     if (this.state.phase !== 'failed') return
-    this.simulate(this.state.prompt)
+    this.submit(this.state.prompt)
   }
 
   dispose(): void {
@@ -278,7 +289,7 @@ export class SimulationChannel {
     this.timer = undefined
   }
 
-  private update(state: SimulationState): void {
+  private update(state: ResearchExpansionState): void {
     this.state = state
     this.onStateChange?.(state)
   }

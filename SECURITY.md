@@ -24,10 +24,13 @@ errors; no citation or abstract is synthesized.
 
 Publications, PDFs, Drafts, Results, and Markdown are untrusted data. They are
 never treated as instructions, scripts, or HTML to execute. Research Project
-files are read and written only through DSH's filesystem boundary and are
-contained under the Session-derived project root. SciFork checkpoints only its
-managed paths on the current branch; it does not recover history, change
-branches, use remotes, or run destructive Git commands.
+files are read, created, and updated only through DSH's filesystem boundary and
+are contained under the Session-derived project root. The pinned DSH filesystem
+contract has no delete operation, so a Core-validated typed delete removes one
+Core-derived managed path with fixed arguments: `git rm -- <path>`. SciFork
+checkpoints only its managed paths on the current branch; it does not recover or
+rewrite history, manage branches, use remotes, or run destructive history,
+branch, or remote operations.
 
 Review whether a project contains PHI, PII, or controlled-access data before
 committing. Git sharing, remote hosting, and repository permissions are the
@@ -51,10 +54,11 @@ path can remain in the private local DSH Session. The model must not search
 around that directory, repeat the path in user-facing prose, copy the helper or
 request files into the Research Project, or include the path in a Draft.
 
-Do not put Page Keys, prompts, Draft bodies, abstracts, local absolute paths,
-or sensitive research data in SciFork logs, errors, Drafts, Research Projects,
-issue reports, or public repositories. The model-facing local DSH
-`resourceBase` described above is the sole approved absolute-path exception.
+Do not put Page Keys, prompts, or local absolute paths in SciFork logs, errors,
+Drafts, Research Projects, issue reports, or public repositories. Keep Draft
+bodies, abstracts, and sensitive research data out of logs, errors, issue
+reports, and public repositories. The model-facing local DSH `resourceBase`
+described above is the sole approved absolute-path exception.
 
 ## Compatibility and upgrades
 

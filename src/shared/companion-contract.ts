@@ -152,20 +152,24 @@ export type SnapshotResponse = SnapshotSuccess | CompanionFailure
 export type EntityResponse = EntitySuccess | CompanionFailure
 export type FocusResponse = FocusSuccess | CompanionFailure
 
-export interface SimulateRequestMessage {
-  type: 'simulate'
+/** Legacy v1 wire literals retained across first-party bundle reloads. */
+export const RESEARCH_EXPANSION_REQUEST_WIRE_TYPE = 'simulate' as const
+export const RESEARCH_EXPANSION_REJECTED_WIRE_CODE = 'SIMULATE_REJECTED' as const
+
+export interface ResearchExpansionRequestMessage {
+  type: typeof RESEARCH_EXPANSION_REQUEST_WIRE_TYPE
   nonce: string
   prompt: string
 }
 
-export interface SimulateAckMessage {
+export interface ResearchExpansionAckMessage {
   type: 'ack'
   nonce: string
   status: 'started' | 'queued'
 }
 
-export interface SimulateErrorMessage {
+export interface ResearchExpansionErrorMessage {
   type: 'error'
   nonce: string
-  code: 'SESSION_UNAVAILABLE' | 'SIMULATE_REJECTED'
+  code: 'SESSION_UNAVAILABLE' | typeof RESEARCH_EXPANSION_REJECTED_WIRE_CODE
 }

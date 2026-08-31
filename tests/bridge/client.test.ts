@@ -31,7 +31,7 @@ type MessageListener =
 const PAGE_KEY = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8'
 const LAUNCH_URL = `/scifork#key=${PAGE_KEY}`
 const NONCE = 'AQIDBAUGBwgJCgsMDQ4PEA'
-const PROMPT = 'Use this exact, bounded simulation prompt.'
+const PROMPT = 'Use this exact, bounded research expansion prompt.'
 
 class FakeBroadcastChannel {
   static instances: FakeBroadcastChannel[] = []
@@ -495,7 +495,7 @@ describe('SciFork DSH bridge', () => {
     })
   })
 
-  it('rejects simulation when the originating Session is no longer live', async () => {
+  it('rejects research expansion when the originating Session is no longer live', async () => {
     const bridge = await openBridge()
     delete bridge.state.byId['session-a']
 

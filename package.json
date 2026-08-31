@@ -16,6 +16,12 @@
     "cordis.patch.yml",
     "README.md",
     "SECURITY.md",
+    "CONTEXT.md",
+    "docs/scifork-product-design.md",
+    "docs/scifork-software-architecture.md",
+    "docs/specs/m0-compatibility-spike.md",
+    "docs/specs/m1-core-git.md",
+    "docs/specs/m2-companion.md",
     "docs/specs/m3-research.md",
     "docs/specs/simulation-branches.md",
     "docs/specs/progressive-research-expansion.md"

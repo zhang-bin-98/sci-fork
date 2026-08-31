@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   focusViewportCenter,
   layoutGraph,
-  selectFocusNeighborhood,
   selectGraphView,
 } from '../../src/companion/graph.js'
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
@@ -46,7 +45,6 @@ describe('Companion graph', () => {
     const selected = selectGraphView({
       entities,
       edges,
-      focus: { focusEntityId: 'node_b', pathIds: ['node_path'] },
     })
 
     expect(selected.entities.map(({ id }) => id)).toEqual([
@@ -56,45 +54,6 @@ describe('Companion graph', () => {
       'node_d',
       'node_e',
       'node_path',
-    ])
-    expect(selected.edges.map(({ id }) => id)).toEqual([
-      'edge_ab',
-      'edge_bc',
-      'edge_cd',
-      'edge_eb',
-    ])
-  })
-
-  it('selects the Focus, current path, and one-hop neighborhood only for bounded model context', () => {
-    const selected = selectFocusNeighborhood({
-      entities,
-      edges,
-      focus: { focusEntityId: 'node_b', pathIds: ['node_path'] },
-    })
-
-    expect(selected.entities.map(({ id }) => id)).toEqual([
-      'node_a',
-      'node_b',
-      'node_c',
-      'node_e',
-      'node_path',
-    ])
-    expect(selected.edges.map(({ id }) => id)).toEqual(['edge_ab', 'edge_bc', 'edge_eb'])
-  })
-
-  it('expands both endpoints and their one-hop relations for a stored edge model context', () => {
-    const selected = selectFocusNeighborhood({
-      entities,
-      edges,
-      focus: { focusEntityId: 'edge_bc', pathIds: [] },
-    })
-
-    expect(selected.entities.map(({ id }) => id)).toEqual([
-      'node_a',
-      'node_b',
-      'node_c',
-      'node_d',
-      'node_e',
     ])
     expect(selected.edges.map(({ id }) => id)).toEqual([
       'edge_ab',
@@ -129,7 +88,6 @@ describe('Companion graph', () => {
     const selected = selectGraphView({
       entities,
       edges,
-      focus: { focusEntityId: 'node_b', pathIds: ['node_path'] },
     })
     const reversed = {
       entities: [...selected.entities].reverse(),

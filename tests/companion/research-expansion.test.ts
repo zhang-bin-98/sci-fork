@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  createSimulationNonce,
+  createResearchExpansionNonce,
   RESEARCH_EXPANSION_ACTION_LABEL,
-  SimulationChannel,
+  ResearchExpansionChannel,
   buildResearchExpansionPrompt,
-} from '../../src/companion/simulation.js'
+} from '../../src/companion/research-expansion.js'
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
 class FakeChannel {
@@ -156,9 +156,9 @@ describe('literature-grounded research expansion prompt', () => {
   })
 })
 
-describe('simulation acknowledgement channel', () => {
+describe('research expansion acknowledgement channel', () => {
   it('creates a 128-bit unpadded base64url nonce', () => {
-    expect(createSimulationNonce()).toMatch(/^[A-Za-z0-9_-]{22}$/)
+    expect(createResearchExpansionNonce()).toMatch(/^[A-Za-z0-9_-]{22}$/)
   })
 
   it('retains the prompt after timeout and retries only on demand with a new nonce', () => {
@@ -170,57 +170,57 @@ describe('simulation acknowledgement channel', () => {
       .fn<() => string>()
       .mockReturnValueOnce(firstNonce)
       .mockReturnValueOnce(secondNonce)
-    const simulation = new SimulationChannel({ channel, createNonce })
+    const researchExpansion = new ResearchExpansionChannel({ channel, createNonce })
     const prompt = 'Bounded prompt retained exactly.'
 
-    simulation.simulate(prompt)
+    researchExpansion.submit(prompt)
     expect(channel.posted).toEqual([
       { type: 'simulate', nonce: firstNonce, prompt },
     ])
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
       nonce: firstNonce,
       prompt,
     })
 
     vi.advanceTimersByTime(1_999)
-    expect(simulation.getState()).toMatchObject({ phase: 'pending' })
+    expect(researchExpansion.getState()).toMatchObject({ phase: 'pending' })
     vi.advanceTimersByTime(1)
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'failed',
       reason: 'timeout',
       prompt,
     })
     expect(channel.posted).toHaveLength(1)
 
-    simulation.retry()
+    researchExpansion.retry()
     expect(channel.posted).toEqual([
       { type: 'simulate', nonce: firstNonce, prompt },
       { type: 'simulate', nonce: secondNonce, prompt },
     ])
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
       nonce: secondNonce,
       prompt,
     })
 
     channel.emit({ type: 'ack', nonce: firstNonce, status: 'started' })
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
       nonce: secondNonce,
     })
 
     channel.emit({ type: 'ack', nonce: secondNonce, status: 'queued' })
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'acknowledged',
       acknowledgement: 'queued',
       nonce: secondNonce,
       prompt,
     })
     vi.advanceTimersByTime(2_000)
-    expect(simulation.getState()).toMatchObject({ phase: 'acknowledged' })
+    expect(researchExpansion.getState()).toMatchObject({ phase: 'acknowledged' })
 
-    simulation.dispose()
+    researchExpansion.dispose()
     expect(channel.listeners.size).toBe(0)
   })
 })

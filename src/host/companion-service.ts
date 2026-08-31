@@ -26,6 +26,7 @@ import {
   type ResearchHostDeps,
 } from './apply-command.js'
 import type { SessionsPort, StorageDomain } from './contracts.js'
+import { boundedLabel } from './labels.js'
 import { PageKeyStore, type PageBinding } from './page-keys.js'
 import { readFocus, writeFocus } from './ui-state.js'
 
@@ -73,18 +74,6 @@ function entityExists(project: LoadedProject, entityId: string): boolean {
   if (type === 'result') return project.results.has(entityId)
   if (type === 'edge') return project.edges.has(entityId)
   return false
-}
-
-function boundedLabel(value: string, fallback: string): string {
-  const firstLine = value
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0)
-  const normalized = (firstLine ?? fallback)
-    .replace(/^#{1,6}\s+/u, '')
-    .replace(/\s+/gu, ' ')
-    .trim()
-  return (normalized || fallback).slice(0, 240)
 }
 
 interface ReferenceCounts {

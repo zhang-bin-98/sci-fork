@@ -75,7 +75,7 @@ const EDGE_FILE = JSON.stringify({
     { pmid: '12345678' },
     { doi: '10.1000/second' },
   ],
-  provenance: 'Simulation proposal pending experimental review.',
+  provenance: 'Research expansion proposal pending experimental review.',
   evidence_gap: 'Independent replication is still missing.',
 })
 

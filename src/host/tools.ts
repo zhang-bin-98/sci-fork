@@ -10,6 +10,7 @@ import {
   type SciForkFailure,
 } from './apply-command.js'
 import type { ContentBlock, StorageDomain, ToolsPort, ToolDefinition, ToolRunContext } from './contracts.js'
+import { boundedLabel } from './labels.js'
 import { readFocus, writeFocus, type FocusRecord } from './ui-state.js'
 
 /**
@@ -143,18 +144,6 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
       : undefined
   }
   return undefined
-}
-
-function boundedLabel(value: string, fallback: string): string {
-  const firstLine = value
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0)
-  const normalized = (firstLine ?? fallback)
-    .replace(/^#{1,6}\s+/u, '')
-    .replace(/\s+/gu, ' ')
-    .trim()
-  return (normalized || fallback).slice(0, 240)
 }
 
 function compactEntity(entity: ProjectionEntity): Record<string, unknown> {

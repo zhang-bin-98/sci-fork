@@ -6,7 +6,7 @@ import {
   DetailsPane,
   EntityNodeCard,
   HeaderIdentity,
-  SimulationRecoveryControls,
+  ResearchExpansionRecoveryControls,
   copyEntityId,
   settleEntityIdCopyFeedback,
 } from '../../src/companion/app.js'
@@ -61,23 +61,23 @@ describe('Companion graph UI', () => {
 
   it('moves failed research recovery controls out of the narrow header', () => {
     const header = renderToStaticMarkup(
-      createElement(SimulationRecoveryControls, {
+      createElement(ResearchExpansionRecoveryControls, {
         placement: 'header',
         onRetry: () => undefined,
         onCopy: () => undefined,
       }),
     )
     const narrow = renderToStaticMarkup(
-      createElement(SimulationRecoveryControls, {
+      createElement(ResearchExpansionRecoveryControls, {
         placement: 'narrow',
         onRetry: () => undefined,
         onCopy: () => undefined,
       }),
     )
 
-    expect(header).toContain('data-simulation-recovery="header"')
+    expect(header).toContain('data-research-expansion-recovery="header"')
     expect(header).toContain('hidden sm:contents')
-    expect(narrow).toContain('data-simulation-recovery="narrow"')
+    expect(narrow).toContain('data-research-expansion-recovery="narrow"')
     expect(narrow).toContain('<section class="flex ')
     expect(narrow).toContain(' sm:hidden"')
     expect(narrow).toContain('Research step failed')

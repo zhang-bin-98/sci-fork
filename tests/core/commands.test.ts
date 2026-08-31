@@ -362,7 +362,7 @@ describe('planCommand: edges', () => {
       relation: 'causes',
       basis: 'ai_inference',
       publicationRefs: [{ pmid: '12345678', doi: 'https://doi.org/10.1000/ABC' }],
-      provenance: 'model simulation',
+      provenance: 'model research expansion',
       evidenceGap: 'no direct measurement',
     }, sha256)
     expect(ok.ok).toBe(true)
@@ -379,7 +379,7 @@ describe('planCommand: edges', () => {
       relation: 'causes',
       basis: 'ai_inference',
       publicationRefs: [{ pmid: '12345678' }],
-      provenance: 'model simulation',
+      provenance: 'model research expansion',
     }, sha256)
     expect(noGap.ok).toBe(false)
 
@@ -390,7 +390,7 @@ describe('planCommand: edges', () => {
       to: NODE_B,
       relation: 'causes',
       basis: 'ai_inference',
-      provenance: 'model simulation',
+      provenance: 'model research expansion',
       evidenceGap: 'no direct measurement',
     }, sha256)
     expect(noReferences.ok).toBe(false)
@@ -426,7 +426,7 @@ describe('planCommand: edges', () => {
       relation: 'predicts',
       basis: 'ai_inference',
       publicationRefs: [{ pmid: '12345678' }],
-      provenance: 'bounded simulation',
+      provenance: 'bounded research expansion',
       evidenceGap: 'not experimentally tested',
     }, sha256)
     expect(valid.ok).toBe(true)
@@ -439,7 +439,7 @@ describe('planCommand: edges', () => {
       relation: 'predicts',
       basis: 'ai_inference',
       publicationRefs: [{ pmid: '12345678' }],
-      provenance: 'bounded simulation',
+      provenance: 'bounded research expansion',
       evidenceGap: 'not experimentally tested',
     }, sha256)
     expect(invalid.ok).toBe(false)
@@ -502,7 +502,7 @@ describe('planCommand: edges', () => {
       relation: 'causes',
       basis: 'ai_inference',
       publicationRefs: [{ pmid: '12345678' }],
-      provenance: 'model simulation',
+      provenance: 'model research expansion',
       evidenceGap: 'no direct measurement',
     }, sha256)
     if (!created.ok) throw new Error('create failed')

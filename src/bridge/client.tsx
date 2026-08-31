@@ -1,10 +1,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import { createElement } from 'react'
-import type {
-  SimulateAckMessage,
-  SimulateErrorMessage,
-  SimulateRequestMessage,
+import {
+  RESEARCH_EXPANSION_REJECTED_WIRE_CODE,
+  RESEARCH_EXPANSION_REQUEST_WIRE_TYPE,
+  type ResearchExpansionAckMessage,
+  type ResearchExpansionErrorMessage,
+  type ResearchExpansionRequestMessage,
 } from '../shared/companion-contract.js'
 import { channelNameForPageKey, isPageKey } from '../shared/page-key.js'
 import { COMPANION_URL, ROUTE_LAUNCH } from '../shared/routes.js'
@@ -86,7 +88,9 @@ function pageKeyFromLaunchUrl(url: string): string | undefined {
   return isPageKey(pageKey) ? pageKey : undefined
 }
 
-function isSimulateRequest(value: unknown): value is SimulateRequestMessage {
+function isResearchExpansionRequest(
+  value: unknown,
+): value is ResearchExpansionRequestMessage {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   const keys = Object.keys(record)
@@ -98,7 +102,7 @@ function isSimulateRequest(value: unknown): value is SimulateRequestMessage {
   ) {
     return false
   }
-  if (record.type !== 'simulate') return false
+  if (record.type !== RESEARCH_EXPANSION_REQUEST_WIRE_TYPE) return false
   if (typeof record.nonce !== 'string' || !NONCE_PATTERN.test(record.nonce)) return false
   if (typeof record.prompt !== 'string' || record.prompt.length === 0) return false
   return new TextEncoder().encode(record.prompt).byteLength <= MAX_PROMPT_BYTES
@@ -107,20 +111,20 @@ function isSimulateRequest(value: unknown): value is SimulateRequestMessage {
 function postError(
   channel: BroadcastChannel,
   nonce: string,
-  code: SimulateErrorMessage['code'],
+  code: ResearchExpansionErrorMessage['code'],
 ): void {
-  const message: SimulateErrorMessage = { type: 'error', nonce, code }
+  const message: ResearchExpansionErrorMessage = { type: 'error', nonce, code }
   channel.postMessage(message)
 }
 
-function handleSimulation(
+function handleResearchExpansion(
   state: BridgeState,
   binding: ChannelBinding,
   sessionId: string,
   sessionScope: Context,
   value: unknown,
 ): void {
-  if (state.disposed || !isSimulateRequest(value)) return
+  if (state.disposed || !isResearchExpansionRequest(value)) return
   if (binding.acceptedNonces.has(value.nonce)) return
 
   const session = state.sessions.list.getSnapshot().byId[sessionId]
@@ -129,20 +133,20 @@ function handleSimulation(
     return
   }
 
-  const status: SimulateAckMessage['status'] = session.running ? 'queued' : 'started'
+  const status: ResearchExpansionAckMessage['status'] = session.running ? 'queued' : 'started'
   binding.acceptedNonces.add(value.nonce)
   try {
     const input = state.conversation.input.for(sessionScope)
     input.setDraft(value.prompt)
     input.submit()
-    const acknowledgement: SimulateAckMessage = {
+    const acknowledgement: ResearchExpansionAckMessage = {
       type: 'ack',
       nonce: value.nonce,
       status,
     }
     binding.channel.postMessage(acknowledgement)
   } catch {
-    postError(binding.channel, value.nonce, 'SIMULATE_REJECTED')
+    postError(binding.channel, value.nonce, RESEARCH_EXPANSION_REJECTED_WIRE_CODE)
   }
 }
 
@@ -195,7 +199,7 @@ async function finishLaunch(
       acceptedNonces,
       listener: (event) => {
         if (binding !== undefined) {
-          handleSimulation(state, binding, sessionId, sessionScope, event.data)
+          handleResearchExpansion(state, binding, sessionId, sessionScope, event.data)
         }
       },
     }

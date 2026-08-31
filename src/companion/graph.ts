@@ -1,6 +1,5 @@
 import { Graph, layout } from '@dagrejs/dagre'
 import type {
-  FocusState,
   ProjectionEdgeSummary,
   ProjectionEntitySummary,
   SnapshotGraph,
@@ -8,12 +7,6 @@ import type {
 
 export const GRAPH_NODE_WIDTH = 224
 export const GRAPH_NODE_HEIGHT = 88
-
-export interface GraphView extends SnapshotGraph {}
-
-export interface GraphViewInput extends SnapshotGraph {
-  focus?: FocusState
-}
 
 export interface LayoutNode {
   id: string
@@ -55,70 +48,11 @@ function sortEdges(edges: readonly ProjectionEdgeSummary[]): ProjectionEdgeSumma
   )
 }
 
-export function selectGraphView(input: GraphViewInput): GraphView {
+export function selectGraphView(input: SnapshotGraph): SnapshotGraph {
   return {
     entities: sortEntities(input.entities),
     edges: sortEdges(input.edges),
   }
-}
-
-export function selectFocusNeighborhood(input: GraphViewInput): GraphView {
-  const entities = sortEntities(input.entities)
-  const edges = sortEdges(input.edges)
-  if (input.focus === undefined) return { entities, edges }
-
-  const entityIds = new Set(entities.map(({ id }) => id))
-  const edgeById = new Map(
-    edges.flatMap((edge) => (edge.id === undefined ? [] : [[edge.id, edge] as const])),
-  )
-  const selectedEntities = new Set<string>()
-  const selectedEdges = new Set<string>()
-
-  const includeEntity = (id: string): void => {
-    if (entityIds.has(id)) selectedEntities.add(id)
-  }
-  const includeEdge = (edge: ProjectionEdgeSummary): void => {
-    selectedEdges.add(graphEdgeId(edge))
-    includeEntity(edge.from)
-    includeEntity(edge.to)
-  }
-  const includePathId = (id: string): void => {
-    if (entityIds.has(id)) {
-      includeEntity(id)
-      return
-    }
-    const edge = edgeById.get(id)
-    if (edge !== undefined) includeEdge(edge)
-  }
-
-  for (const id of input.focus.pathIds) includePathId(id)
-
-  const focusEdge = edgeById.get(input.focus.focusEntityId)
-  if (focusEdge !== undefined) {
-    includeEdge(focusEdge)
-    const endpoints = new Set([focusEdge.from, focusEdge.to])
-    for (const edge of edges) {
-      if (endpoints.has(edge.from) || endpoints.has(edge.to)) includeEdge(edge)
-    }
-  } else {
-    includeEntity(input.focus.focusEntityId)
-    for (const edge of edges) {
-      if (
-        edge.from === input.focus.focusEntityId ||
-        edge.to === input.focus.focusEntityId
-      ) {
-        includeEdge(edge)
-      }
-    }
-  }
-
-  const localEntities = entities.filter(({ id }) => selectedEntities.has(id))
-  const localEdges = edges.filter(
-    (edge) =>
-      selectedEdges.has(graphEdgeId(edge)) ||
-      (selectedEntities.has(edge.from) && selectedEntities.has(edge.to)),
-  )
-  return { entities: localEntities, edges: localEdges }
 }
 
 function stableCoordinate(value: number): number {

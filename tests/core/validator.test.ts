@@ -109,7 +109,7 @@ describe('validateProject', () => {
         relation: 'predicts',
         basis: 'ai_inference',
         publication_refs: [{ pmid: '12345678' }],
-        provenance: 'bounded simulation',
+        provenance: 'bounded research expansion',
         evidence_gap: 'not experimentally tested',
       }),
     ])
@@ -122,7 +122,7 @@ describe('validateProject', () => {
         relation: 'predicts',
         basis: 'ai_inference',
         publication_refs: [{ pmid: '12345678' }],
-        provenance: 'bounded simulation',
+        provenance: 'bounded research expansion',
         evidence_gap: 'not experimentally tested',
       }),
     ])

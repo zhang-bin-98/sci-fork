@@ -683,8 +683,12 @@ GIT_STATE_UNSUPPORTED
 CHECKPOINT_FAILED
 PAGE_KEY_INVALID
 SESSION_UNAVAILABLE
-SIMULATE_BRIDGE_UNAVAILABLE
+SIMULATE_REJECTED
 ```
+
+`SIMULATE_REJECTED` 与 `scifork:simulate:v1` 是为已打开 Companion 跨
+first-party bundle reload 保留的 v1 wire literals；当前领域、模块和 UI 统一使用
+Research Expansion，不把 legacy wire 名称暴露为产品概念。
 
 错误 payload：
 

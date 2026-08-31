@@ -32,10 +32,10 @@ import { clearStoredPageKey } from './page-key.js'
 import { startVisiblePolling } from './polling.js'
 import {
   RESEARCH_EXPANSION_ACTION_LABEL,
-  SimulationChannel,
+  ResearchExpansionChannel,
   buildResearchExpansionPrompt,
-  type SimulationState,
-} from './simulation.js'
+  type ResearchExpansionState,
+} from './research-expansion.js'
 
 type EntityFlowNode = Node<
   { entity: ProjectionEntitySummary; direction: 'LR' | 'TB' },
@@ -178,7 +178,7 @@ export function HeaderIdentity(props: {
   )
 }
 
-export function SimulationRecoveryControls(props: {
+export function ResearchExpansionRecoveryControls(props: {
   placement: 'header' | 'narrow'
   onRetry: () => void
   onCopy: () => void
@@ -187,7 +187,7 @@ export function SimulationRecoveryControls(props: {
     return (
       <div
         className="hidden sm:contents"
-        data-simulation-recovery="header"
+        data-research-expansion-recovery="header"
       >
         <button type="button" className={BUTTON_HEADER} onClick={props.onRetry}>
           Retry
@@ -202,7 +202,7 @@ export function SimulationRecoveryControls(props: {
   return (
     <section
       className="flex min-h-11 shrink-0 items-center gap-2 border-b border-sf-danger-border bg-sf-danger-soft px-2.5 py-1.5 text-xs text-sf-danger-foreground sm:hidden"
-      data-simulation-recovery="narrow"
+      data-research-expansion-recovery="narrow"
       role="alert"
       aria-label="Research expansion failed"
     >
@@ -350,7 +350,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
         }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#d4d8d5" gap={24} size={1} />
+        <Background color="var(--color-sf-graph-grid)" gap={24} size={1} />
         <Controls showInteractive={false} position="bottom-left" />
       </ReactFlow>
     </section>
@@ -634,7 +634,7 @@ function failureMessage(error: unknown): string {
     : 'The Companion is temporarily unavailable.'
 }
 
-function simulationLabel(state: SimulationState): string | undefined {
+function researchExpansionLabel(state: ResearchExpansionState): string | undefined {
   if (state.phase !== 'acknowledged') return undefined
   return state.acknowledgement === 'started' ? 'Started' : 'Queued'
 }
@@ -648,7 +648,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const [detailsOpen, setDetailsOpen] = React.useState(true)
   const [error, setError] = React.useState<string>()
   const [pendingFocusId, setPendingFocusId] = React.useState<string>()
-  const [simulationState, setSimulationState] = React.useState<SimulationState>({
+  const [researchExpansionState, setResearchExpansionState] =
+    React.useState<ResearchExpansionState>({
     phase: 'idle',
   })
   const snapshotRef = React.useRef<SnapshotSuccess | undefined>(undefined)
@@ -658,7 +659,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const detailsRequestRef = React.useRef(0)
   const focusQueueRef = React.useRef<FocusSelectionQueue<FocusSuccess> | undefined>(undefined)
   const snapshotInFlightRef = React.useRef(false)
-  const simulationRef = React.useRef<SimulationChannel | undefined>(undefined)
+  const researchExpansionRef =
+    React.useRef<ResearchExpansionChannel | undefined>(undefined)
 
   React.useEffect(
     () => () => {
@@ -820,17 +822,17 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
             ) => browserChannel.removeEventListener('message', listener),
             close: () => browserChannel.close(),
           }
-    const simulation = new SimulationChannel({
+    const researchExpansion = new ResearchExpansionChannel({
       ...(channel === undefined ? {} : { channel }),
       onStateChange: (state) => {
-        if (mountedRef.current) setSimulationState(state)
+        if (mountedRef.current) setResearchExpansionState(state)
       },
     })
-    simulationRef.current = simulation
-    setSimulationState(simulation.getState())
+    researchExpansionRef.current = researchExpansion
+    setResearchExpansionState(researchExpansion.getState())
     return () => {
-      simulationRef.current = undefined
-      simulation.dispose()
+      researchExpansionRef.current = undefined
+      researchExpansion.dispose()
     }
   }, [invalidKey, props.pageKey])
 
@@ -844,17 +846,17 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
     [graph],
   )
 
-  const simulate = (): void => {
+  const submitResearchExpansion = (): void => {
     const focusEntityId = snapshotRef.current?.focus?.focusEntityId
     const latestGraph = graphRef.current
     if (focusEntityId === undefined || latestGraph === undefined) return
-    simulationRef.current?.simulate(
+    researchExpansionRef.current?.submit(
       buildResearchExpansionPrompt({ focusEntityId, ...latestGraph }),
     )
   }
 
   const copyPrompt = (): void => {
-    const state = simulationRef.current?.getState()
+    const state = researchExpansionRef.current?.getState()
     if (state === undefined || state.phase === 'idle') return
     void navigator.clipboard?.writeText(state.prompt).catch(() => undefined)
   }
@@ -863,7 +865,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   const project = snapshot?.project
   const focus = snapshot?.focus
-  const acknowledgement = simulationLabel(simulationState)
+  const acknowledgement = researchExpansionLabel(researchExpansionState)
 
   return (
     <main className="companion-app flex h-dvh min-h-0 w-full flex-col bg-sf-canvas text-sf-ink">
@@ -879,28 +881,30 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
               {acknowledgement}
             </output>
           )}
-          {simulationState.phase === 'failed' ? (
-            <SimulationRecoveryControls
+          {researchExpansionState.phase === 'failed' ? (
+            <ResearchExpansionRecoveryControls
               placement="header"
-              onRetry={() => simulationRef.current?.retry()}
+              onRetry={() => researchExpansionRef.current?.retry()}
               onCopy={copyPrompt}
             />
           ) : null}
           <button
             type="button"
             className={BUTTON_PRIMARY}
-            disabled={focus === undefined || simulationState.phase === 'pending'}
-            onClick={simulate}
+            disabled={focus === undefined || researchExpansionState.phase === 'pending'}
+            onClick={submitResearchExpansion}
           >
-            {simulationState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
+            {researchExpansionState.phase === 'pending'
+              ? 'Submitting'
+              : RESEARCH_EXPANSION_ACTION_LABEL}
           </button>
         </div>
       </header>
 
-      {simulationState.phase === 'failed' ? (
-        <SimulationRecoveryControls
+      {researchExpansionState.phase === 'failed' ? (
+        <ResearchExpansionRecoveryControls
           placement="narrow"
-          onRetry={() => simulationRef.current?.retry()}
+          onRetry={() => researchExpansionRef.current?.retry()}
           onCopy={copyPrompt}
         />
       ) : null}

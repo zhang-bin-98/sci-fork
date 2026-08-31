@@ -66,7 +66,7 @@ and reading an empty Focus.
 
 All M0 gates remain recorded as passing: clean-package assembly, real DSH
 HTTP/Git/Skill catalog, install/uninstall, runtime HMR unload/reload, sequential
-Skill loading, and scoped Simulate submission.
+Skill loading, and scoped Research Expansion submission.
 
 Build and verify before installing from a checkout:
 
