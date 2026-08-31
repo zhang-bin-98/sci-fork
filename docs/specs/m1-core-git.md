@@ -29,7 +29,7 @@ commands），使 M2 Companion 与 M3 Research 可以直接消费。
 - 不实现 Companion 页面、Page Key、Companion API、Simulate BroadcastChannel
   （M2）。
 - 不实现 `SciFork Research` / `pubmed-search` 的 Draft 格式化与检索逻辑（M3）。
-- 不实现 import 的用户选择 UI；M1 只实现 `ImportDraftItem` 命令与校验。
+- 不实现 import 的预览 UI；M1 只实现 `ImportDraftItem` 命令与校验。
 - 不引入架构 §14 之外的运行时依赖（新增 zod、gray-matter、js-yaml，均已在
   §14 批准）。
 - 不在本仓库运行生产 profile 冒烟；冒烟只针对一次性 profile 且需用户批准。
@@ -45,8 +45,8 @@ commands），使 M2 Companion 与 M3 Research 可以直接消费。
 2. Locator kind 使用 v0.12 的 `pubmed_abstract`（v0.11 示例的 `abstract`
    已更正）。
 3. PMID 与 DOI 同时存在时，Core 离线只能校验格式并规范化（PMID canonical、
-   DOI alias）；两者指向同一文献的一致性由候选审查时用户确认，Draft 校验
-   报告 `PMID_DOI_CONSISTENCY_UNVERIFIED` 提示。
+   DOI alias）；两者指向同一文献的一致性由机器审核理由覆盖，Draft 校验报告
+   `PMID_DOI_CONSISTENCY_UNVERIFIED` 提示。
 
 ## Pinned contracts（0.1.1-rc.2）
 
@@ -103,8 +103,10 @@ contains(parent, child): boolean
 - 所有项目文件内容读写经 `ctx.fs`（受 DSH 观察/沙箱策略约束），不使用裸
   `node:fs` 读写文件内容；仅 init 时用 `node:fs` mkdir 物化四个空目录。
 - `FsError` 码 `FS_STALE_VERSION`/`FS_NOT_OBSERVED` 映射为 `STALE_TARGET`。
-- 无 delete/rename 能力；M1 不据此引入 Git 补偿删除或恢复路径。检查点失败时
-  保留写入并返回结构化诊断，由 DSH Chat 或用户处理。
+- 无 delete/rename 能力；M1 不据此引入 Git 补偿删除或恢复路径。后续经批准的
+  [bounded simulation branches](simulation-branches.md) 只为 Core 派生的单个
+  Edge/Hypothesis/Prediction 路径增加 argv-only `git rm`，不改变检查点失败时由
+  DSH Chat 或用户处理的恢复边界。
 
 ### 4. `ctx.commands`（dsh-commands/lib/types/index.d.ts、types.d.ts）
 
@@ -159,12 +161,12 @@ locator:                    # 二选一
   # 或 kind: pdf; page?: 1..99999; section?: 1..500 字符（二者至少其一）
 assertion: "<1..4000 字符>"
 direction: supports | contradicts | context
-review_status: candidate | reviewed | rejected
+review_status: candidate | machine_reviewed | reviewed | rejected
 limitations:               # 可选，≤20 条，每条 ≤500 字符
 ```
 
 - 正文可选；`assertion` 即人类可读断言。
-- 状态机：candidate → reviewed | rejected；reviewed → rejected；rejected 终态。
+- 新建路径统一落为 `machine_reviewed`；`candidate` 仅兼容已有项目。状态机：candidate → machine_reviewed | reviewed | rejected；machine_reviewed → reviewed | rejected；reviewed → rejected；rejected 终态。
 
 ### Node（nodes/node_<uuid>.md，front matter + 必填正文）
 
@@ -189,6 +191,7 @@ evidence_refs:             # 可选，≤50 条，无重复
   "relation": "supports | contradicts | causes | associated_with",
   "basis": "literature | experiment | ai_inference",
   "evidence_refs": [ { "id": "ev_…", "role": "supports | contradicts" } ],
+  "publication_refs": [ { "pmid": "12345678", "doi": "10.xxxx/example" } ],
   "provenance": "…",
   "evidence_gap": "…"
 }
@@ -196,7 +199,10 @@ evidence_refs:             # 可选，≤50 条，无重复
 
 - `from ≠ to`；两端必须存在且为 node 或 result。
 - `basis: literature` 必须带 ≥1 条 reviewed EA 引用（role 与 direction 一致）。
-- `basis: ai_inference` 必须带 `provenance` 与 `evidence_gap`（各 ≤2000 字符）。
+- `basis: ai_inference` 必须带 `provenance`、`evidence_gap`（各 ≤2000 字符）与
+  `publication_refs`（1..50 条）；每条至少有 PMID 或规范化 DOI，列表按 Publication
+  Reference 去重。这些检索引用不是 Evidence Assertion。
+- `publication_refs` 只允许用于 `ai_inference`；literature/experiment Edge 拒绝该字段。
 - `evidence_refs` 可选，≤50 条；`from`/`to` 在 UpdateEdge 中不可变。
 
 ### Result（results/res_<uuid>.md，front matter + 必填正文）
@@ -270,23 +276,31 @@ interface ResearchProject {
 
 | kind | 载荷（必填/可选） | 规则 |
 | --- | --- | --- |
-| `create_evidence_assertion` | id、publicationRef?、locator、assertion、direction、limitations?、body? | 落盘 `review_status` 强制 candidate；id 不存在 |
-| `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: reviewed\|rejected、limitations? | 按状态机转移 |
+| `create_evidence_assertion` | id、publicationRef?、locator、assertion、direction、citation、machineReviewRationale、limitations?、body? | 落盘 `review_status` 强制 machine_reviewed；id 不存在 |
+| `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: machine_reviewed\|reviewed\|rejected、limitations? | 按状态机转移 |
 | `create_node` | id、nodeKind、confidence、evidenceRefs?、body | 创建 finding 须满足门槛 |
 | `update_node` | id、expectedFileVersion、nodeKind?、confidence?、evidenceRefs?、body?（至少一项） | 结果态满足门槛 |
-| `create_edge` | id、from、to、relation、basis、evidenceRefs?、provenance?、evidenceGap? | 端点存在；basis 规则 |
-| `update_edge` | id、expectedFileVersion、relation?、basis?、evidenceRefs?、provenance?、evidenceGap?（至少一项） | from/to 不可变 |
+| `create_edge` | id、from、to、relation、basis、evidenceRefs?、publicationRefs?、provenance?、evidenceGap? | 端点存在；basis 规则 |
+| `update_edge` | id、expectedFileVersion、relation?、basis?、evidenceRefs?、publicationRefs?、provenance?、evidenceGap?（至少一项） | from/to 不可变 |
 | `create_result` | id、observedAt、body | 落盘 status 强制 draft |
 | `update_result` | id、expectedFileVersion、status?、observedAt?、body?（至少一项） | 按状态机转移 |
-| `import_draft_item` | id、draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须可导入；转换为 candidate EA 的单实体命令 |
+| `import_draft_item` | id、draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须通过机器审核字段校验；转换为 machine_reviewed EA 的单实体命令 |
+| `delete_edge` | id、expectedFileVersion | 删除后项目仍须有效，不能使 Finding 失去唯一 Result 支持 |
+| `delete_node` | id、expectedFileVersion | 只允许无关联 Edge 的 Hypothesis/Prediction；Finding 不可删除 |
 
 - Create*：目标 id 必须不存在；文件写入用 `createIfAbsent` intent。
 - Update*/review：必须携带 `expectedFileVersion`（目标文件当前 SHA-256），
   不符 → `STALE_TARGET`。
-- `planCommand(project, command)` 输出 `{ path, content }`：相对路径由
-  Core 从实体 id 构造（绝不接受调用方路径）。
+- Delete*：同样验证 `expectedFileVersion`，并只计划一个由 id 派生的现有路径；
+  Host 删除边界见 [simulation branches spec](simulation-branches.md)。
+- `planCommand(project, command)` 为 create/update 输出 `{ path, content }`，
+  为 delete 输出 `{ path, writeKind: 'delete' }`；相对路径都由 Core 从实体 id
+  构造（绝不接受调用方路径）。
+- 所有 create/update/delete 候选计划在返回前应用到临时受管文件映射并执行完整
+  parser + validator；会破坏任一跨实体科研不变量的命令必须在 Host 写入前失败。参见
+  [invariant-safe typed updates](invariant-safe-updates.md)。
 - `import_draft_item` 转换后的 EA：publication_ref、locator、assertion、
-  direction、limitations 来自候选项；正文为空。
+  direction、citation、machine_review_rationale、limitations 来自候选项；正文为空。
 
 ### Research Import Draft
 
@@ -304,12 +318,12 @@ limitations ≤ 20×500；locator section ≤ 500。
 - DOI 规范化：去空白与 `doi:`/`https?://(dx\.)?doi\.org/` 前缀；目录指示符
   `10.xxxx` 转小写，后缀保留原样；`/^10\.\d{4,9}\/.+$/` 否则无效。
 - 至少一个有效标识才可持久化；两者都有效时提示
-  `PMID_DOI_CONSISTENCY_UNVERIFIED`（一致性由用户确认，见文档修正 3）。
+  `PMID_DOI_CONSISTENCY_UNVERIFIED`（一致性必须由机器审核解析，见文档修正 3）。
 - Draft 声明 `review_status`、Finding/Edge/Result、受管路径、Git 参数或 UI
   状态字段 → 结构错误（zod strict 拒绝未知键）。
 
-`ImportDraftItem` 只接受判定为可导入的候选；未选择、不可导入或校验失败条目
-不进入仓库。
+`ImportDraftItem` 只接受判定为可导入且具备 Citation Snapshot 与机器审核理由的候选；
+不可导入或校验失败条目不进入仓库。
 
 ### 投影（projection）
 
@@ -382,7 +396,8 @@ interface ProjectionEdge {
 → Core parseCommand / planCommand → INVALID_ENTITY
 → ctx.fs writeText（createIfAbsent / replaceIfVersion + fileVersion 双保险）
 → 重读全部受管文件并要求等于“初始快照 + plan.path 新内容”（不等则返回 STALE_REVISION 诊断，不做破坏性回滚）
-→ git add <plan.path> && git commit --only <plan.path> -m "scifork: <kind> <entityId>"
+→ create/update: git add -- <plan.path>; deletion: retain the exact-path git rm staging
+→ git commit --only <plan.path> -m "scifork: <kind> <entityId>"
 → 返回 { ok, entityId, revision, checkpointId }
 ```
 
@@ -395,8 +410,10 @@ interface ProjectionEdge {
   或用户使用 Git。
 - commit 用 `--only <paths>`：不改变无关 staged files，绝不 `git add .`。
 - 真实 Git 验证的路径语义：`git commit --only` 的 pathspec 必须命中 index，
-  因此先 `git add -- <paths>` 再 `commit --only`；普通 mutation 的 paths 只取
-  Core 计划出的单实体 `plan.path`，初始化只提交 `research.json`。
+  因此 create/update 先 `git add -- <paths>` 再 `commit --only`；deletion 已由
+  `git rm -- <path>` 从 index 移除并暂存，直接进入同一个 `commit --only`，不得
+  对已不存在的 path 再执行 `git add`。普通 mutation 的 paths 只取 Core 计划
+  出的单实体 `plan.path`，初始化只提交 `research.json`。
 
 ### Git 检查点边界（git-checkpoints.ts）
 

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  createSimulationNonce,
-  SimulationChannel,
-  buildSimulationPrompt,
-} from '../../src/companion/simulation.js'
+  createResearchExpansionNonce,
+  RESEARCH_EXPANSION_ACTION_LABEL,
+  ResearchExpansionChannel,
+  buildResearchExpansionPrompt,
+} from '../../src/companion/research-expansion.js'
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
 class FakeChannel {
@@ -35,6 +36,8 @@ const promptInput = {
       type: 'node' as const,
       kind: 'hypothesis' as const,
       confidence: 'low' as const,
+      referenceCount: 0,
+      reviewedEvidenceCount: 0,
       label: 'Blocking IL-6 may reduce the inflammatory phenotype.',
     },
     {
@@ -77,24 +80,54 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('bounded simulation prompt', () => {
-  it('includes the Focus, visible support and contradiction, Evidence Gaps, and scientific guardrails', () => {
-    const prompt = buildSimulationPrompt(promptInput)
+describe('literature-grounded research expansion prompt', () => {
+  it('authorizes one objective-led retrieval and connected expansion step without preloading the neighborhood', () => {
+    const prompt = buildResearchExpansionPrompt(promptInput)
     const normalized = prompt.toLowerCase()
 
+    expect(RESEARCH_EXPANSION_ACTION_LABEL).toBe('Research & Expand')
     expect(prompt).toContain('node_focus')
     expect(prompt).toContain('Blocking IL-6 may reduce the inflammatory phenotype.')
-    expect(prompt).toContain('A reviewed cohort reported reduced inflammatory markers.')
-    expect(prompt).toContain('The local assay showed no reduction after treatment.')
-    expect(prompt).toContain('No randomized intervention study is available.')
-    expect(normalized).toContain('simulation')
-    expect(normalized).toContain('critique')
+    expect(prompt).not.toContain('Focus-neighborhood')
+    expect(prompt).not.toContain('A reviewed cohort reported reduced inflammatory markers.')
+    expect(prompt).not.toContain('The local assay showed no reduction after treatment.')
+    expect(prompt).not.toContain('No randomized intervention study is available.')
+    expect(normalized).not.toContain('simulation')
+    expect(normalized).toContain('research expansion step')
+    expect(normalized).toContain('current chat objective')
+    expect(normalized).toContain('pubmed-search')
+    expect(normalized).toContain('search')
+    expect(normalized).toContain('lookup')
+    expect(normalized).toContain('scifork-research')
+    expect(normalized).toContain('neighbors')
+    expect(normalized).toContain('incoming')
+    expect(normalized).toContain('outgoing')
     expect(normalized).toContain('result')
     expect(normalized).toContain('interpretation')
-    expect(normalized).toContain('hypotheses')
-    expect(normalized).toContain('predictions')
     expect(normalized).toContain('ai_inference')
-    expect(normalized).toContain('findings')
+    expect(normalized).toContain('finding')
+    expect(normalized).toContain('authorizes')
+    expect(normalized).toContain('zero to five')
+    expect(normalized).toContain('five')
+    expect(normalized).toContain('depth one')
+    expect(normalized).toContain('confidence: low')
+    expect(normalized).toContain('create_node')
+    expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('create_evidence_assertion')
+    expect(normalized).toContain('machine_reviewed')
+    expect(normalized).toContain('create_framing_link')
+    expect(normalized).toContain('research question')
+    expect(normalized).toContain('actual retrieved abstract')
+    expect(normalized).toContain('title-only')
+    expect(normalized).toContain('machinereviewrationale')
+    expect(normalized).toContain('never write authors')
+    expect(normalized).toContain('pdf')
+    expect(normalized).toContain('raw provider output')
+    expect(normalized).toContain('publicationrefs')
+    expect(normalized).toContain('focus remains unchanged')
+    expect(normalized).toContain('do not recurse')
+    expect(normalized).toContain('progressive research run')
+    expect(normalized).toContain('not authorized')
   })
 
   it('preserves the task and scientific guardrails within the 12 KiB UTF-8 cap', () => {
@@ -110,22 +143,37 @@ describe('bounded simulation prompt', () => {
       })),
     }
 
-    const prompt = buildSimulationPrompt(huge)
+    const prompt = buildResearchExpansionPrompt(huge)
     const normalized = prompt.toLowerCase()
 
     expect(new TextEncoder().encode(prompt).byteLength).toBeLessThanOrEqual(12 * 1024)
-    expect(normalized).toContain('simulation')
-    expect(normalized).toContain('critique')
+    expect(normalized).toContain('research expansion step')
+    expect(normalized).toContain('current chat objective')
+    expect(normalized).toContain('pubmed-search')
+    expect(normalized).toContain('lookup')
+    expect(normalized).toContain('neighbors')
     expect(normalized).toContain('result')
     expect(normalized).toContain('interpretation')
     expect(normalized).toContain('ai_inference')
-    expect(normalized).toContain('findings')
+    expect(normalized).toContain('finding')
+    expect(normalized).toContain('zero to five')
+    expect(normalized).toContain('five')
+    expect(normalized).toContain('create_node')
+    expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('create_evidence_assertion')
+    expect(normalized).toContain('machine_reviewed')
+    expect(normalized).toContain('create_framing_link')
+    expect(normalized).toContain('title-only')
+    expect(normalized).toContain('never write authors')
+    expect(normalized).toContain('publicationrefs')
+    expect(normalized).toContain('focus remains unchanged')
+    expect(normalized).toContain('do not recurse')
   })
 })
 
-describe('simulation acknowledgement channel', () => {
+describe('research expansion acknowledgement channel', () => {
   it('creates a 128-bit unpadded base64url nonce', () => {
-    expect(createSimulationNonce()).toMatch(/^[A-Za-z0-9_-]{22}$/)
+    expect(createResearchExpansionNonce()).toMatch(/^[A-Za-z0-9_-]{22}$/)
   })
 
   it('retains the prompt after timeout and retries only on demand with a new nonce', () => {
@@ -137,57 +185,57 @@ describe('simulation acknowledgement channel', () => {
       .fn<() => string>()
       .mockReturnValueOnce(firstNonce)
       .mockReturnValueOnce(secondNonce)
-    const simulation = new SimulationChannel({ channel, createNonce })
+    const researchExpansion = new ResearchExpansionChannel({ channel, createNonce })
     const prompt = 'Bounded prompt retained exactly.'
 
-    simulation.simulate(prompt)
+    researchExpansion.submit(prompt)
     expect(channel.posted).toEqual([
       { type: 'simulate', nonce: firstNonce, prompt },
     ])
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
       nonce: firstNonce,
       prompt,
     })
 
     vi.advanceTimersByTime(1_999)
-    expect(simulation.getState()).toMatchObject({ phase: 'pending' })
+    expect(researchExpansion.getState()).toMatchObject({ phase: 'pending' })
     vi.advanceTimersByTime(1)
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'failed',
       reason: 'timeout',
       prompt,
     })
     expect(channel.posted).toHaveLength(1)
 
-    simulation.retry()
+    researchExpansion.retry()
     expect(channel.posted).toEqual([
       { type: 'simulate', nonce: firstNonce, prompt },
       { type: 'simulate', nonce: secondNonce, prompt },
     ])
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
       nonce: secondNonce,
       prompt,
     })
 
     channel.emit({ type: 'ack', nonce: firstNonce, status: 'started' })
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
       nonce: secondNonce,
     })
 
     channel.emit({ type: 'ack', nonce: secondNonce, status: 'queued' })
-    expect(simulation.getState()).toMatchObject({
+    expect(researchExpansion.getState()).toMatchObject({
       phase: 'acknowledged',
       acknowledgement: 'queued',
       nonce: secondNonce,
       prompt,
     })
     vi.advanceTimersByTime(2_000)
-    expect(simulation.getState()).toMatchObject({ phase: 'acknowledged' })
+    expect(researchExpansion.getState()).toMatchObject({ phase: 'acknowledged' })
 
-    simulation.dispose()
+    researchExpansion.dispose()
     expect(channel.listeners.size).toBe(0)
   })
 })

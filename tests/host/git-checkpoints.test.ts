@@ -8,6 +8,7 @@ import {
   gitInit,
   gitInitPreflight,
   gitPreflight,
+  gitRemoveManagedPath,
   gitShowToplevel,
   initCheckpointMessage,
   parsePorcelainStatus,
@@ -174,6 +175,32 @@ describe('gitCheckpoint', () => {
       return healthyResponder(argv)
     })
     await expect(gitCheckpoint(port, 'C:\\proj', 'scifork: x', ['research.json'])).resolves.toEqual({ ok: false, code: 'CHECKPOINT_FAILED', committed: true })
+  })
+})
+
+describe('gitRemoveManagedPath', () => {
+  it('uses fixed argv for exact deletable Node, Edge, and Framing Link paths', async () => {
+    const { port, calls } = scriptedGit(healthyResponder)
+    const nodePath = 'nodes/node_aaaaaaaa-1111-4111-8111-111111111111.md'
+    await expect(gitRemoveManagedPath(port, 'C:\\proj', nodePath)).resolves.toBe(true)
+    const framingPath = 'question-links/qlink_aaaaaaaa-1111-4111-8111-111111111111.json'
+    await expect(gitRemoveManagedPath(port, 'C:\\proj', framingPath)).resolves.toBe(true)
+    expect(calls).toEqual([
+      ['C:\\git\\git.exe', 'rm', '--', nodePath],
+      ['C:\\git\\git.exe', 'rm', '--', framingPath],
+    ])
+
+    await expect(gitRemoveManagedPath(port, 'C:\\proj', 'evidence/ev_aaaaaaaa-1111-4111-8111-111111111111.md')).resolves.toBe(false)
+    await expect(gitRemoveManagedPath(port, 'C:\\proj', '../nodes/node_aaaaaaaa-1111-4111-8111-111111111111.md')).resolves.toBe(false)
+    await expect(gitRemoveManagedPath(port, 'C:\\proj', 'questions/question_aaaaaaaa-1111-4111-8111-111111111111.md')).resolves.toBe(false)
+    expect(calls).toHaveLength(2)
+  })
+
+  it('fails closed when git rejects the removal', async () => {
+    const { port } = scriptedGit(() => ({ exitCode: 128 }))
+    await expect(
+      gitRemoveManagedPath(port, 'C:\\proj', 'edges/edge_aaaaaaaa-1111-4111-8111-111111111111.json'),
+    ).resolves.toBe(false)
   })
 })
 

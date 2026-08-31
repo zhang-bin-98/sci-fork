@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
+  evidenceVisibilityGraph,
+  focusViewportCenter,
   layoutGraph,
-  selectLocalGraph,
+  selectGraphView,
 } from '../../src/companion/graph.js'
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
 const entities = [
-  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', label: 'A' },
-  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', label: 'B' },
-  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', label: 'C' },
-  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', label: 'D' },
+  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', referenceCount: 1, reviewedEvidenceCount: 1, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'A' },
+  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', referenceCount: 2, reviewedEvidenceCount: 0, publicationCount: 2, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'B' },
+  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 0, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'C' },
+  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 1, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'D' },
   {
     id: 'node_e',
     type: 'result',
@@ -39,29 +41,41 @@ const edges = [
   { id: 'edge_eb', from: 'node_e', to: 'node_b', relation: 'contradicts', source: 'edge' },
 ] satisfies SnapshotGraph['edges']
 
-describe('local Companion graph', () => {
-  it('selects the Focus, current path, and exactly the Focus one-hop neighborhood', () => {
-    const selected = selectLocalGraph({
-      entities,
-      edges,
-      focus: { focusEntityId: 'node_b', pathIds: ['node_path'] },
-    })
+describe('Companion graph', () => {
+  it('hides Evidence entities and their projection edges unless explicitly shown', () => {
+    const graph = {
+      entities: [
+        entities[1]!,
+        {
+          id: 'ev_hidden',
+          type: 'evidence' as const,
+          direction: 'supports' as const,
+          reviewStatus: 'machine_reviewed' as const,
+          label: 'Abstract-grounded assertion',
+        },
+      ],
+      edges: [
+        {
+          id: 'ev_hidden->node_b',
+          from: 'ev_hidden',
+          to: 'node_b',
+          relation: 'supports' as const,
+          source: 'evidence_ref' as const,
+        },
+      ],
+    } satisfies SnapshotGraph
 
-    expect(selected.entities.map(({ id }) => id)).toEqual([
-      'node_a',
-      'node_b',
-      'node_c',
-      'node_e',
-      'node_path',
-    ])
-    expect(selected.edges.map(({ id }) => id)).toEqual(['edge_ab', 'edge_bc', 'edge_eb'])
+    expect(evidenceVisibilityGraph(graph, false)).toEqual({
+      entities: [entities[1]],
+      edges: [],
+    })
+    expect(evidenceVisibilityGraph(graph, true)).toBe(graph)
   })
 
-  it('expands both endpoints and their one-hop relations for a stored edge Focus', () => {
-    const selected = selectLocalGraph({
+  it('keeps the complete projection visible when Focus changes', () => {
+    const selected = selectGraphView({
       entities,
       edges,
-      focus: { focusEntityId: 'edge_bc', pathIds: [] },
     })
 
     expect(selected.entities.map(({ id }) => id)).toEqual([
@@ -70,6 +84,7 @@ describe('local Companion graph', () => {
       'node_c',
       'node_d',
       'node_e',
+      'node_path',
     ])
     expect(selected.edges.map(({ id }) => id)).toEqual([
       'edge_ab',
@@ -79,11 +94,31 @@ describe('local Companion graph', () => {
     ])
   })
 
-  it('produces the same finite local layout regardless of projection input order', () => {
-    const selected = selectLocalGraph({
+  it('resolves entity centers and stored edge midpoints without changing zoom', () => {
+    const laidOut = layoutGraph({ entities, edges })
+    const nodeB = laidOut.nodes.find(({ id }) => id === 'node_b')!
+    const nodeC = laidOut.nodes.find(({ id }) => id === 'node_c')!
+    const centerB = {
+      x: nodeB.position.x + 112,
+      y: nodeB.position.y + 44,
+    }
+    const centerC = {
+      x: nodeC.position.x + 112,
+      y: nodeC.position.y + 44,
+    }
+
+    expect(focusViewportCenter(laidOut, 'node_b')).toEqual(centerB)
+    expect(focusViewportCenter(laidOut, 'edge_bc')).toEqual({
+      x: (centerB.x + centerC.x) / 2,
+      y: (centerB.y + centerC.y) / 2,
+    })
+    expect(focusViewportCenter(laidOut, 'node_missing')).toBeUndefined()
+  })
+
+  it('produces the same finite global layout regardless of projection input order', () => {
+    const selected = selectGraphView({
       entities,
       edges,
-      focus: { focusEntityId: 'node_b', pathIds: ['node_path'] },
     })
     const reversed = {
       entities: [...selected.entities].reverse(),
@@ -98,6 +133,7 @@ describe('local Companion graph', () => {
       'node_a',
       'node_b',
       'node_c',
+      'node_d',
       'node_e',
       'node_path',
     ])

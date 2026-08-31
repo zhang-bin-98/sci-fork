@@ -8,11 +8,12 @@ a same-origin standalone Graph Companion, while ordinary Research Project files
 remain the scientific source of truth and the graph remains a rebuildable
 projection.
 
-This repository is a design-stage, minimally installable bundle scaffold. The
-M0 compatibility spike has pinned the DSH preview contracts (see
-`docs/specs/m0-compatibility-spike.md`); implementation continues by milestone
-(M1 Core+Git, M2 Companion, M3 Research) and stays behind the pinned baseline.
-SciFork remains one package, one first-party bundle, and one release tarball.
+This repository contains the implemented M1 Core+Git, M2 Companion, and M3
+Research milestones plus the literature-grounded Research Expansion extension.
+The M0 compatibility spike pins the DSH preview contracts (see
+`docs/specs/m0-compatibility-spike.md`), and all implementation remains behind
+that pinned baseline. SciFork remains one package, one first-party bundle, and
+one release tarball.
 
 This file governs repository development. It does not change SciFork's runtime
 Git behavior described below.
@@ -48,7 +49,7 @@ observable behavior, failure behavior, acceptance criteria, and test cases.
 Identify conflicts with the product design, architecture, or domain model before
 implementation.
 
-The product design and v0.12 architecture are the umbrella MVP specification.
+The v0.19 product design and v0.20 architecture are the umbrella MVP specification.
 For a non-trivial change, update an existing authoritative design or, only when
 the feature needs durable implementation detail, add
 `docs/specs/<feature>.md`. A feature spec must contain Problem, Goals/Non-goals,
@@ -110,13 +111,16 @@ regression risks are covered.
 - Do not add a separate backend, port, database, WebSocket, CORS, login system,
   or cloud sync. The Companion remains same-origin, loopback-only, and uses one
   responsive layout.
-- `Simulate` may be triggered only by a real user click and must use the public,
-  scoped `setDraft + submit` transaction for the originating DSH Session.
+- `Research & Expand` may be triggered only by a real user click and must use the
+  public, scoped `setDraft + submit` transaction for the originating DSH Session.
+  The click authorizes one literature-grounded expansion step only. A Progressive
+  Research Run requires an explicit user request in the current Chat and must not
+  become background or scheduled work.
 - Core stays pure TypeScript and does not depend on DSH, Git, browser APIs, or
   Node filesystem APIs. Host and Web remain adapters.
 - Use only public DSH contracts verified by M0. Do not use private React
   components, simulated DOM clicks, or unexported send functions.
-- Discuss any production dependency not already approved by the v0.12
+- Discuss any production dependency not already approved by the v0.20
   architecture before adding or replacing it.
 
 ## Scientific model invariants
@@ -128,10 +132,12 @@ regression risks are covered.
   Results; Hypotheses, Predictions, and `ai_inference` must not masquerade as
   established Findings.
 - A Research Import Draft is transient, untrusted, and candidate-only. The model
-  orchestrates a retrieval Skill followed by `scifork-research`; Skills do not
-  call other Skills. External Skills cannot write the Research Project.
-- SciFork validates the Draft, and the user selects candidates before SciFork
-  persists them one at a time.
+  orchestrates a completed retrieval Skill phase followed by `scifork-research`;
+  a Progressive Research Run may repeat that sequence, but Skills do not call
+  other Skills. External Skills cannot write the Research Project.
+- SciFork validates the complete Draft and persists each qualifying candidate
+  one at a time as `machine_reviewed` Evidence. Explicit human acceptance is
+  still required to transition Evidence to `reviewed` for Finding support.
 
 ## Security and data boundaries
 

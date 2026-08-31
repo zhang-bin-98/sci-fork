@@ -37,6 +37,8 @@ const required = [
   'dist/host/index.js',
   'SECURITY.md',
   'docs/specs/m3-research.md',
+  'docs/specs/research-questions-machine-review.md',
+  'docs/specs/simulation-branches.md',
   'skills/pubmed-search/helper.mjs',
   'skills/pubmed-search/SKILL.md',
   'skills/scifork-research/SKILL.md',

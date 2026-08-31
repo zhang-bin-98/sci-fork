@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { publicationReferencesHaveOverlap } from './publication-references.js'
 
 /**
  * Core schema layer: the exact on-disk Research Project formats from
@@ -15,6 +16,8 @@ export const NODE_ID_RE = /^node_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}
 export const EDGE_ID_RE = /^edge_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const EVIDENCE_ID_RE = /^ev_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const RESULT_ID_RE = /^res_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+export const QUESTION_ID_RE = /^question_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+export const FRAMING_LINK_ID_RE = /^qlink_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Endpoint ids: any node or result id. */
 export const ENDPOINT_ID_RE = /^(?:node|res)_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -23,16 +26,29 @@ export const DOI_REGEX = /^10\.\d{4,9}\/.+$/
 
 export const MANIFEST_FILE = 'research.json'
 /** The only paths SciFork ever stages or commits (architecture §11.2). */
-export const MANAGED_PATHS = ['research.json', 'nodes', 'edges', 'evidence', 'results'] as const
+export const MANAGED_PATHS = [
+  'research.json',
+  'questions',
+  'question-links',
+  'nodes',
+  'edges',
+  'evidence',
+  'results',
+] as const
 
 export const MANIFEST_NAME_MAX = 200
 export const ASSERTION_MAX = 4000
 export const LIMITATIONS_MAX = 20
 export const LIMITATION_MAX = 500
 export const EVIDENCE_REFS_MAX = 50
+export const PUBLICATION_REFS_MAX = 50
 export const LOCATOR_SECTION_MAX = 500
 export const LOCATOR_PAGE_MAX = 99999
 export const PROVENANCE_MAX = 2000
+export const QUESTION_MAX = 4000
+export const CITATION_TITLE_MAX = 1000
+export const CITATION_JOURNAL_MAX = 500
+export const MACHINE_REVIEW_RATIONALE_MAX = 4000
 export const BODY_MAX = 64 * 1024
 export const OBSERVED_AT_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -73,13 +89,14 @@ export const NON_EMPTY_BODY_SCHEMA = BODY_SCHEMA.refine((value) => value.trim().
 
 export type NodeKind = 'finding' | 'hypothesis' | 'prediction'
 export type ConfidenceBand = 'low' | 'moderate' | 'high'
-export type EvidenceReview = 'candidate' | 'reviewed' | 'rejected'
+export type EvidenceReview = 'candidate' | 'machine_reviewed' | 'reviewed' | 'rejected'
 export type ResultStatus = 'draft' | 'validated' | 'superseded'
-export type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with'
+export type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with' | 'predicts'
 export type EdgeBasis = 'literature' | 'experiment' | 'ai_inference'
 export type EvidenceDirection = 'supports' | 'contradicts' | 'context'
 /** Node/edge evidence references only accept supporting or contradicting roles. */
 export type EvidenceRole = 'supports' | 'contradicts'
+export type FramingRelation = 'addresses'
 
 // -------------------------------------------------------------- parse result
 
@@ -158,6 +175,14 @@ export const PUBLICATION_REFERENCE_SCHEMA = z
   })
 export type PublicationReference = z.infer<typeof PUBLICATION_REFERENCE_SCHEMA>
 
+export const PUBLICATION_REFERENCES_SCHEMA = z
+  .array(PUBLICATION_REFERENCE_SCHEMA)
+  .min(1)
+  .max(PUBLICATION_REFS_MAX)
+  .refine((references) => !publicationReferencesHaveOverlap(references), {
+    message: 'publication_refs must not repeat a PMID or DOI',
+  })
+
 export const LOCATOR_SCHEMA = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('pubmed_abstract') }).strict(),
   z
@@ -172,6 +197,15 @@ export const LOCATOR_SCHEMA = z.discriminatedUnion('kind', [
     }),
 ])
 export type Locator = z.infer<typeof LOCATOR_SCHEMA>
+
+export const CITATION_SNAPSHOT_SCHEMA = z
+  .object({
+    title: z.string().min(1).max(CITATION_TITLE_MAX),
+    journal: z.string().min(1).max(CITATION_JOURNAL_MAX).optional(),
+    year: z.number().int().min(1000).max(9999).optional(),
+  })
+  .strict()
+export type CitationSnapshot = z.infer<typeof CITATION_SNAPSHOT_SCHEMA>
 
 const EVIDENCE_REF_SCHEMA = z
   .object({
@@ -188,14 +222,55 @@ export const EVIDENCE_DATA_SCHEMA = z
     locator: LOCATOR_SCHEMA,
     assertion: z.string().min(1).max(ASSERTION_MAX),
     direction: z.enum(['supports', 'contradicts', 'context']),
-    review_status: z.enum(['candidate', 'reviewed', 'rejected']),
+    review_status: z.enum(['candidate', 'machine_reviewed', 'reviewed', 'rejected']),
+    citation: CITATION_SNAPSHOT_SCHEMA.optional(),
+    machine_review_rationale: z.string().min(1).max(MACHINE_REVIEW_RATIONALE_MAX).optional(),
     limitations: z
       .array(z.string().min(1).max(LIMITATION_MAX))
       .max(LIMITATIONS_MAX)
       .optional(),
   })
   .strict()
+  .superRefine((evidence, context) => {
+    if (evidence.review_status !== 'machine_reviewed') return
+    if (evidence.citation === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['citation'],
+        message: 'machine_reviewed evidence requires a citation snapshot',
+      })
+    }
+    if (evidence.machine_review_rationale === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['machine_review_rationale'],
+        message: 'machine_reviewed evidence requires a machine-review rationale',
+      })
+    }
+  })
 export type EvidenceData = z.infer<typeof EVIDENCE_DATA_SCHEMA>
+
+export const QUESTION_DATA_SCHEMA = z
+  .object({
+    id: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
+    question: z.string().min(1).max(QUESTION_MAX),
+    scope_assumptions: z
+      .array(z.string().min(1).max(LIMITATION_MAX))
+      .max(LIMITATIONS_MAX)
+      .optional(),
+  })
+  .strict()
+export type QuestionData = z.infer<typeof QUESTION_DATA_SCHEMA>
+
+export const FRAMING_LINK_FILE_SCHEMA = z
+  .object({
+    id: z.string().regex(FRAMING_LINK_ID_RE, 'must be a qlink_<uuid> id'),
+    from: z.string().regex(NODE_ID_RE, 'must be a node_<uuid> id'),
+    to: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
+    relation: z.literal('addresses'),
+  })
+  .strict()
+export type FramingLinkFile = z.infer<typeof FRAMING_LINK_FILE_SCHEMA>
 
 export const NODE_DATA_SCHEMA = z
   .object({
@@ -215,7 +290,7 @@ const EDGE_COMMON = {
   id: z.string().regex(EDGE_ID_RE, 'must be an edge_<uuid> id'),
   from: z.string().regex(ENDPOINT_ID_RE, 'must be a node_ or res_ id'),
   to: z.string().regex(ENDPOINT_ID_RE, 'must be a node_ or res_ id'),
-  relation: z.enum(['supports', 'contradicts', 'causes', 'associated_with']),
+  relation: z.enum(['supports', 'contradicts', 'causes', 'associated_with', 'predicts']),
   evidence_refs: z.array(EVIDENCE_REF_SCHEMA).max(EVIDENCE_REFS_MAX).optional(),
 }
 
@@ -241,6 +316,7 @@ export const EDGE_FILE_SCHEMA = z
       .object({
         ...EDGE_COMMON,
         basis: z.literal('ai_inference'),
+        publication_refs: PUBLICATION_REFERENCES_SCHEMA,
         provenance: z.string().min(1).max(PROVENANCE_MAX),
         evidence_gap: z.string().min(1).max(PROVENANCE_MAX),
       })
@@ -291,12 +367,20 @@ export function parseEdgeFile(raw: string): ParseResult<EdgeFile> {
   return parseWith(raw, (value) => resultOf(EDGE_FILE_SCHEMA.safeParse(value)))
 }
 
+export function parseFramingLinkFile(raw: string): ParseResult<FramingLinkFile> {
+  return parseWith(raw, (value) => resultOf(FRAMING_LINK_FILE_SCHEMA.safeParse(value)))
+}
+
 export function parseEvidenceData(value: unknown): ParseResult<EvidenceData> {
   return resultOf(EVIDENCE_DATA_SCHEMA.safeParse(value))
 }
 
 export function parseNodeData(value: unknown): ParseResult<NodeData> {
   return resultOf(NODE_DATA_SCHEMA.safeParse(value))
+}
+
+export function parseQuestionData(value: unknown): ParseResult<QuestionData> {
+  return resultOf(QUESTION_DATA_SCHEMA.safeParse(value))
 }
 
 export function parseResultData(value: unknown): ParseResult<ResultData> {
@@ -309,7 +393,7 @@ export function parsePublicationReference(value: unknown): ParseResult<Publicati
 
 // ----------------------------------------------------------- ids and paths
 
-export type EntityType = 'node' | 'edge' | 'evidence' | 'result'
+export type EntityType = 'question' | 'framing_link' | 'node' | 'edge' | 'evidence' | 'result'
 
 /**
  * Map an entity id to its type from the id prefix. Undefined for anything
@@ -317,6 +401,8 @@ export type EntityType = 'node' | 'edge' | 'evidence' | 'result'
  * caller-supplied paths.
  */
 export function entityTypeOfId(id: string): EntityType | undefined {
+  if (QUESTION_ID_RE.test(id)) return 'question'
+  if (FRAMING_LINK_ID_RE.test(id)) return 'framing_link'
   if (NODE_ID_RE.test(id)) return 'node'
   if (EDGE_ID_RE.test(id)) return 'edge'
   if (EVIDENCE_ID_RE.test(id)) return 'evidence'
@@ -327,6 +413,8 @@ export function entityTypeOfId(id: string): EntityType | undefined {
 /** Relative managed path for an entity id (forward slashes). */
 export function entityFilePath(id: string): string | undefined {
   const type = entityTypeOfId(id)
+  if (type === 'question') return `questions/${id}.md`
+  if (type === 'framing_link') return `question-links/${id}.json`
   if (type === 'node') return `nodes/${id}.md`
   if (type === 'edge') return `edges/${id}.json`
   if (type === 'evidence') return `evidence/${id}.md`
@@ -341,11 +429,11 @@ export function entityFilePath(id: string): string | undefined {
 export function isValidManagedFileName(name: string): boolean {
   if (name.endsWith('.md')) {
     const id = name.slice(0, -'.md'.length)
-    return NODE_ID_RE.test(id) || EVIDENCE_ID_RE.test(id) || RESULT_ID_RE.test(id)
+    return QUESTION_ID_RE.test(id) || NODE_ID_RE.test(id) || EVIDENCE_ID_RE.test(id) || RESULT_ID_RE.test(id)
   }
   if (name.endsWith('.json')) {
     const id = name.slice(0, -'.json'.length)
-    return EDGE_ID_RE.test(id)
+    return FRAMING_LINK_ID_RE.test(id) || EDGE_ID_RE.test(id)
   }
   return false
 }

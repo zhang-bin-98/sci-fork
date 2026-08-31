@@ -22,7 +22,7 @@ const MANIFEST = JSON.stringify({ schema_version: 1, project_id: PROJECT_ID, nam
 function revisionOf(fs: FakeFs): string {
   const files = new Map<string, string>()
   for (const [path, content] of fs.entries()) {
-    if (path === '/proj/research.json' || /^\/proj\/(nodes|edges|evidence|results)\//.test(path)) {
+    if (path === '/proj/research.json' || /^\/proj\/(questions|question-links|nodes|edges|evidence|results)\//.test(path)) {
       files.set(path.slice('/proj/'.length), content)
     }
   }
@@ -137,6 +137,41 @@ describe('applyCommand', () => {
     expect(result).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
   })
 
+  it('does not write or checkpoint an update that would break a cross-entity invariant', async () => {
+    const prediction = `node_${UUID_C}`
+    const edge = `edge_${UUID_C}`
+    const nodeFile = `---\nid: ${NODE}\nkind: hypothesis\nconfidence: low\n---\n# Source\n`
+    const predictionFile = `---\nid: ${prediction}\nkind: prediction\nconfidence: moderate\n---\n# Outcome\n`
+    const edgeFile = JSON.stringify({
+      id: edge,
+      from: NODE,
+      to: prediction,
+      relation: 'predicts',
+      basis: 'experiment',
+    })
+    const { fs, git, host } = await setup({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: nodeFile,
+      [`/proj/nodes/${prediction}.md`]: predictionFile,
+      [`/proj/edges/${edge}.json`]: edgeFile,
+    })
+
+    const result = await applyCommand(host, {
+      sessionCwd: '/proj',
+      command: {
+        kind: 'update_node',
+        id: NODE,
+        expectedFileVersion: sha256(nodeFile),
+        nodeKind: 'prediction',
+      },
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'INVALID_ENTITY', entityId: NODE })
+    expect(fs.contentOf(`/proj/nodes/${NODE}.md`)).toBe(nodeFile)
+    expect(git.calls.some((call) => call[1] === 'commit')).toBe(false)
+  })
+
   it('leaves the written file and reports a checkpoint failure without destructive cleanup', async () => {
     const { fs, git, host } = await setup({ '/proj/research.json': MANIFEST }, { failCommit: true })
     const result = await applyCommand(host, {
@@ -223,6 +258,82 @@ describe('applyCommand', () => {
     const [a, b] = await Promise.all([first, second])
     expect(a.ok).toBe(true)
     expect(b).toMatchObject({ ok: false, code: 'STALE_REVISION' })
+  })
+
+  it('deletes one Core-derived managed path with git rm and checkpoints it', async () => {
+    const nodeFile = `---\nid: ${NODE}\nkind: hypothesis\nconfidence: low\n---\n# Disposable branch\n`
+    const fs = new FakeFs({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: nodeFile,
+    })
+    let currentHead = OLD_SHA
+    const git = scriptedGit((argv, cwd) => {
+      const sub = argv[1]
+      if (sub === 'symbolic-ref') return { stdout: 'main\n' }
+      if (sub === 'rev-parse') {
+        if (argv.includes('--show-toplevel')) return { stdout: `${cwd}\n` }
+        return { stdout: `${currentHead}\n` }
+      }
+      if (sub === 'ls-files' || sub === 'status' || sub === 'add') return { stdout: '' }
+      if (sub === 'rm') {
+        fs.deleteFile(`/proj/${argv[3]}`)
+        return { stdout: '' }
+      }
+      if (sub === 'commit') {
+        currentHead = NEW_SHA
+        return { stdout: '' }
+      }
+      return { stdout: '' }
+    })
+    const result = await applyCommand(deps(fs, git.port), {
+      sessionCwd: '/proj',
+      command: {
+        kind: 'delete_node',
+        id: NODE,
+        expectedFileVersion: sha256(nodeFile),
+      },
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result).toMatchObject({ ok: true, kind: 'delete_node', entityId: NODE, checkpointId: NEW_SHA })
+    expect(fs.contentOf(`/proj/nodes/${NODE}.md`)).toBeUndefined()
+    expect(git.calls.find((call) => call[1] === 'rm')).toEqual([
+      'C:\\git\\git.exe', 'rm', '--', `nodes/${NODE}.md`,
+    ])
+    expect(git.calls.some((call) => call[1] === 'add')).toBe(false)
+    expect(git.calls.find((call) => call[1] === 'commit')?.slice(5)).toEqual(['--', `nodes/${NODE}.md`])
+  })
+
+  it('does not claim a deletion when git rm fails', async () => {
+    const nodeFile = `---\nid: ${NODE}\nkind: hypothesis\nconfidence: low\n---\n# Keep\n`
+    const fs = new FakeFs({
+      '/proj/research.json': MANIFEST,
+      [`/proj/nodes/${NODE}.md`]: nodeFile,
+    })
+    const git = scriptedGit((argv, cwd) => {
+      const sub = argv[1]
+      if (sub === 'symbolic-ref') return { stdout: 'main\n' }
+      if (sub === 'rev-parse') {
+        if (argv.includes('--show-toplevel')) return { stdout: `${cwd}\n` }
+        return { stdout: `${OLD_SHA}\n` }
+      }
+      if (sub === 'ls-files' || sub === 'status') return { stdout: '' }
+      if (sub === 'rm') return { exitCode: 1, stdout: '' }
+      return { stdout: '' }
+    })
+
+    const result = await applyCommand(deps(fs, git.port), {
+      sessionCwd: '/proj',
+      command: {
+        kind: 'delete_node',
+        id: NODE,
+        expectedFileVersion: sha256(nodeFile),
+      },
+      expectedProjectRevision: revisionOf(fs),
+    })
+    expect(result).toMatchObject({ ok: false, code: 'STALE_TARGET', entityId: NODE })
+    expect(fs.contentOf(`/proj/nodes/${NODE}.md`)).toBe(nodeFile)
+    expect(git.calls.some((call) => call[1] === 'commit')).toBe(false)
   })
 })
 

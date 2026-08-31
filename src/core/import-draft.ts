@@ -1,9 +1,11 @@
 import { z } from 'zod'
 import {
   ASSERTION_MAX,
+  CITATION_SNAPSHOT_SCHEMA,
   LIMITATION_MAX,
   LIMITATIONS_MAX,
   LOCATOR_SCHEMA,
+  MACHINE_REVIEW_RATIONALE_MAX,
   normalizeDoi,
   normalizePmid,
   utf8ByteLength,
@@ -14,7 +16,7 @@ import {
  * Research Import Draft (architecture §6.2, product design §9): a transient
  * untrusted package of Evidence Candidates produced outside SciFork's
  * persistence boundary. The draft itself is never written to the Research
- * Project; only individually selected, importable candidates become
+ * Project; qualifying candidates become machine-reviewed Evidence through
  * single-entity commands.
  */
 
@@ -35,6 +37,8 @@ export const EVIDENCE_CANDIDATE_SCHEMA = z
     assertion: z.string().min(1).max(ASSERTION_MAX),
     locator: LOCATOR_SCHEMA,
     direction: z.enum(['supports', 'contradicts', 'context']),
+    citation: CITATION_SNAPSHOT_SCHEMA.optional(),
+    machineReviewRationale: z.string().min(1).max(MACHINE_REVIEW_RATIONALE_MAX).optional(),
     limitations: z
       .array(z.string().min(1).max(LIMITATION_MAX))
       .max(LIMITATIONS_MAX)
@@ -67,9 +71,9 @@ export interface ImportDraftIssue {
 
 /**
  * Per-candidate persistence admission: a candidate is importable only with a
- * valid PMID or normalized DOI. Both present → the PMID is canonical, the DOI
- * is an alias, and the caller must have the user confirm they name the same
- * publication (offline validation cannot verify identity consistency).
+ * valid PMID or normalized DOI plus the fields required for machine review.
+ * When both identifiers are present, the PMID is canonical and the DOI is an
+ * alias; the machine-review rationale must cover their publication identity.
  */
 export interface CandidateAssessment {
   importable: boolean
@@ -92,6 +96,12 @@ export function assessCandidate(candidate: EvidenceCandidate): CandidateAssessme
   }
   if (pmid === undefined && doi === undefined) {
     reasons.push('a valid PMID or DOI is required before this candidate can be persisted')
+  }
+  if (candidate.citation === undefined) {
+    reasons.push('a citation snapshot is required before this candidate can be persisted')
+  }
+  if (candidate.machineReviewRationale === undefined) {
+    reasons.push('a machine-review rationale is required before this candidate can be persisted')
   }
   if (pmid !== undefined && doi !== undefined) {
     warnings.push('PMID_DOI_CONSISTENCY_UNVERIFIED')

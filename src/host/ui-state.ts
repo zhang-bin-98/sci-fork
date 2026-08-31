@@ -71,13 +71,14 @@ export class MutationQueue {
   run<T>(key: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(key) ?? Promise.resolve()
     const next = previous.then(operation, operation)
-    this.tails.set(
-      key,
-      next.then(
-        () => undefined,
-        () => undefined,
-      ),
+    const tail = next.then(
+      () => undefined,
+      () => undefined,
     )
+    this.tails.set(key, tail)
+    void tail.then(() => {
+      if (this.tails.get(key) === tail) this.tails.delete(key)
+    })
     return next
   }
 }

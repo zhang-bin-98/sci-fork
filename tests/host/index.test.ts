@@ -143,6 +143,13 @@ describe('host apply', () => {
       'scifork-research',
       'pubmed-search',
     ])
+    expect(fake.registeredSkills.map((register) => register().resourceBase)).toEqual([
+      undefined,
+      {
+        kind: 'directory',
+        path: expect.stringMatching(/[\\/]skills[\\/]pubmed-search$/),
+      },
+    ])
     expect(fake.registeredRoutes.map((route) => route.path)).toEqual([
       '/scifork',
       '/scifork/api/launch',

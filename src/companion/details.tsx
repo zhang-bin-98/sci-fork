@@ -17,7 +17,7 @@ export function isExternalHttpUrl(value: string | undefined): value is string {
 }
 
 function InertText(props: { children?: ReactNode }): ReactElement {
-  return <span className="details-inert">{props.children}</span>
+  return <span className="text-sf-muted">{props.children}</span>
 }
 
 const components: Components = {
@@ -30,7 +30,7 @@ const components: Components = {
     )
   },
   img({ alt }) {
-    return <span className="details-image-alt">{alt?.trim() || 'Image'}</span>
+    return <span className="details-image-alt text-sf-muted">{alt?.trim() || 'Image'}</span>
   },
 }
 

@@ -23,7 +23,7 @@ class MemoryStorage {
 }
 
 function browser(hash: string, storage = new MemoryStorage()) {
-  const location = { hash, pathname: '/scifork/', search: '?view=graph' }
+  const location = { hash, pathname: '/scifork', search: '?view=graph' }
   const replaceState = vi.fn(() => {
     location.hash = ''
   })
@@ -46,7 +46,7 @@ describe('Companion Page Key handshake', () => {
     expect(consumePageKey(environment)).toBe(PAGE_KEY)
     expect([...storage.values.values()]).toEqual([PAGE_KEY])
     expect(replaceState).toHaveBeenCalledOnce()
-    expect(replaceState.mock.calls[0]?.[2]).toBe('/scifork/?view=graph')
+    expect(replaceState.mock.calls[0]?.[2]).toBe('/scifork?view=graph')
     expect(JSON.stringify(replaceState.mock.calls)).not.toContain(PAGE_KEY)
   })
 
@@ -70,6 +70,6 @@ describe('Companion Page Key handshake', () => {
     expect(consumePageKey(malformed.environment)).toBeUndefined()
     expect(malformed.storage.values.size).toBe(0)
     expect(malformed.replaceState).toHaveBeenCalledOnce()
-    expect(malformed.replaceState.mock.calls[0]?.[2]).toBe('/scifork/?view=graph')
+    expect(malformed.replaceState.mock.calls[0]?.[2]).toBe('/scifork?view=graph')
   })
 })

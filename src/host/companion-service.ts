@@ -1,6 +1,11 @@
 import type { LoadedProject } from '../core/parser.js'
+import { distinctPublicationReferenceCount } from '../core/publication-references.js'
 import { buildProjection } from '../core/projection.js'
-import { entityTypeOfId } from '../core/schema.js'
+import {
+  entityTypeOfId,
+  type EvidenceRef,
+  type PublicationReference,
+} from '../core/schema.js'
 import type {
   CompanionFailure,
   EntityDocument,
@@ -10,6 +15,8 @@ import type {
   LaunchResponse,
   ProjectionEntitySummary,
   ProjectionEdgeSummary,
+  LiteratureEvidenceItem,
+  LiteratureProjection,
   SnapshotGraph,
   SnapshotProject,
   SnapshotResponse,
@@ -21,6 +28,7 @@ import {
   type ResearchHostDeps,
 } from './apply-command.js'
 import type { SessionsPort, StorageDomain } from './contracts.js'
+import { boundedLabel } from './labels.js'
 import { PageKeyStore, type PageBinding } from './page-keys.js'
 import { readFocus, writeFocus } from './ui-state.js'
 
@@ -63,6 +71,8 @@ function pageKeyInvalid(): CompanionFailure {
 
 function entityExists(project: LoadedProject, entityId: string): boolean {
   const type = entityTypeOfId(entityId)
+  if (type === 'question') return project.questions.has(entityId)
+  if (type === 'framing_link') return project.framingLinks.has(entityId)
   if (type === 'node') return project.nodes.has(entityId)
   if (type === 'evidence') return project.evidenceAssertions.has(entityId)
   if (type === 'result') return project.results.has(entityId)
@@ -70,27 +80,132 @@ function entityExists(project: LoadedProject, entityId: string): boolean {
   return false
 }
 
-function boundedLabel(value: string, fallback: string): string {
-  const firstLine = value
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0)
-  const normalized = (firstLine ?? fallback)
-    .replace(/^#{1,6}\s+/u, '')
-    .replace(/\s+/gu, ' ')
-    .trim()
-  return (normalized || fallback).slice(0, 240)
+interface ReferenceCounts {
+  /** Deprecated v1 aliases retained for first-party bundle reload compatibility. */
+  referenceCount: number
+  reviewedEvidenceCount: number
+  publicationCount: number
+  machineReviewedEvidenceCount: number
+  humanReviewedEvidenceCount: number
+}
+
+interface LiteratureInputs {
+  evidenceRefs: EvidenceRef[]
+  publicationRefs: PublicationReference[]
+}
+
+function nodeLiteratureInputs(project: LoadedProject, nodeId: string): LiteratureInputs {
+  const node = project.nodes.get(nodeId)
+  const evidenceRefs = [...(node?.evidence_refs ?? [])]
+  const publicationRefs: PublicationReference[] = []
+  for (const edge of project.edges.values()) {
+    if (edge.from !== nodeId && edge.to !== nodeId) continue
+    evidenceRefs.push(...(edge.evidence_refs ?? []))
+    if (edge.basis === 'ai_inference') publicationRefs.push(...edge.publication_refs)
+  }
+  return { evidenceRefs, publicationRefs }
+}
+
+function questionLiteratureInputs(project: LoadedProject, questionId: string): LiteratureInputs {
+  const evidenceRefs: EvidenceRef[] = []
+  const publicationRefs: PublicationReference[] = []
+  for (const link of project.framingLinks.values()) {
+    if (link.to !== questionId) continue
+    const inputs = nodeLiteratureInputs(project, link.from)
+    evidenceRefs.push(...inputs.evidenceRefs)
+    publicationRefs.push(...inputs.publicationRefs)
+  }
+  return { evidenceRefs, publicationRefs }
+}
+
+function referenceCounts(project: LoadedProject, inputs: LiteratureInputs): ReferenceCounts {
+  const evidenceIds = new Set(inputs.evidenceRefs.map((ref) => ref.id))
+  const publications = [...inputs.publicationRefs]
+  let machineReviewedEvidenceCount = 0
+  let humanReviewedEvidenceCount = 0
+  for (const id of evidenceIds) {
+    const evidence = project.evidenceAssertions.get(id)
+    if (evidence === undefined) continue
+    publications.push(evidence.publication_ref)
+    if (evidence.review_status === 'machine_reviewed') machineReviewedEvidenceCount += 1
+    if (evidence.review_status === 'reviewed') humanReviewedEvidenceCount += 1
+  }
+  const publicationCount = distinctPublicationReferenceCount(publications)
+  return {
+    referenceCount: publicationCount,
+    reviewedEvidenceCount: humanReviewedEvidenceCount,
+    publicationCount,
+    machineReviewedEvidenceCount,
+    humanReviewedEvidenceCount,
+  }
+}
+
+function nodeReferenceCounts(project: LoadedProject, nodeId: string): ReferenceCounts {
+  return referenceCounts(project, nodeLiteratureInputs(project, nodeId))
+}
+
+function samePublication(left: PublicationReference, right: PublicationReference): boolean {
+  return (
+    (left.pmid !== undefined && left.pmid === right.pmid) ||
+    (left.doi !== undefined && left.doi === right.doi)
+  )
+}
+
+function evidenceItem(project: LoadedProject, id: string): LiteratureEvidenceItem | undefined {
+  const evidence = project.evidenceAssertions.get(id)
+  if (evidence === undefined) return undefined
+  return {
+    id: evidence.id,
+    publicationRef: evidence.publication_ref,
+    ...(evidence.citation !== undefined ? { citation: evidence.citation } : {}),
+    assertion: evidence.assertion,
+    locator: evidence.locator,
+    direction: evidence.direction,
+    ...(evidence.limitations !== undefined ? { limitations: evidence.limitations } : {}),
+    ...(evidence.machine_review_rationale !== undefined
+      ? { machineReviewRationale: evidence.machine_review_rationale }
+      : {}),
+    reviewStatus: evidence.review_status,
+  }
+}
+
+function literatureProjection(project: LoadedProject, inputs: LiteratureInputs): LiteratureProjection {
+  const items = [...new Set(inputs.evidenceRefs.map((ref) => ref.id))]
+    .map((id) => evidenceItem(project, id))
+    .filter((item): item is LiteratureEvidenceItem => item !== undefined)
+    .sort((left, right) => left.id.localeCompare(right.id))
+  const retrievalOnly = inputs.publicationRefs.filter(
+    (reference, index, all) =>
+      !items.some((item) => samePublication(item.publicationRef, reference)) &&
+      all.findIndex((candidate) => samePublication(candidate, reference)) === index,
+  )
+  return {
+    humanReviewed: items.filter((item) => item.reviewStatus === 'reviewed'),
+    machineReviewed: items.filter((item) => item.reviewStatus === 'machine_reviewed'),
+    candidate: items.filter((item) => item.reviewStatus === 'candidate'),
+    rejected: items.filter((item) => item.reviewStatus === 'rejected'),
+    retrievalOnly,
+  }
 }
 
 function graphSnapshot(project: LoadedProject): SnapshotGraph {
   const projection = buildProjection(project)
   const entities: ProjectionEntitySummary[] = projection.entities.map((entity) => {
+    if (entity.type === 'question') {
+      return {
+        id: entity.id,
+        type: entity.type,
+        label: boundedLabel(entity.question, 'Research Question'),
+      }
+    }
     if (entity.type === 'node') {
+      const counts = nodeReferenceCounts(project, entity.id)
       return {
         id: entity.id,
         type: entity.type,
         kind: entity.kind,
         confidence: entity.confidence,
+        ...counts,
         label: boundedLabel(entity.body, entity.kind),
       }
     }
@@ -131,6 +246,32 @@ function graphSnapshot(project: LoadedProject): SnapshotGraph {
 
 function entityDocument(project: LoadedProject, entityId: string): EntityDocument | undefined {
   const type = entityTypeOfId(entityId)
+  if (type === 'question') {
+    const question = project.questions.get(entityId)
+    if (question === undefined) return undefined
+    const addressedEntityIds = [...project.framingLinks.values()]
+      .filter((link) => link.to === entityId)
+      .map((link) => link.from)
+      .sort()
+    const counts = referenceCounts(project, questionLiteratureInputs(project, entityId))
+    return {
+      id: question.id,
+      type,
+      question: question.question,
+      scopeAssumptions: question.scope_assumptions ?? [],
+      body: question.body,
+      addressedEntityIds,
+      publicationCount: counts.publicationCount,
+      machineReviewedEvidenceCount: counts.machineReviewedEvidenceCount,
+      humanReviewedEvidenceCount: counts.humanReviewedEvidenceCount,
+    }
+  }
+  if (type === 'framing_link') {
+    const link = project.framingLinks.get(entityId)
+    return link === undefined
+      ? undefined
+      : { id: link.id, type, from: link.from, to: link.to, relation: link.relation }
+  }
   if (type === 'node') {
     const node = project.nodes.get(entityId)
     return node === undefined
@@ -141,6 +282,8 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           kind: node.kind,
           confidence: node.confidence,
           evidenceRefs: node.evidence_refs ?? [],
+          ...nodeReferenceCounts(project, node.id),
+          literature: literatureProjection(project, nodeLiteratureInputs(project, node.id)),
           body: node.body,
         }
   }
@@ -158,6 +301,10 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           locator: evidence.locator,
           ...(evidence.limitations !== undefined
             ? { limitations: evidence.limitations }
+            : {}),
+          ...(evidence.citation !== undefined ? { citation: evidence.citation } : {}),
+          ...(evidence.machine_review_rationale !== undefined
+            ? { machineReviewRationale: evidence.machine_review_rationale }
             : {}),
           body: evidence.body,
         }
@@ -178,7 +325,12 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
     const edge = project.edges.get(entityId)
     return edge === undefined
       ? undefined
-      : {
+      : (() => {
+          const inputs: LiteratureInputs = {
+            evidenceRefs: edge.evidence_refs ?? [],
+            publicationRefs: edge.basis === 'ai_inference' ? edge.publication_refs : [],
+          }
+          return {
           id: edge.id,
           type,
           from: edge.from,
@@ -187,9 +339,14 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           basis: edge.basis,
           evidenceRefs: edge.evidence_refs ?? [],
           ...(edge.basis === 'ai_inference'
+            ? { publicationRefs: edge.publication_refs }
+            : {}),
+          ...(edge.basis === 'ai_inference'
             ? { provenance: edge.provenance, evidenceGap: edge.evidence_gap }
             : {}),
+          literature: literatureProjection(project, inputs),
         }
+        })()
   }
   return undefined
 }

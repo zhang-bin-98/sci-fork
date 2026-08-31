@@ -1,6 +1,5 @@
 import { Graph, layout } from '@dagrejs/dagre'
 import type {
-  FocusState,
   ProjectionEdgeSummary,
   ProjectionEntitySummary,
   SnapshotGraph,
@@ -8,12 +7,6 @@ import type {
 
 export const GRAPH_NODE_WIDTH = 224
 export const GRAPH_NODE_HEIGHT = 88
-
-export interface LocalGraph extends SnapshotGraph {}
-
-export interface LocalGraphInput extends SnapshotGraph {
-  focus?: FocusState
-}
 
 export interface LayoutNode {
   id: string
@@ -55,63 +48,27 @@ function sortEdges(edges: readonly ProjectionEdgeSummary[]): ProjectionEdgeSumma
   )
 }
 
-export function selectLocalGraph(input: LocalGraphInput): LocalGraph {
-  const entities = sortEntities(input.entities)
-  const edges = sortEdges(input.edges)
-  if (input.focus === undefined) return { entities, edges }
+export function selectGraphView(input: SnapshotGraph): SnapshotGraph {
+  return {
+    entities: sortEntities(input.entities),
+    edges: sortEdges(input.edges),
+  }
+}
 
-  const entityIds = new Set(entities.map(({ id }) => id))
-  const edgeById = new Map(
-    edges.flatMap((edge) => (edge.id === undefined ? [] : [[edge.id, edge] as const])),
+export function evidenceVisibilityGraph(input: SnapshotGraph, showEvidence: boolean): SnapshotGraph {
+  if (showEvidence) return input
+  const hiddenIds = new Set(
+    input.entities.filter((entity) => entity.type === 'evidence').map((entity) => entity.id),
   )
-  const selectedEntities = new Set<string>()
-  const selectedEdges = new Set<string>()
-
-  const includeEntity = (id: string): void => {
-    if (entityIds.has(id)) selectedEntities.add(id)
+  return {
+    entities: input.entities.filter((entity) => !hiddenIds.has(entity.id)),
+    edges: input.edges.filter(
+      (edge) =>
+        edge.source !== 'evidence_ref' &&
+        !hiddenIds.has(edge.from) &&
+        !hiddenIds.has(edge.to),
+    ),
   }
-  const includeEdge = (edge: ProjectionEdgeSummary): void => {
-    selectedEdges.add(graphEdgeId(edge))
-    includeEntity(edge.from)
-    includeEntity(edge.to)
-  }
-  const includePathId = (id: string): void => {
-    if (entityIds.has(id)) {
-      includeEntity(id)
-      return
-    }
-    const edge = edgeById.get(id)
-    if (edge !== undefined) includeEdge(edge)
-  }
-
-  for (const id of input.focus.pathIds) includePathId(id)
-
-  const focusEdge = edgeById.get(input.focus.focusEntityId)
-  if (focusEdge !== undefined) {
-    includeEdge(focusEdge)
-    const endpoints = new Set([focusEdge.from, focusEdge.to])
-    for (const edge of edges) {
-      if (endpoints.has(edge.from) || endpoints.has(edge.to)) includeEdge(edge)
-    }
-  } else {
-    includeEntity(input.focus.focusEntityId)
-    for (const edge of edges) {
-      if (
-        edge.from === input.focus.focusEntityId ||
-        edge.to === input.focus.focusEntityId
-      ) {
-        includeEdge(edge)
-      }
-    }
-  }
-
-  const localEntities = entities.filter(({ id }) => selectedEntities.has(id))
-  const localEdges = edges.filter(
-    (edge) =>
-      selectedEdges.has(graphEdgeId(edge)) ||
-      (selectedEntities.has(edge.from) && selectedEntities.has(edge.to)),
-  )
-  return { entities: localEntities, edges: localEdges }
 }
 
 function stableCoordinate(value: number): number {
@@ -168,5 +125,32 @@ export function layoutGraph(
       label: edge.relation.replace('_', ' '),
       data: { edge },
     })),
+  }
+}
+
+export function focusViewportCenter(
+  graph: GraphLayout,
+  focusEntityId: string,
+): { x: number; y: number } | undefined {
+  const centers = new Map(
+    graph.nodes.map((node) => [
+      node.id,
+      {
+        x: node.position.x + GRAPH_NODE_WIDTH / 2,
+        y: node.position.y + GRAPH_NODE_HEIGHT / 2,
+      },
+    ] as const),
+  )
+  const entityCenter = centers.get(focusEntityId)
+  if (entityCenter !== undefined) return entityCenter
+
+  const edge = graph.edges.find(({ data }) => data.edge.id === focusEntityId)
+  if (edge === undefined) return undefined
+  const source = centers.get(edge.source)
+  const target = centers.get(edge.target)
+  if (source === undefined || target === undefined) return undefined
+  return {
+    x: stableCoordinate((source.x + target.x) / 2),
+    y: stableCoordinate((source.y + target.y) / 2),
   }
 }

@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 import type { SubprocessPort } from './contracts.js'
-import { MANAGED_PATHS } from '../core/schema.js'
+import { EDGE_ID_RE, FRAMING_LINK_ID_RE, MANAGED_PATHS, NODE_ID_RE, entityFilePath } from '../core/schema.js'
 
 /** Fixed executable name resolved through the provider's scrubbed PATH. */
 export const GIT_EXECUTABLE = 'git'
@@ -200,22 +200,19 @@ export async function gitPreflight(
   return { ok: true, branch: result.branch, head: result.head }
 }
 
-/**
- * Commit exactly the supplied managed pathspecs. Staging happens first so a
- * pathspec also works on an unborn repository; `commit --only` preserves any
- * unrelated staged work. No rollback is attempted when this operation fails.
- */
-export async function gitCheckpoint(
+type GitCheckpointResult =
+  | { ok: true; head: string }
+  | { ok: false; code: 'CHECKPOINT_FAILED'; committed?: boolean }
+
+async function commitCheckpoint(
   subprocess: SubprocessPort,
   cwd: string,
   message: string,
   paths: readonly string[],
   signal?: AbortSignal,
-): Promise<{ ok: true; head: string } | { ok: false; code: 'CHECKPOINT_FAILED'; committed?: boolean }> {
+): Promise<GitCheckpointResult> {
   let committed = false
   try {
-    const add = await runGit(subprocess, ['add', '--', ...paths], cwd, signal)
-    if (add.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
     const commit = await runGit(subprocess, ['commit', '--only', '-m', message, '--', ...paths], cwd, signal)
     if (commit.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
     committed = true
@@ -230,6 +227,67 @@ export async function gitCheckpoint(
       ? { ok: false, code: 'CHECKPOINT_FAILED', committed: true }
       : { ok: false, code: 'CHECKPOINT_FAILED' }
   }
+}
+
+/**
+ * Commit exactly the supplied managed pathspecs. Staging happens first so a
+ * pathspec also works on an unborn repository; `commit --only` preserves any
+ * unrelated staged work. No rollback is attempted when this operation fails.
+ */
+export async function gitCheckpoint(
+  subprocess: SubprocessPort,
+  cwd: string,
+  message: string,
+  paths: readonly string[],
+  signal?: AbortSignal,
+): Promise<GitCheckpointResult> {
+  try {
+    const add = await runGit(subprocess, ['add', '--', ...paths], cwd, signal)
+    if (add.exitCode !== 0) return { ok: false, code: 'CHECKPOINT_FAILED' }
+  } catch {
+    return { ok: false, code: 'CHECKPOINT_FAILED' }
+  }
+  return commitCheckpoint(subprocess, cwd, message, paths, signal)
+}
+
+function deletableManagedPath(path: string): boolean {
+  const name = path.split('/').at(-1)
+  if (name === undefined) return false
+  const id = name.endsWith('.md')
+    ? name.slice(0, -'.md'.length)
+    : name.endsWith('.json')
+      ? name.slice(0, -'.json'.length)
+      : ''
+  if (!NODE_ID_RE.test(id) && !EDGE_ID_RE.test(id) && !FRAMING_LINK_ID_RE.test(id)) return false
+  return entityFilePath(id) === path
+}
+
+/** Remove one Core-derived Node, scientific Edge, or Framing Link path through fixed argv-only Git. */
+export async function gitRemoveManagedPath(
+  subprocess: SubprocessPort,
+  cwd: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (!deletableManagedPath(path)) return false
+  try {
+    const result = await runGit(subprocess, ['rm', '--', path], cwd, signal)
+    return result.exitCode === 0
+  } catch {
+    return false
+  }
+}
+
+/** Commit one exact deletion already staged by gitRemoveManagedPath. */
+export async function gitCheckpointManagedDeletion(
+  subprocess: SubprocessPort,
+  cwd: string,
+  message: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<GitCheckpointResult> {
+  if (!deletableManagedPath(path)) return { ok: false, code: 'CHECKPOINT_FAILED' }
+  return commitCheckpoint(subprocess, cwd, message, [path], signal)
 }
 
 /** Plain `git init` in the project directory; never touches global config. */

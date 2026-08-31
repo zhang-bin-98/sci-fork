@@ -18,7 +18,9 @@ import {
   parseManifest,
   parseEdgeFile,
   parseEvidenceData,
+  parseFramingLinkFile,
   parseNodeData,
+  parseQuestionData,
   parseResultData,
   parsePublicationReference,
   validPmid,
@@ -28,6 +30,8 @@ const UUID = '01234567-89ab-4cde-8f01-23456789abcd'
 const EV = `ev_${UUID}`
 const NODE = `node_${UUID}`
 const RES = `res_${UUID}`
+const QUESTION = `question_${UUID}`
+const QLINK = `qlink_${UUID}`
 
 describe('manifest', () => {
   it('accepts a valid manifest', () => {
@@ -192,6 +196,46 @@ describe('evidence assertion data', () => {
     expect(parseEvidenceData({ ...base, id: 'ev_123' }).ok).toBe(false)
     expect(parseEvidenceData({ ...base, id: NODE }).ok).toBe(false)
   })
+
+  it('requires a bounded citation snapshot and rationale for machine-reviewed evidence', () => {
+    const machineReviewed = {
+      ...base,
+      review_status: 'machine_reviewed',
+      citation: { title: 'A source article', journal: 'Bone', year: 2025 },
+      machine_review_rationale: 'PMID, abstract locator, entailment, direction, and limitations checked.',
+    }
+    expect(parseEvidenceData(machineReviewed).ok).toBe(true)
+    expect(parseEvidenceData({ ...machineReviewed, citation: undefined }).ok).toBe(false)
+    expect(parseEvidenceData({ ...machineReviewed, machine_review_rationale: '' }).ok).toBe(false)
+    expect(parseEvidenceData({ ...machineReviewed, abstract: 'raw source text' }).ok).toBe(false)
+  })
+})
+
+describe('research question and framing link data', () => {
+  it('accepts an open question and a strict addresses link', () => {
+    expect(parseQuestionData({
+      id: QUESTION,
+      question: 'What are the key drivers of bone aging?',
+      scope_assumptions: ['mammalian skeletal aging'],
+    }).ok).toBe(true)
+    expect(parseFramingLinkFile(JSON.stringify({
+      id: QLINK,
+      from: NODE,
+      to: QUESTION,
+      relation: 'addresses',
+    })).ok).toBe(true)
+  })
+
+  it('rejects claim fields on questions and scientific fields on framing links', () => {
+    expect(parseQuestionData({ id: QUESTION, question: 'Why?', confidence: 'low' }).ok).toBe(false)
+    expect(parseFramingLinkFile(JSON.stringify({
+      id: QLINK,
+      from: NODE,
+      to: QUESTION,
+      relation: 'supports',
+      basis: 'literature',
+    })).ok).toBe(false)
+  })
 })
 
 describe('node data', () => {
@@ -255,6 +299,7 @@ describe('edge data', () => {
 
   it('accepts experiment edges without evidence refs', () => {
     expect(parseEdgeFile(JSON.stringify(base)).ok).toBe(true)
+    expect(parseEdgeFile(JSON.stringify({ ...base, relation: 'predicts' })).ok).toBe(true)
   })
 
   it('requires evidence refs for literature basis', () => {
@@ -266,7 +311,7 @@ describe('edge data', () => {
     })).ok).toBe(true)
   })
 
-  it('requires provenance and evidence gap for ai_inference basis', () => {
+  it('requires provenance, evidence gap, and unique publication refs for ai_inference basis', () => {
     expect(parseEdgeFile(JSON.stringify({ ...base, basis: 'ai_inference' })).ok).toBe(false)
     expect(parseEdgeFile(JSON.stringify({
       ...base, basis: 'ai_inference', provenance: 'model x',
@@ -276,7 +321,25 @@ describe('edge data', () => {
       basis: 'ai_inference',
       provenance: 'model x',
       evidence_gap: 'no direct measurement',
+      publication_refs: [{ pmid: '12345678', doi: '10.1000/ABC' }],
     })).ok).toBe(true)
+    expect(parseEdgeFile(JSON.stringify({
+      ...base,
+      basis: 'ai_inference',
+      provenance: 'model x',
+      evidence_gap: 'no direct measurement',
+    })).ok).toBe(false)
+    expect(parseEdgeFile(JSON.stringify({
+      ...base,
+      basis: 'ai_inference',
+      provenance: 'model x',
+      evidence_gap: 'no direct measurement',
+      publication_refs: [{ pmid: '12345678' }, { pmid: '12345678' }],
+    })).ok).toBe(false)
+    expect(parseEdgeFile(JSON.stringify({
+      ...base,
+      publication_refs: [{ pmid: '12345678' }],
+    })).ok).toBe(false)
   })
 
   it('rejects self edges, malformed endpoints, and unknown keys', () => {
@@ -319,12 +382,16 @@ describe('identifiers and file names', () => {
     expect(entityTypeOfId(EV)).toBe('evidence')
     expect(entityTypeOfId(RES)).toBe('result')
     expect(entityTypeOfId(`edge_${UUID}`)).toBe('edge')
+    expect(entityTypeOfId(QUESTION)).toBe('question')
+    expect(entityTypeOfId(QLINK)).toBe('framing_link')
     expect(entityTypeOfId('other_1')).toBeUndefined()
 
     expect(entityFilePath(NODE)).toBe(`nodes/${NODE}.md`)
     expect(entityFilePath(EV)).toBe(`evidence/${EV}.md`)
     expect(entityFilePath(RES)).toBe(`results/${RES}.md`)
     expect(entityFilePath(`edge_${UUID}`)).toBe(`edges/edge_${UUID}.json`)
+    expect(entityFilePath(QUESTION)).toBe(`questions/${QUESTION}.md`)
+    expect(entityFilePath(QLINK)).toBe(`question-links/${QLINK}.json`)
     expect(entityFilePath('other_1')).toBeUndefined()
   })
 
@@ -333,6 +400,8 @@ describe('identifiers and file names', () => {
     expect(isValidManagedFileName(`${EV}.md`)).toBe(true)
     expect(isValidManagedFileName(`${RES}.md`)).toBe(true)
     expect(isValidManagedFileName(`edge_${UUID}.json`)).toBe(true)
+    expect(isValidManagedFileName(`${QUESTION}.md`)).toBe(true)
+    expect(isValidManagedFileName(`${QLINK}.json`)).toBe(true)
     expect(isValidManagedFileName('readme.md')).toBe(false)
     expect(isValidManagedFileName(`${NODE}.json`)).toBe(false)
     expect(isValidManagedFileName(`edge_${UUID}.md`)).toBe(false)
@@ -342,7 +411,15 @@ describe('identifiers and file names', () => {
 
   it('exposes the manifest file name and managed paths', () => {
     expect(MANIFEST_FILE).toBe('research.json')
-    expect(MANAGED_PATHS).toEqual(['research.json', 'nodes', 'edges', 'evidence', 'results'])
+    expect(MANAGED_PATHS).toEqual([
+      'research.json',
+      'questions',
+      'question-links',
+      'nodes',
+      'edges',
+      'evidence',
+      'results',
+    ])
   })
 })
 

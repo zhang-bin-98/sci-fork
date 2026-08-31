@@ -57,7 +57,7 @@ readonly host: '127.0.0.1' | '0.0.0.0'
 所有注册经 `ctx.effect` 挂在插件 fiber 上，卸载时由 disposer 移除。
 Host 只在 `webServer.host === '127.0.0.1'` 时激活。
 
-### 3. `shell.overlay` Open action（Client Slot）
+### 3. Client Open action slots
 
 `dsh-client-runtime/lib/types/client/slots.d.ts`：`ctx.slots.register`
 是 `SlotCore.register` 的 typed face。list slot 注册形态（
@@ -73,6 +73,14 @@ ctx.slots.register(
 `shell.overlay` 是 `{ kind: 'list'; scope: 'root' }` 的 root 级 slot，additive，
 点穿直到条目自行接收指针事件（`dsh-client-ui-layout/lib/types/client/index.d.ts`
 67-80）。root 级 occupant 收到 `GlobalStandardProps`（`useSessions` 等）。
+
+M2 后续钉住 `dsh-client-ui-sidebar/lib/types/client/contract/slots.d.ts` 的公开
+`sidebar.footer.action`：它同样是 root-scoped list slot，注册项使用必填 `id`、
+可选 `order`/`label`，owner 向每个 action 传递 `{ wide: boolean }`。DSH sidebar
+shell 在 `sidebar.settings` 前渲染 footer actions；`wide=false` 表示 56 px rail。
+SciFork 的正式 Open action 使用该 slot，而不再使用 `shell.overlay`。它自行渲染
+按钮 chrome、Graph icon、展开标签和折叠 tooltip，不引用 DSH 私有组件、class
+或 DOM 位置。
 
 ### 4. scoped `SessionInput.setDraft + submit`
 
@@ -107,14 +115,30 @@ type SkillRegistration = Omit<SkillDefinition, 'invocation' | 'provider'> & {
   readonly invocation?: SkillInvocationPolicy
   readonly provider?: string
 }
+type SkillResourceBase =
+  | { readonly kind: 'directory'; readonly path: string }
+  | { readonly kind: 'url'; readonly url: string }
+  | { readonly kind: 'opaque'; readonly description: string }
 // SkillDefinition 需含：name（kebab-case）、description、content、
 // source（'runtime' 等）、可选 whenToUse/path/metadata/resourceBase
 ```
 
 - 文件系统 provider 不扫描 npm 包；插件包内 Skill 必须在 `apply()` 里逐条
   `ctx.skills.register(...)`（source `'runtime'`）。
-- `ctx.skills.list()`/`get(name)` 验证发现；大模型按 name 顺序加载两个 Skill
-  （`scifork-research`、`pubmed-search`）。
+- `ctx.skills.list()`/`get(name)` 验证发现。模型侧 catalog 投影只提供足以选择
+  Skill 的 name 和 description，因此顺序约束必须出现在 description 中，不能
+  只依赖 `whenToUse` 或 Skill 正文。
+- `dsh-tool-skill` 加载结果包含 `resourceBase`。directory 类型渲染为绝对
+  `Base directory for this skill`，并要求模型仅把 Skill 正文明示的相对路径
+  基于该目录解析；它不会列举目录内容。
+- SciFork 只为 `pubmed-search` 注册
+  `{ kind: 'directory', path: <package>/skills/pubmed-search }`，使正文中的
+  `helper.mjs` 可确定解析；`scifork-research` 不注册资源根。
+- directory 路径会进入模型可见的 Skill 工具结果并可能保存在本地 DSH
+  Session 中。这是用户批准的受限兼容性例外；SciFork 自身不得把它写入日志、
+  错误、Draft 或 Research Project。
+- 大模型先加载并执行 `pubmed-search`，检索结果进入当前 Chat context 后才加载
+  `scifork-research`。Skills 不互相调用。
 - 获取方式：`inject: ['skills']` 硬依赖，`ctx.skills.register(...)` 直接访问。
 
 ### 6. argv-only Git（`ctx.subprocess`）
@@ -261,6 +285,6 @@ smoke results 为准。
 | --- | --- |
 | `ctx.storageDomain` 直接保存 focus | 需 `open(defineDomain({name,version,tables}))`，zod schema（M1 再用） |
 | `conversation.input.for(scope)` | client 服务 `ctx.conversation.input`，`for(actx: ClientContext)`，actx 由 `ctx.sessions.scope(id)` 取得 |
-| `shell.overlay` 注册 additive action | 是 root 级 list Slot，`ctx.slots.register({name,id,order,label}, factory)` |
+| additive Open action | M0 spike 的 `shell.overlay` 与 M2 正式使用的 `sidebar.footer.action` 都是 root 级 list Slot；后者额外提供 `{wide}` |
 | 两个 Skill 由 `ctx.skills` 贡献 | `apply()` 内逐条 `ctx.skills.register`，文件系统 provider 不扫描 npm 包 |
 | `ctx.subprocess` 调 Git | `resolveExecutable` + `spawn({argv,cwd,stdio,graceMs})`，collect 模式读输出 |

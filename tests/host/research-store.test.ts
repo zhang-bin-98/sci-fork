@@ -9,11 +9,19 @@ describe('readManagedFiles', () => {
     const fs = new FakeFs({
       '/proj/research.json': MANIFEST,
       '/proj/notes.md': 'not managed',
+      '/proj/questions/question_a.md': '---\nid: question_a\nquestion: Why?\n---\n',
+      '/proj/question-links/qlink_a.json': '{}',
       '/proj/nodes/node_a.md': '---\nid: node_a\nkind: hypothesis\nconfidence: low\n---\nbody',
       '/proj/edges/edge_a.json': '{}',
     })
     const files = await readManagedFiles(fs, '/proj')
-    expect([...files.keys()].sort()).toEqual(['edges/edge_a.json', 'nodes/node_a.md', 'research.json'])
+    expect([...files.keys()].sort()).toEqual([
+      'edges/edge_a.json',
+      'nodes/node_a.md',
+      'question-links/qlink_a.json',
+      'questions/question_a.md',
+      'research.json',
+    ])
     expect(files.get('research.json')).toBe(MANIFEST)
   })
 

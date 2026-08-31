@@ -64,7 +64,8 @@ async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation)
       if (diagnostics.length > 10) lines.push(`- … ${diagnostics.length - 10} more`)
     }
     lines.push(
-      `nodes: ${project.nodes.size}, edges: ${project.edges.size}, ` +
+      `questions: ${project.questions.size}, framing links: ${project.framingLinks.size}, ` +
+        `nodes: ${project.nodes.size}, edges: ${project.edges.size}, ` +
         `evidence: ${project.evidenceAssertions.size}, results: ${project.results.size}`,
     )
     lines.push(`revision: ${project.projectRevision}`)

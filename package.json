@@ -1,7 +1,7 @@
 {
   "name": "dsh-scifork",
-  "version": "0.0.0",
-  "description": "A Git-native research graph for evidence-grounded scientific simulation inside DeepSeek Harness.",
+  "version": "0.0.1",
+  "description": "A Git-native research graph for literature-grounded research expansion inside DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -16,7 +16,17 @@
     "cordis.patch.yml",
     "README.md",
     "SECURITY.md",
-    "docs/specs/m3-research.md"
+    "CONTEXT.md",
+    "docs/scifork-product-design.md",
+    "docs/scifork-software-architecture.md",
+    "docs/specs/m0-compatibility-spike.md",
+    "docs/specs/m1-core-git.md",
+    "docs/specs/m2-companion.md",
+    "docs/specs/m3-research.md",
+    "docs/specs/simulation-branches.md",
+    "docs/specs/progressive-research-expansion.md",
+    "docs/specs/research-questions-machine-review.md",
+    "docs/specs/invariant-safe-updates.md"
   ],
   "keywords": [
     "dsh-plugin",
@@ -31,7 +41,7 @@
   "packageManager": "pnpm@11.23.0",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
-    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs && tailwindcss -i src/companion/styles.css -o dist/companion/styles.css --minify",
     "test": "vitest run",
     "prepack": "corepack pnpm build",
     "verify:pack": "node scripts/verify-pack.mjs",
@@ -49,6 +59,7 @@
   "devDependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@deepseek-ai/cordis": "4.0.1",
+    "@tailwindcss/cli": "^4.3.3",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
@@ -59,6 +70,7 @@
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vitest": "^3.2.0"
   },

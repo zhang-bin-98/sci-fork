@@ -9,4 +9,4 @@ export const ROUTE_ENTITY = '/scifork/api/entity'
 export const ROUTE_FOCUS = '/scifork/api/focus'
 
 /** The standalone Companion entry served under the same origin (M2). */
-export const COMPANION_URL = '/scifork/'
+export const COMPANION_URL = '/scifork'
