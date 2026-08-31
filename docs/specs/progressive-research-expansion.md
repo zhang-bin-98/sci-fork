@@ -1,5 +1,9 @@
 # SciFork literature-grounded research expansion
 
+> The automatic-evidence and open-ended-anchor behavior in this implemented
+> baseline is refined by
+> [Research Questions and machine-reviewed evidence](research-questions-machine-review.md).
+
 > Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.19](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
 > Refines: [bounded simulation branches](simulation-branches.md) and [ADR-0001](../adr/0001-llm-orchestrated-simulation-branches.md)
