@@ -6,6 +6,9 @@
 
 > Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.19](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
+> Historical baseline: the parent versions above describe the design snapshot
+> used for this expansion; current umbrella behavior is defined by product
+> design v0.19 and software architecture v0.20.
 > Refines: [bounded simulation branches](simulation-branches.md) and [ADR-0001](../adr/0001-llm-orchestrated-simulation-branches.md)
 > Decision: [ADR-0002](../adr/0002-separate-step-expansion-from-progressive-research.md)
 
@@ -218,11 +221,15 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
 - [x] A disposable pinned-DSH E2E verifies one button step and one explicit
       Chat-authorized progressive run before release.
 
-### Verification record (2026-08-31)
+### Historical verification record (2026-08-31)
+
+The counts below describe this feature checkpoint, not the current repository
+test inventory; current release gates come from `package.json` and `README.md`.
 
 - Automated Red/Green covered the prompt replacement, directional neighbors,
   packaged Skill catalog/content, and empty-Focus lossless JSON regression.
-- Final post-fix `pnpm check` passed 31 test files and 318 tests.
+- At this feature checkpoint, final post-fix `pnpm check` passed 31 test files
+  and 318 tests.
 - The pinned disposable DSH `0.1.1-rc.2` profile reset the graph Edge-first,
   preserved the legacy candidate Evidence Assertion, and verified an empty Focus as
   lossless `{ "ok": true }`.

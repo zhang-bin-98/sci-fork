@@ -489,6 +489,28 @@ describe('planCommand: nodes', () => {
     }, sha256)
     expect(unknown.ok).toBe(false)
   })
+
+  it('rejects changing a hypothesis to prediction when a predicts edge would become invalid', () => {
+    const prediction = nodeFile(NODE_B, 'prediction')
+    const project = build([
+      nodeFile(NODE, 'hypothesis'),
+      prediction,
+      [`edges/${EDGE}.json`, JSON.stringify({
+        id: EDGE,
+        from: NODE,
+        to: NODE_B,
+        relation: 'predicts',
+        basis: 'experiment',
+      })],
+    ])
+    const plan = planCommand(project, {
+      kind: 'update_node',
+      id: NODE,
+      expectedFileVersion: versionOf(project.files, NODE, 'node'),
+      nodeKind: 'prediction',
+    }, sha256)
+    expect(plan.ok).toBe(false)
+  })
 })
 
 describe('planCommand: edges', () => {
@@ -620,6 +642,21 @@ describe('planCommand: edges', () => {
     if (!updated.ok) return
     expect(writeContent(updated)).toContain('"relation": "associated_with"')
     expect(writeContent(updated)).toContain(`"from": "${NODE}"`)
+  })
+
+  it('rejects changing the only supporting edge when it would invalidate a Finding', () => {
+    const project = build([
+      resultFile(RES, 'validated'),
+      nodeFile(NODE, 'finding'),
+      edgeFile(EDGE, RES, NODE),
+    ])
+    const updated = planCommand(project, {
+      kind: 'update_edge',
+      id: EDGE,
+      expectedFileVersion: versionOf(project.files, EDGE, 'edge'),
+      relation: 'causes',
+    }, sha256)
+    expect(updated.ok).toBe(false)
   })
 
   it('rejects ai-inference-only reference fields on a non-ai edge update', () => {
@@ -790,6 +827,21 @@ describe('planCommand: results', () => {
       id: RES,
       expectedFileVersion: version,
       status: 'validated',
+    }, sha256)
+    expect(plan.ok).toBe(false)
+  })
+
+  it('rejects superseding the only validated Result supporting a Finding', () => {
+    const project = build([
+      resultFile(RES, 'validated'),
+      nodeFile(NODE, 'finding'),
+      edgeFile(EDGE, RES, NODE),
+    ])
+    const plan = planCommand(project, {
+      kind: 'update_result',
+      id: RES,
+      expectedFileVersion: versionOf(project.files, RES, 'result'),
+      status: 'superseded',
     }, sha256)
     expect(plan.ok).toBe(false)
   })

@@ -81,6 +81,7 @@ function entityExists(project: LoadedProject, entityId: string): boolean {
 }
 
 interface ReferenceCounts {
+  /** Deprecated v1 aliases retained for first-party bundle reload compatibility. */
   referenceCount: number
   reviewedEvidenceCount: number
   publicationCount: number

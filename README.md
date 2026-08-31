@@ -20,6 +20,9 @@ single-entity commands, and Research Import Draft validation), plus the Host
 Project Locator, the three model tools (`research_graph_read`,
 `research_graph_apply`, `research_graph_focus`), the `/research init | open |
 validate` commands, Focus storage, and current-branch managed-file checkpoints.
+Every create, update, and delete plan validates its complete candidate project
+before Host writes or checkpoints a file, so cross-entity invariant failures
+remain read-only.
 Git history recovery remains the responsibility of DSH Chat or the user.
 
 M2 Companion is implemented ([M2 spec](docs/specs/m2-companion.md)): the

@@ -1,6 +1,6 @@
 # SciFork 软件架构与实现设计 v0.20
 
-> 状态：Proposed（MVP 精简版）
+> 状态：Implemented（MVP baseline）
 > 日期：2026-08-31
 > 上位设计：[SciFork 产品设计 v0.19](./scifork-product-design.md)
 
@@ -91,23 +91,46 @@ SciFork/
 │   │   ├── validator.ts
 │   │   ├── commands.ts
 │   │   ├── projection.ts
+│   │   ├── publication-references.ts
+│   │   ├── revision.ts
 │   │   └── import-draft.ts
 │   ├── host/
 │   │   ├── index.ts
+│   │   ├── contracts.ts
 │   │   ├── project-locator.ts
+│   │   ├── research-store.ts
+│   │   ├── apply-command.ts
 │   │   ├── tools.ts
+│   │   ├── commands.ts
 │   │   ├── web-routes.ts
+│   │   ├── companion-service.ts
+│   │   ├── companion-assets.ts
+│   │   ├── page-keys.ts
+│   │   ├── skills.ts
+│   │   ├── labels.ts
 │   │   ├── ui-state.ts
 │   │   └── git-checkpoints.ts
 │   ├── bridge/
 │   │   └── client.tsx
-│   └── companion/
-│       ├── index.html
-│       ├── app.tsx
-│       ├── api.ts
-│       ├── graph.tsx
-│       ├── details.tsx
-│       └── styles.css
+│   ├── companion/
+│   │   ├── index.tsx
+│   │   ├── app.tsx
+│   │   ├── api.ts
+│   │   ├── graph.ts
+│   │   ├── details.tsx
+│   │   ├── focus-selection.ts
+│   │   ├── page-key.ts
+│   │   ├── polling.ts
+│   │   ├── research-expansion.ts
+│   │   └── styles.css
+│   └── shared/
+│       ├── companion-contract.ts
+│       ├── page-key.ts
+│       └── routes.ts
+├── scripts/
+│   ├── build-client.mjs
+│   ├── build-companion.mjs
+│   └── verify-pack.mjs
 ├── skills/
 │   ├── pubmed-search/
 │   │   ├── SKILL.md
@@ -117,10 +140,15 @@ SciFork/
 │       └── SKILL.md
 ├── tests/
 └── dist/
-    ├── host.js
+    ├── core/
+    ├── host/
+    ├── shared/
     ├── client.js
     └── companion/
 ```
+
+`dist/companion/index.html` 由 `scripts/build-companion.mjs` 生成，不是
+`src/companion/` 下的手写源码。
 
 这些目录是源码边界，不是独立 package。根 `package.json` 是唯一依赖图、构建入口和发布单元。
 
@@ -279,6 +307,10 @@ Citation Snapshot/审核理由/locator 约束。`candidate` 仅为已有项目�
 `rejected`。`DeleteFramingLink`、`DeleteEdge` 和 `DeleteNode` 都需要目标
 `expectedFileVersion`；`DeleteNode` 只接受无关联科学 Edge 和 Framing Link 的
 Hypothesis/Prediction。删除 Question、Finding、Evidence Assertion 或 Result 不在工具契约中。
+每个候选 create/update/delete 计划在返回前还必须应用到临时受管文件映射并运行完整
+Core parser + validator；任何会破坏 Finding 支持、`predicts` 端点或其他跨实体不变量的
+计划都在 Host 写入前拒绝。详细回归契约见
+[invariant-safe typed updates](specs/invariant-safe-updates.md)。
 
 写入顺序：
 
@@ -512,6 +544,11 @@ Evidence 状态计数使用无歧义英语标签。
 计数分别统计 `machine_reviewed` 与人工 `reviewed` Assertion，不把同一篇文献的不同
 Assertion 混成一个审核动作。Question Details 通过 addressed entities 聚合文献覆盖与
 状态计数，但不暗示 Question 本身被证据支持。
+
+Companion v1 wire 曾使用 `referenceCount` 和 `reviewedEvidenceCount`。当前 Host 在同一个
+first-party bundle 内暂时把它们分别作为 `publicationCount` 和
+`humanReviewedEvidenceCount` 的 deprecated aliases 返回，供已打开页面跨 bundle reload
+兼容；新代码和产品文案只使用后三个无歧义字段，不把 alias 当成第二套计数模型。
 
 Host entity response 为 Node 和已保存科学 Edge 增加只读 `literature` 投影，按人工
 reviewed、machine-reviewed、candidate、rejected 和 retrieval-only Publication

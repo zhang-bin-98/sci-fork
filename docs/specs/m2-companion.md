@@ -6,6 +6,9 @@
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 > Action semantics: the historical `Simulate & Save` contract below is superseded
 > by [literature-grounded research expansion](progressive-research-expansion.md).
+> Historical baseline: parent-version references and the superseded wire section
+> record M2 as implemented at that time; current behavior is defined by the
+> linked refinements and the v0.19/v0.20 umbrella documents.
 
 ## Problem
 
@@ -245,7 +248,8 @@ ellipsized before metadata wraps. Drawer chevrons use left/right semantics besid
 the graph and up/down semantics below it. `Research & Expand` uses a warm-white
 action surface with accent-green text instead of a filled green CTA.
 
-Node projection summaries expose `referenceCount` and `reviewedEvidenceCount`.
+The original M2 projection summaries exposed `referenceCount` and
+`reviewedEvidenceCount`.
 The Host deduplicates total references from the Node and incident stored Edges by
 canonical PMID, otherwise normalized DOI. Reviewed count only includes publications
 behind reviewed Evidence Assertions. Cards and Details format this as
@@ -274,7 +278,11 @@ The Companion performs one snapshot read on mount when visible, repeats every
 while hidden, and refreshes immediately when visibility returns. It has at most
 one snapshot request in flight and disposes timers/listeners on unmount.
 
-### Simulate & Save
+### Historical: Simulate & Save (superseded)
+
+This subsection records the M2 wire baseline only. The visible action and prompt
+behavior are replaced by `Research & Expand`; only the documented v1 wire
+literals remain for an already-open first-party Companion during bundle reload.
 
 `buildSimulationPrompt` runs only from the `Simulate & Save` click path and uses the
 latest snapshot. It includes the Focus id and summary, bounded-neighborhood support and
