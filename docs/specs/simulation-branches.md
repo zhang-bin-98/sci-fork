@@ -212,7 +212,7 @@ optional fields, with regression coverage for dirty Git and invalid manifests.
 
 The staged Edge deletion was recovered with the same exact-path `commit --only`
 operation before the repaired Host resumed. Final state was clean and contained
-four Nodes, three Edges, one candidate Evidence Assertion, zero Results, and the
+four Nodes, three Edges, one legacy candidate Evidence Assertion, zero Results, and the
 original Focus. The selected Edge and Prediction no longer existed; the other
 two generated branches were unchanged.
 

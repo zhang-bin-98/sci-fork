@@ -399,13 +399,13 @@ const APPLY_COMMAND_SCHEMA = {
         locator: { type: 'object' },
         assertion: { type: 'string' },
         direction: { type: 'string', enum: ['supports', 'contradicts', 'context'] },
-        reviewStatus: { type: 'string', enum: ['candidate', 'machine_reviewed'] },
+        reviewStatus: { type: 'string', enum: ['machine_reviewed'] },
         citation: { type: 'object' },
         machineReviewRationale: { type: 'string' },
         limitations: { type: 'array', items: { type: 'string' } },
         body: { type: 'string' },
       },
-      ['id', 'locator', 'assertion', 'direction'],
+      ['id', 'locator', 'assertion', 'direction', 'citation', 'machineReviewRationale'],
     ),
     commandBranch(
       'review_evidence_assertion',
@@ -635,8 +635,8 @@ function applyTool(deps: ResearchHostDeps): ToolDefinition {
     name: 'research_graph_apply',
     description:
       'Apply one typed single-entity command to the SciFork Research Graph and create a local git checkpoint. ' +
-      'Requires the current projectRevision. Ordinary imports stay candidate; an authorized research expansion may ' +
-      'create machine_reviewed Evidence with citation and rationale. Only human-reviewed evidence supports Findings. ' +
+      'Requires the current projectRevision. Ordinary imports and authorized research expansion both create ' +
+      'machine_reviewed Evidence with citation and rationale. Only human-reviewed evidence supports Findings. ' +
       'Question, Framing Link, Edge, and detached Hypothesis/Prediction changes are guarded by Core invariants.',
     parameters: APPLY_PARAMETERS,
     output: { schema: {}, render: renderJson },

@@ -40,7 +40,7 @@ research investigation.
   separate backend, or model-independent research controller.
 - No graph-side plan editor, provider selector, branch picker, or additional Chat
   surface.
-- No automatic Evidence Assertion, reviewed evidence, validated Result, Finding,
+- No automatic human-reviewed Evidence, validated Result, or Finding; no
   full-text download, article node, vector store, RAG, or GraphRAG index.
 - No requirement that the complete Research Graph be acyclic or tree-shaped.
 - No new batch mutation or multi-entity transaction.
@@ -91,12 +91,12 @@ explain. `predicts` retains its legal Finding/Hypothesis-to-Prediction shape; ot
 relationships use the narrowest valid `supports`, `contradicts`, `causes`, or
 `associated_with` relation.
 
-Search results remain untrusted context rather than accepted evidence. A branch
-grounded in retrieved but unreviewed literature therefore remains low confidence,
-and its generated Edge uses `basis: ai_inference` with non-empty provenance, an
-Evidence Gap, and one to fifty structured `publication_refs` identifying the
-records that support that exact inference. These references are normalized and
-deduplicated, but do not create or review an Evidence Assertion and cannot satisfy
+Raw search results remain untrusted context. A branch may persist only after a
+derived Evidence Assertion passes the shared machine-review checks; it remains
+low confidence and its generated Edge uses `basis: ai_inference` with non-empty
+provenance, an Evidence Gap, and one to fifty structured `publication_refs`
+identifying the records that support that exact inference. These references are
+normalized and deduplicated, while machine-reviewed Evidence still cannot satisfy
 a Finding support threshold.
 
 The generated expansion may branch and later converge:
@@ -208,8 +208,9 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
 - [x] The packaged Skill describes a user-authorized progressive research frontier,
       provider-neutral retrieval phases, explicit stop conditions, and connected
       persistence without one Skill calling another.
-- [x] Search results remain untrusted; automatic expansion cannot create reviewed
-      Evidence Assertions, validated Results, or Findings.
+- [x] Search results remain untrusted; automatic expansion creates only
+      machine-reviewed Evidence and cannot create human-reviewed Evidence,
+      validated Results, or Findings.
 - [x] Idle/queued submission, Retry/Copy, Page Key scope, typed deletion, and Git
       checkpoint behavior remain unchanged.
 - [x] Focused tests, `pnpm check`, `node --check index.js`, `git diff --check`, and
@@ -223,7 +224,7 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
   packaged Skill catalog/content, and empty-Focus lossless JSON regression.
 - Final post-fix `pnpm check` passed 31 test files and 318 tests.
 - The pinned disposable DSH `0.1.1-rc.2` profile reset the graph Edge-first,
-  preserved the candidate Evidence Assertion, and verified an empty Focus as
+  preserved the legacy candidate Evidence Assertion, and verified an empty Focus as
   lossless `{ "ok": true }`.
 - One real `Research & Expand` click returned `Started`, completed PubMed search
   then PMID lookup, loaded `scifork-research`, read `neighbors` with direction
@@ -231,8 +232,8 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
 - One explicit two-level Progressive Research Run maintained `frontier` and
   `visited`, completed a fresh retrieval phase per level, retained one connected
   branch per level, and stopped at the declared depth. Final state: seven Nodes,
-  six stored Edges, one candidate Evidence Assertion, zero Results, and unchanged
-  Focus.
+  six stored Edges, one legacy candidate Evidence Assertion, zero Results, and
+  unchanged Focus.
 
 ## Test plan
 

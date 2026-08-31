@@ -16,9 +16,10 @@ Research Project without a semantically valid expansion anchor.
 Research Expansion currently retains only publication identifiers on
 `ai_inference` Edges. This supports uninterrupted multi-round research, but it
 does not preserve the precise abstract-grounded assertions a user needs for
-post-run audit. Requiring candidate-by-candidate review during the run would
-interrupt the frontier and recreate the cognitive burden that Progressive
-Research is intended to remove.
+post-run audit. Requiring candidate-by-candidate review during either import or
+expansion would interrupt the frontier, split evidence ingestion into two trust
+paths, and recreate the cognitive burden that Progressive Research is intended
+to remove.
 
 The project also needs an explicit retention boundary: retrieval metadata,
 abstracts, full text, PDFs, parsed text, and raw provider responses are useful
@@ -42,6 +43,8 @@ SciFork has no public contract for deleting that history.
    in the related Node or Edge Details.
 6. Retain only the minimum durable citation snapshot needed for post-run audit
    and discard complete retrieval material after each run.
+7. Apply the same automatic machine-review requirements to ordinary Draft import
+   and authorized Research Expansion.
 
 ## Non-goals
 
@@ -111,14 +114,17 @@ provenance and cannot become machine-reviewed Evidence Assertions. Missing or
 ambiguous source text causes the branch to be omitted when no defensible
 Evidence Assertion can be extracted.
 
-The persisted review lifecycle is:
+The persisted review lifecycle for newly created Evidence is:
 
 ```text
-candidate -> machine_reviewed -> reviewed | rejected
-candidate ---------------------> reviewed | rejected
+machine_reviewed -> reviewed | rejected
 reviewed ---------------------------------> rejected
 rejected is terminal
 ```
+
+Existing `candidate` records remain readable and may still transition to
+`machine_reviewed`, `reviewed`, or `rejected`, but no normal creation or import
+path persists a new `candidate` record.
 
 `reviewed` continues to mean explicit human acceptance. `machine_reviewed`
 Evidence can ground low-confidence Hypotheses, Predictions, and `ai_inference`
@@ -128,8 +134,9 @@ from human-reviewed evidence.
 The `Research & Expand` click authorizes machine-reviewed Evidence Assertions
 only for the one bounded step it submits. An explicitly authorized Progressive
 Research Run grants the same automatic extraction/review behavior for its stated
-rounds. Ordinary evidence import continues to produce candidate Evidence and use
-user selection.
+rounds. Ordinary evidence import uses the same identity, locator, entailment,
+direction, limitation, Citation Snapshot, and rationale checks, then persists
+qualifying Draft items directly as `machine_reviewed`.
 
 ### Post-run audit and rejection
 
@@ -230,9 +237,9 @@ control and must be disclosed to the user.
       creation but cannot satisfy a Finding or a `basis: literature` Edge.
 - [x] Human acceptance and rejection use guarded review transitions; rejected
       material is removed from active references before status transition.
-- [x] Research Expansion and Progressive Research instructions create
-      machine-reviewed Evidence before their dependent branch and retain exact
-      ids, while ordinary import remains candidate-and-selection based.
+- [x] Research Expansion, Progressive Research, and ordinary Draft import apply
+      the same machine-review requirements and persist qualifying Evidence as
+      `machine_reviewed` while retaining exact ids.
 - [x] Evidence nodes are hidden by default, can be revealed by `Show evidence`,
       and related Node/Edge Details identify publications and all review states.
 - [x] UI counts distinguish unique publications, machine-reviewed Evidence, and

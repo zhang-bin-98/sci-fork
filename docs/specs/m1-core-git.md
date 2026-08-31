@@ -29,7 +29,7 @@ commands），使 M2 Companion 与 M3 Research 可以直接消费。
 - 不实现 Companion 页面、Page Key、Companion API、Simulate BroadcastChannel
   （M2）。
 - 不实现 `SciFork Research` / `pubmed-search` 的 Draft 格式化与检索逻辑（M3）。
-- 不实现 import 的用户选择 UI；M1 只实现 `ImportDraftItem` 命令与校验。
+- 不实现 import 的预览 UI；M1 只实现 `ImportDraftItem` 命令与校验。
 - 不引入架构 §14 之外的运行时依赖（新增 zod、gray-matter、js-yaml，均已在
   §14 批准）。
 - 不在本仓库运行生产 profile 冒烟；冒烟只针对一次性 profile 且需用户批准。
@@ -45,8 +45,8 @@ commands），使 M2 Companion 与 M3 Research 可以直接消费。
 2. Locator kind 使用 v0.12 的 `pubmed_abstract`（v0.11 示例的 `abstract`
    已更正）。
 3. PMID 与 DOI 同时存在时，Core 离线只能校验格式并规范化（PMID canonical、
-   DOI alias）；两者指向同一文献的一致性由候选审查时用户确认，Draft 校验
-   报告 `PMID_DOI_CONSISTENCY_UNVERIFIED` 提示。
+   DOI alias）；两者指向同一文献的一致性由机器审核理由覆盖，Draft 校验报告
+   `PMID_DOI_CONSISTENCY_UNVERIFIED` 提示。
 
 ## Pinned contracts（0.1.1-rc.2）
 
@@ -161,12 +161,12 @@ locator:                    # 二选一
   # 或 kind: pdf; page?: 1..99999; section?: 1..500 字符（二者至少其一）
 assertion: "<1..4000 字符>"
 direction: supports | contradicts | context
-review_status: candidate | reviewed | rejected
+review_status: candidate | machine_reviewed | reviewed | rejected
 limitations:               # 可选，≤20 条，每条 ≤500 字符
 ```
 
 - 正文可选；`assertion` 即人类可读断言。
-- 状态机：candidate → reviewed | rejected；reviewed → rejected；rejected 终态。
+- 新建路径统一落为 `machine_reviewed`；`candidate` 仅兼容已有项目。状态机：candidate → machine_reviewed | reviewed | rejected；machine_reviewed → reviewed | rejected；reviewed → rejected；rejected 终态。
 
 ### Node（nodes/node_<uuid>.md，front matter + 必填正文）
 
@@ -276,15 +276,15 @@ interface ResearchProject {
 
 | kind | 载荷（必填/可选） | 规则 |
 | --- | --- | --- |
-| `create_evidence_assertion` | id、publicationRef?、locator、assertion、direction、limitations?、body? | 落盘 `review_status` 强制 candidate；id 不存在 |
-| `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: reviewed\|rejected、limitations? | 按状态机转移 |
+| `create_evidence_assertion` | id、publicationRef?、locator、assertion、direction、citation、machineReviewRationale、limitations?、body? | 落盘 `review_status` 强制 machine_reviewed；id 不存在 |
+| `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: machine_reviewed\|reviewed\|rejected、limitations? | 按状态机转移 |
 | `create_node` | id、nodeKind、confidence、evidenceRefs?、body | 创建 finding 须满足门槛 |
 | `update_node` | id、expectedFileVersion、nodeKind?、confidence?、evidenceRefs?、body?（至少一项） | 结果态满足门槛 |
 | `create_edge` | id、from、to、relation、basis、evidenceRefs?、publicationRefs?、provenance?、evidenceGap? | 端点存在；basis 规则 |
 | `update_edge` | id、expectedFileVersion、relation?、basis?、evidenceRefs?、publicationRefs?、provenance?、evidenceGap?（至少一项） | from/to 不可变 |
 | `create_result` | id、observedAt、body | 落盘 status 强制 draft |
 | `update_result` | id、expectedFileVersion、status?、observedAt?、body?（至少一项） | 按状态机转移 |
-| `import_draft_item` | id、draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须可导入；转换为 candidate EA 的单实体命令 |
+| `import_draft_item` | id、draft（完整 ResearchImportDraft）、index | Draft 全量重校验；index 项必须通过机器审核字段校验；转换为 machine_reviewed EA 的单实体命令 |
 | `delete_edge` | id、expectedFileVersion | 删除后项目仍须有效，不能使 Finding 失去唯一 Result 支持 |
 | `delete_node` | id、expectedFileVersion | 只允许无关联 Edge 的 Hypothesis/Prediction；Finding 不可删除 |
 
@@ -297,7 +297,7 @@ interface ResearchProject {
   为 delete 输出 `{ path, writeKind: 'delete' }`；相对路径都由 Core 从实体 id
   构造（绝不接受调用方路径）。
 - `import_draft_item` 转换后的 EA：publication_ref、locator、assertion、
-  direction、limitations 来自候选项；正文为空。
+  direction、citation、machine_review_rationale、limitations 来自候选项；正文为空。
 
 ### Research Import Draft
 
@@ -315,12 +315,12 @@ limitations ≤ 20×500；locator section ≤ 500。
 - DOI 规范化：去空白与 `doi:`/`https?://(dx\.)?doi\.org/` 前缀；目录指示符
   `10.xxxx` 转小写，后缀保留原样；`/^10\.\d{4,9}\/.+$/` 否则无效。
 - 至少一个有效标识才可持久化；两者都有效时提示
-  `PMID_DOI_CONSISTENCY_UNVERIFIED`（一致性由用户确认，见文档修正 3）。
+  `PMID_DOI_CONSISTENCY_UNVERIFIED`（一致性必须由机器审核解析，见文档修正 3）。
 - Draft 声明 `review_status`、Finding/Edge/Result、受管路径、Git 参数或 UI
   状态字段 → 结构错误（zod strict 拒绝未知键）。
 
-`ImportDraftItem` 只接受判定为可导入的候选；未选择、不可导入或校验失败条目
-不进入仓库。
+`ImportDraftItem` 只接受判定为可导入且具备 Citation Snapshot 与机器审核理由的候选；
+不可导入或校验失败条目不进入仓库。
 
 ### 投影（projection）
 

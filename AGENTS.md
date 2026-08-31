@@ -135,8 +135,9 @@ regression risks are covered.
   orchestrates a completed retrieval Skill phase followed by `scifork-research`;
   a Progressive Research Run may repeat that sequence, but Skills do not call
   other Skills. External Skills cannot write the Research Project.
-- SciFork validates the Draft, and the user selects candidates before SciFork
-  persists them one at a time.
+- SciFork validates the complete Draft and persists each qualifying candidate
+  one at a time as `machine_reviewed` Evidence. Explicit human acceptance is
+  still required to transition Evidence to `reviewed` for Finding support.
 
 ## Security and data boundaries
 

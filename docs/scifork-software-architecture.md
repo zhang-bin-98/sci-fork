@@ -19,7 +19,7 @@ MVP 采用以下决策：
 9. Git 使用当前分支，每次 mutation 仅尝试创建受管路径提交；SciFork 不维护
    undo/redo 或历史恢复状态。
 10. MVP 发布一个 SciFork 专用的 `SciFork Research` Skill，以及一个通用的 `pubmed-search` 检索 Skill。
-11. 大模型先完成检索 Skill，再使用 `SciFork Research` 格式化普通导入 Draft，或在获授权的扩展中自动提取并审核 Evidence 后保存明确关系；Skill 之间不互相调用。
+11. 大模型先完成检索 Skill，再使用 `SciFork Research` 格式化 Draft；普通导入与获授权扩展使用同一套自动 Evidence 审核规则，扩展在审核后继续保存明确关系；Skill 之间不互相调用。
 12. Companion 按钮只执行一个文献支撑的 Research Expansion Step；Progressive Research Run 只能由用户在当前 Chat 中明确请求，并由大模型逐轮编排，二者均不逐条等待证据确认。
 13. 开放式目标保存为 Research Question；Hypothesis/Finding 通过非科学 `addresses` Framing Link 连接 Question。
 14. 文献 Evidence 直接保存 PMID/DOI 和最小 Citation Snapshot，不建立 Source 实体；完整元信息、abstract、全文、PDF 和原始响应不进入 SciFork 持久化或缓存。
@@ -272,9 +272,9 @@ type ResearchCommand =
   | DeleteNode
 ```
 
-每条命令只创建、修改或删除一个实体。`ImportDraftItem` 只能转换已经通过整体校验且被用户选择的一个 Evidence Candidate。
-`CreateEvidenceAssertion` 默认创建 `candidate`；仅在命令明确携带 expansion 授权语义且
-满足 Citation Snapshot/审核理由/locator 约束时允许创建 `machine_reviewed`。
+每条命令只创建、修改或删除一个实体。`ImportDraftItem` 只能转换已经通过整体校验与机器审核字段校验的一个 Evidence Candidate。
+`CreateEvidenceAssertion` 与 `ImportDraftItem` 均创建 `machine_reviewed`；命令必须满足
+Citation Snapshot/审核理由/locator 约束。`candidate` 仅为已有项目的兼容读取状态，不再由正常创建或导入路径产生。
 `ReviewEvidenceAssertion` 实现规范中的单向状态机；在活动引用仍存在时拒绝转为
 `rejected`。`DeleteFramingLink`、`DeleteEdge` 和 `DeleteNode` 都需要目标
 `expectedFileVersion`；`DeleteNode` 只接受无关联科学 Edge 和 Framing Link 的
@@ -304,6 +304,8 @@ interface EvidenceCandidate {
     | { kind: 'pubmed_abstract' }
     | { kind: 'pdf'; page?: number; section?: string }
   direction: 'supports' | 'contradicts' | 'context'
+  citation?: CitationSnapshot
+  machineReviewRationale?: string
   limitations?: string[]
 }
 
@@ -327,10 +329,10 @@ interface ResearchImportDraft {
 - 可持久化 Evidence Candidate 必须至少有有效 PMID 或规范化 DOI；两者都有时必须解析为同一篇文献。
 - locator 对 PDF 使用页码或章节，对 PubMed abstract 使用明确字段。
 - 没有 PMID/DOI 的 PDF 候选只能留在 Chat 或 Draft，补齐标识前不进入 Research Project。
-- Draft 中的 review state 只能是 candidate；`machine_reviewed` 不属于普通导入路径。
+- Draft 不携带 review state；SciFork 对通过自动审核字段校验的条目统一赋值为 `machine_reviewed`。
 - Finding、Edge、Result、受管路径、Git 参数和 UI 状态不是 Draft 字段。
-- 整个 Draft 先做 schema 校验；用户只能选择通过标识与 locator 校验的候选，再逐项转换为普通单实体命令。
-- 未选择、不可导入或校验失败的条目不进入仓库。
+- 整个 Draft 先做 schema 校验；通过标识、locator、Citation Snapshot 与机器审核理由校验的候选再逐项转换为普通单实体命令。
+- 不可导入或校验失败的条目不进入仓库。
 - 同一 Publication Reference 可以用于多条不同 Evidence Assertion；不创建或合并文献实体。
 
 Research Import Draft 是瞬时交互对象，不写入 Research Project 或 Git。自动扩展也不
@@ -566,9 +568,8 @@ load selected retrieval Skill
 → keep retrieval results in current Chat context
 → load scifork-research
 → format Research Import Draft
-→ SciFork validates
-→ user reviews
-→ persist selected Evidence Assertions
+→ SciFork validates identity, locator, Citation Snapshot, and review rationale
+→ persist qualifying machine-reviewed Evidence Assertions
 
 authorized expansion:
 load selected retrieval Skill
@@ -582,7 +583,7 @@ load selected retrieval Skill
 
 Skill 不直接调用另一个 Skill，也不共享 provider 生命周期或私有中间协议。检索结果不是 Draft；只有大模型加载 `scifork-research` 后生成的结构才是 Research Import Draft。
 
-同一顺序用于研究扩展，但不产生 Draft 或逐条用户选择。按钮提交只授权一次
+同一自动审核顺序用于研究扩展。按钮提交只授权一次
 “检索阶段 → Evidence 自动审核 → 图谱阶段”；用户在 Chat
 中明确请求 Progressive Research Run 时，大模型才维护 frontier/visited state 并重复
 该顺序。每个检索阶段必须完成并把真实结果留在当前 Chat context，随后才加载
@@ -675,11 +676,11 @@ Lookup：
 
 ### 10.4 其他检索 Skills
 
-大模型可以改用其他数据库检索或 PDF 解析 Skill。它们只需把结果留在当前 Chat context，不需要理解 SciFork schema。随后大模型加载 `scifork-research`：普通导入完成统一 Draft 格式化并记录实际 retrieval Skill；获授权扩展只把最小 Evidence Assertion 通过 typed command 持久化。
+大模型可以改用其他数据库检索或 PDF 解析 Skill。它们只需把结果留在当前 Chat context，不需要理解 SciFork schema。随后大模型加载 `scifork-research`：普通导入完成统一 Draft 格式化并记录实际 retrieval Skill；普通导入与获授权扩展都只把通过同一自动审核规则的最小 Evidence Assertion 通过 typed command 持久化。
 
 SciFork Core 只信任最终 Draft 或 typed command：它校验 schema、Publication Reference、
-locator、数量和大小；没有 PMID/DOI 的候选不可持久化。普通导入由用户选择后逐项写入
-candidate；扩展中的 `machine_reviewed` 还必须校验 Citation Snapshot 和审核理由。Core
+locator、数量和大小；没有 PMID/DOI 的候选不可持久化。普通导入与扩展都必须校验
+Citation Snapshot 和审核理由并逐项写入 `machine_reviewed`。Core
 不接收 abstract、全文、PDF、解析文本、authors、publication types、retrieval URL/time
 或 raw provider response 字段。
 
@@ -910,7 +911,7 @@ fresh DSH profile
 → select a rejected branch, ask Chat to delete the current Focus, verify the reported id, then delete Framing Link/Edge before Node
 → enable Show evidence and verify citation Details without remote fetch
 → repeat with one alternative retrieval/PDF Skill
-→ separately format Research Import Draft, review a candidate, and import it through the ordinary flow
+→ separately format Research Import Draft and import a qualifying machine-reviewed item through the ordinary flow
 → load scifork-research and import one formatted Draft item
 → create validated Result and support Edge
 → ask the corresponding DSH Chat for Git history recovery
@@ -970,7 +971,7 @@ fresh DSH profile
 | Bridge 不可用 | ack timeout，保留 Retry/Copy |
 | 两窗口 stale write | project queue + expectedProjectRevision |
 | PubMed 限流或格式变化 | 300 条分页、官方速率、POST/History、超时和响应校验 |
-| 检索 Skill 输出不可信 | 普通导入用 Draft/用户选择；扩展只从真实来源文字生成有 locator、Citation Snapshot 和审核理由的 machine Evidence |
+| 检索 Skill 输出不可信 | 普通导入与扩展都只从真实来源文字生成有 locator、Citation Snapshot 和审核理由的 machine Evidence |
 | 自动审核被误解为人工接受 | 独立 `machine_reviewed` 状态、UI 分开计数、Finding/literature 只接受人工 reviewed |
 | 自动扩展污染 Graph | 先检索和 Evidence、真实点击只授权单层最多五条、低置信、去重、每条必须有科学 Edge 或 Framing Link |
 | 检索材料泄漏到项目/Git | Core 拒绝原文字段、helper 不落盘、只保存最小 Citation Snapshot、最终扫描 |

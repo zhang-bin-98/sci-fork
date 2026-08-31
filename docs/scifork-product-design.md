@@ -217,16 +217,16 @@ Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程�
 同一篇文献可以产生多条内容不同的 Evidence Assertion。
 
 ```text
-candidate -> machine_reviewed -> reviewed | rejected
-candidate ---------------------> reviewed | rejected
+machine_reviewed -> reviewed | rejected
 reviewed ---------------------------------> rejected
 rejected is terminal
 ```
 
-普通导入仍只能提出 candidate 并由用户选择。一次获授权的 Research Expansion Step 或
-Progressive Research Run 可以从真实 abstract/PDF 段落创建 `machine_reviewed` Evidence，
-并保存 title 与可选 journal/year 的 Citation Snapshot 及机器审核理由。只有用户明确接受后
-才成为 `reviewed`；拒绝前必须先移除其活动引用，rejected Evidence 保留作审计记录。
+普通导入、一次获授权的 Research Expansion Step 与 Progressive Research Run 都从真实
+abstract/PDF 段落创建 `machine_reviewed` Evidence，并保存 title 与可选 journal/year 的
+Citation Snapshot 及机器审核理由。已有 `candidate` 仍可读取和审核，但正常创建与导入不再
+产生新 candidate。只有用户明确接受后才成为 `reviewed`；拒绝前必须先移除其活动引用，
+rejected Evidence 保留作审计记录。
 
 ### Result
 
@@ -298,13 +298,13 @@ Edge，也是 Research Graph 中的视觉中心。Focus 只影响
 schema validation
 → publication reference validation
 → locator validation
-→ user review
-→ SciFork typed persistence
+→ automatic machine review
+→ SciFork typed persistence as machine_reviewed
 ```
 
 外部 Skill 不能直接生成 `reviewed`/`machine_reviewed` Evidence Assertion、Finding、
-持久化文件或 Git 检查点；`machine_reviewed` 只由 SciFork Research 在明确扩展授权内
-通过 typed command 创建。
+持久化文件或 Git 检查点；`machine_reviewed` 由 SciFork Core 在统一自动审核通过后
+通过 typed command 创建。用户后续可明确接受 Evidence，使其转为 `reviewed`。
 
 ## 5. 文件设计
 
@@ -434,7 +434,7 @@ research_graph_focus
 ```text
 读取当前 Focus
 → SciFork Research Skill 选择基本 typed tools
-→ 普通修改或 Evidence 导入按相应审核边界等待用户确认
+→ 普通 Evidence 导入与扩展使用同一自动审核边界，人工确认仅用于提升为 reviewed
 → 开放式目标先保存为 Research Question 并设为 Focus
 → Research & Expand 点击授权一次“检索 → Evidence 自动审核 → 直接扩展”的有界持久化流程
 → 用户在 Chat 中明确请求时，SciFork Research Skill 可按同一证据顺序编排有界 Progressive Research Run
@@ -472,7 +472,8 @@ MVP 只发布一个 SciFork 专用的 `SciFork Research` Skill：
 - **Critique**：检查矛盾、Evidence Gap、过度推断、重复实体和缺失 locator。
 
 Skill 负责推理、格式化和常见流程，不联网检索，也不直接写文件；大模型通过
-SciFork typed tools 执行持久化。Evidence 导入和普通科研修改仍服从用户审核；真实
+SciFork typed tools 执行持久化。Evidence 导入与扩展先经过同一套自动审核；用户审核
+只用于把 Evidence 提升为 `reviewed`，普通科研修改仍由用户在 Chat 中明确触发。真实
 `Research & Expand` 点击只授权一次单层扩展中的 machine review，Progressive Research
 Run 的明确请求则授权其声明轮次中的同类处理。两者都不能生成 Finding。Progressive Research Run 的
 授权必须来自当前 Chat 中的明确用户请求，不能从按钮授权推导。
@@ -502,7 +503,7 @@ Skill 遵守 NCBI 请求频率；大于约 200 个 PMID 的批量元数据请求
 
 ## 9. 模型编排与导入
 
-大模型先加载并完成一个检索 Skill；默认可以选择 `pubmed-search`，也可以选择其他数据库检索或 PDF 解析 Skill。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把普通导入格式化为 Research Import Draft，或在获授权的扩展中从真实来源文字提取并自动审核 Evidence Assertion 后判断是否存在可保存的明确关系。不得在检索尚未执行时预先或同时加载两个 packaged Skill；若 `SciFork Research` 被过早加载，它必须等待真实检索上下文，不能补造 Draft、Evidence 或扩展分支。
+大模型先加载并完成一个检索 Skill；默认可以选择 `pubmed-search`，也可以选择其他数据库检索或 PDF 解析 Skill。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把结果格式化为 Research Import Draft，并使用与获授权扩展相同的规则从真实来源文字提取和自动审核 Evidence Assertion；有 Focus 与研究目标时再判断是否存在可保存的明确关系。不得在检索尚未执行时预先或同时加载两个 packaged Skill；若 `SciFork Research` 被过早加载，它必须等待真实检索上下文，不能补造 Draft、Evidence 或扩展分支。
 
 Progressive Research Run 可以重复上述顺序，但每轮都必须先完成检索阶段，再进入
 图谱读取/持久化阶段。大模型而不是 Skill 负责选择下一 frontier 和再次加载哪个 Skill；
@@ -525,6 +526,8 @@ interface EvidenceCandidate {
     | { kind: 'pubmed_abstract' }
     | { kind: 'pdf'; page?: number; section?: string }
   direction: 'supports' | 'contradicts' | 'context'
+  citation?: CitationSnapshot
+  machineReviewRationale?: string
   limitations?: string[]
 }
 
@@ -546,11 +549,10 @@ interface ResearchImportDraft {
 - Evidence Candidate 只有在包含有效 PMID 或规范化 DOI 后才能被接受和持久化；两者都有时必须指向同一篇文献。
 - 必须提供 locator；PDF 至少包含页码或章节。
 - 没有 PMID/DOI 的 PDF 内容可以暂留 Chat 或 Draft，补齐标识前不能进入 Research Project。
-- Draft 不能声明 `review_status: reviewed`。
-- Draft 也不能声明 `review_status: machine_reviewed`；该状态只属于获授权的 Research Expansion 流程。
+- 可导入的 Evidence Candidate 必须包含最小 Citation Snapshot 和非空机器审核理由，覆盖来源身份、locator、entailment、direction 与 limitations。
+- Draft 不能声明 `review_status`；SciFork 在自动校验通过后统一赋值为 `machine_reviewed`。
 - Draft 不能直接创建 Finding、Edge 或 Result。
-- SciFork 先校验整个 Draft，再让用户选择要导入的 Evidence Candidate。
-- 被接受条目逐项转换为正常 typed command；未接受内容不进入仓库或 Git。
+- SciFork 先校验整个 Draft，再把通过标识、locator 与机器审核字段校验的条目逐项转换为正常 typed command；未通过内容不进入仓库或 Git。
 - 同一 Publication Reference 可以用于多条不同 Evidence Assertion；SciFork 不创建或合并文献实体。
 
 Research Expansion 不把完整 Draft 或检索响应持久化。每条 machine-reviewed Evidence 只
@@ -642,7 +644,7 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 11. 用户可选择一个新节点再次单步扩展，或在 Chat 中明确请求 Progressive Research Run
 12. 递进运行按相同顺序连续执行，不逐条打断用户，也不把 machine-reviewed Evidence 提升为 Finding
 13. 用户事后把 Evidence 接受为人工 reviewed 或拒绝，并可通过 Chat 修改/删除不合适的分支
-14. 普通 Evidence 导入仍格式化 Research Import Draft，并由用户选择 candidate
+14. 普通 Evidence 导入同样格式化 Research Import Draft，并把通过自动审核的条目保存为 machine-reviewed Evidence
 15. SciFork 为每个实体修改创建本地检查点，只保留最小 Citation Snapshot，不保存原始检索材料
 16. 用户在需要时通过 DSH Chat 或现有 Git 工具恢复历史
 ```
@@ -680,7 +682,7 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 - 提交失败时 Retry/Copy 可恢复。
 - 统一 SciFork Research Skill 能完成检索建议、Draft 格式化、单步/递进研究和批判。
 - PubMed Search Skill 能执行完整查询、按 300 条分页并按 PMID/DOI 查找，且不会伪造记录。
-- 大模型能先使用任一检索 Skill，再使用 SciFork Research 格式化 Draft；检索 Skill 不能绕过校验写仓库。
+- 大模型能先使用任一检索 Skill，再使用 SciFork Research 格式化 Draft；普通导入与扩展使用同一套自动审核规则，检索 Skill 不能绕过校验写仓库。
 - Node/Edge Details 能按状态显示 Citation Snapshot、PMID/DOI、assertion、locator、
   direction、limitations 和机器审核理由；卡片计数区分 publication、machine-reviewed 和人工 reviewed。
 - SciFork 项目、Git、日志与缓存不保留 authors、publication type、retrieval URL/time、

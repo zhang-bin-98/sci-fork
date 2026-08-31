@@ -130,6 +130,8 @@ describe('parseCommand', () => {
         locator: { kind: 'pubmed_abstract' },
         assertion: 'Claim.',
         direction: 'supports',
+        citation: { title: 'A source article', journal: 'Bone', year: 2025 },
+        machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
       },
       { kind: 'review_evidence_assertion', id: EV, expectedFileVersion: 'a'.repeat(64), reviewStatus: 'reviewed' },
       { kind: 'create_node', id: NODE, nodeKind: 'hypothesis', confidence: 'moderate', body: 'body' },
@@ -170,7 +172,7 @@ describe('parseCommand', () => {
 })
 
 describe('planCommand: create_evidence_assertion', () => {
-  it('renders a candidate assertion with normalized identifiers', () => {
+  it('renders a machine-reviewed assertion with normalized identifiers', () => {
     const project = build([])
     const command = parseCommand({
       kind: 'create_evidence_assertion',
@@ -179,6 +181,8 @@ describe('planCommand: create_evidence_assertion', () => {
       locator: { kind: 'pubmed_abstract' },
       assertion: 'STAT3 is phosphorylated.',
       direction: 'supports',
+      citation: { title: 'A source article', journal: 'Bone', year: 2025 },
+      machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
     })
     if (!command.ok) throw new Error('parse failed')
     const plan = planCommand(project, command.value, sha256)
@@ -186,7 +190,7 @@ describe('planCommand: create_evidence_assertion', () => {
     if (!plan.ok) return
     expect(plan.path).toBe(`evidence/${EV}.md`)
     expect(plan.writeKind).toBe('create')
-    expect(writeContent(plan)).toContain('review_status: candidate')
+    expect(writeContent(plan)).toContain('review_status: machine_reviewed')
     expect(writeContent(plan)).toContain('doi: 10.1000/ABC')
   })
 
@@ -200,6 +204,8 @@ describe('planCommand: create_evidence_assertion', () => {
         locator: { kind: 'pubmed_abstract' },
         assertion: 'STAT3 is phosphorylated: yes.',
         direction: 'supports',
+        citation: { title: 'A source article', journal: 'Bone', year: 2025 },
+        machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
         limitations: ['in vitro', 'n = 3'],
       },
       {
@@ -803,11 +809,13 @@ describe('planCommand: import_draft_item', () => {
         assertion: 'Imported claim.',
         locator: { kind: 'pubmed_abstract' },
         direction: 'supports',
+        citation: { title: 'Imported source article', journal: 'Example Journal', year: 2025 },
+        machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
       },
     ],
   }
 
-  it('converts a validated candidate into a candidate assertion', () => {
+  it('converts a validated candidate into a machine-reviewed assertion', () => {
     const project = build([])
     const plan = planCommand(project, {
       kind: 'import_draft_item',
@@ -818,7 +826,7 @@ describe('planCommand: import_draft_item', () => {
     expect(plan.ok).toBe(true)
     if (!plan.ok) return
     expect(plan.path).toBe(`evidence/${EV}.md`)
-    expect(writeContent(plan)).toContain('review_status: candidate')
+    expect(writeContent(plan)).toContain('review_status: machine_reviewed')
     expect(writeContent(plan)).toContain("pmid: '12345678'")
   })
 

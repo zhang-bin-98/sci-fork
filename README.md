@@ -47,7 +47,7 @@ research-expansion, progressive-research, and critique protocols. The approved
 disposable DSH `0.1.1-rc.2`
 v0.0.1 release-tarball exercise verified directory `resourceBase` discovery,
 ordered Skill loading, real PubMed search and DOI lookup, Draft formatting and
-single-candidate import, typed mutation/checkpoint, Focus, idle and queued
+machine-reviewed import, typed mutation/checkpoint, Focus, idle and queued
 prompt submission, Page Key invalidation on restart, and uninstall with the
 Git Research Project preserved.
 
@@ -112,9 +112,9 @@ The currently implemented v0.0.1 baseline has these boundaries:
   directory without searching the installation or writing project intermediates.
 - The model may use another retrieval or PDF Skill instead, then load
   `SciFork Research` to format the current results as a `Research Import Draft`.
-  Ordinary import remains candidate-based and user-selected. Authorized
-  expansion instead stores minimal machine-reviewed Evidence before the branch;
-  only explicit human acceptance becomes `reviewed`, and only human-reviewed
+  Every import and authorized expansion uses the same automatic checks and stores
+  only qualifying minimal `machine_reviewed` Evidence. Only explicit human
+  acceptance becomes `reviewed`, and only human-reviewed
   Evidence or validated Results can satisfy a Finding. Research-team data
   remains a Result. An explicitly
   requested Progressive Research Run may alternate completed retrieval and graph

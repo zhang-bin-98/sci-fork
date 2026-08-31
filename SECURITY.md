@@ -41,16 +41,16 @@ does not choose a project license.
 
 Retrieval Skills stay in Chat context. For ordinary import,
 `scifork-research` formats a candidate `ResearchImportDraft`; Core validates
-the whole Draft, and the user selects individual candidates before persistence.
-For an authorized Research Expansion or Progressive Research Run, the model may
-instead persist a minimal `machine_reviewed` Evidence Assertion before its
-dependent low-confidence branch. That transition requires an actual abstract or
-explicitly user-provided bounded PDF/full-text passage, PMID/DOI, locator,
-Citation Snapshot, and machine-review rationale. Title-only metadata cannot
-qualify, and machine review never satisfies a Finding or literature-Edge
-threshold. Skills do not call each other or write project files directly. A
-Draft cannot declare reviewed evidence or directly create a Finding, Edge, or
-Result.
+the whole Draft, and qualifying items are persisted as minimal
+`machine_reviewed` Evidence Assertions. The same automatic checks apply to an
+authorized Research Expansion or Progressive Research Run. Persistence requires
+an actual abstract or explicitly user-provided bounded PDF/full-text passage,
+PMID/DOI, locator, Citation Snapshot, and machine-review rationale. Title-only
+metadata cannot qualify, and machine review never satisfies a Finding or
+literature-Edge threshold; only explicit human acceptance can produce
+`reviewed` Evidence. Skills do not call each other or write project files
+directly. A Draft cannot declare reviewed evidence or directly create a Finding,
+Edge, or Result.
 
 SciFork persists no complete retrieval record. Project files, Git checkpoints,
 logs, errors, and caches may contain only PMID/normalized DOI, a minimal Citation

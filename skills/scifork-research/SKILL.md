@@ -1,6 +1,6 @@
 ---
 name: scifork-research
-description: Format retrieved biomedical literature into reviewable SciFork import drafts, preserve abstract- or PDF-grounded machine-reviewed Evidence and connected research branches, frame open Research Questions, critique graph branches, and apply accepted graph changes through SciFork tools. Use after a literature-retrieval or PDF-reading skill has placed real source results in the current conversation.
+description: Format retrieved biomedical literature into SciFork import drafts for automatic review, preserve abstract- or PDF-grounded machine-reviewed Evidence and connected research branches, frame open Research Questions, critique graph branches, and apply accepted graph changes through SciFork tools. Use after a literature-retrieval or PDF-reading skill has placed real source results in the current conversation.
 ---
 
 # SciFork Research
@@ -22,10 +22,11 @@ For evidence import:
 1. Load and use one retrieval/PDF Skill. Keep its raw result in Chat context.
 2. Load this Skill and record the actual retrieval Skill name in
    `producer.retrievalSkill`.
-3. Emit one complete `ResearchImportDraft` and wait for SciFork validation and
-   the user's candidate-by-candidate selection.
-4. Convert accepted candidates to one `import_draft_item` command each, using
-   the latest `projectRevision`. Never batch unreviewed content into a Finding.
+3. Emit one complete `ResearchImportDraft`. Every importable candidate includes
+   the Citation Snapshot and machine-review rationale required below.
+4. After SciFork validation, convert each qualifying candidate to one
+   `import_draft_item` command using the latest `projectRevision`. Each imported
+   assertion is stored as `machine_reviewed`; never promote it to a Finding.
 
 For graph expansion, the orchestrating model completes one retrieval phase first,
 keeps the actual results in the current Chat, and only then loads this Skill for
@@ -71,6 +72,12 @@ no extra keys:
       "assertion": "A precise claim supported by the retrieved text.",
       "locator": { "kind": "pubmed_abstract" },
       "direction": "supports",
+      "citation": {
+        "title": "The source article title",
+        "journal": "The source journal",
+        "year": 2025
+      },
+      "machineReviewRationale": "Publication identity, locator, entailment, direction, and limitations were checked against the retrieved abstract.",
       "limitations": ["in vitro model"]
     }
   ],
@@ -88,13 +95,17 @@ Formatting rules:
   page or section. Do not invent page numbers, identifiers, or quotations.
 - `direction` is `supports`, `contradicts`, or `context`; context cannot be
   used as Evidence Assertion support.
+- Every importable candidate includes a minimal Citation Snapshot with title and
+  optional journal/year plus a non-empty `machineReviewRationale` covering
+  publication identity, locator, entailment, direction, and limitations.
 - Keep at most 50 candidates, 4,000 characters per assertion, 20 limitations
   of at most 500 characters, and a serialized Draft under 256 KiB.
 - Never include `review_status`, Finding/Edge/Result objects, file paths, Git
-  arguments, Page Keys, prompts, or UI state. The Draft is candidate-only.
+  arguments, Page Keys, prompts, or UI state. Review status is assigned by
+  SciFork after automatic validation.
 - If PMID and DOI are both present, add
-  `PMID_DOI_CONSISTENCY_UNVERIFIED`; user review decides whether they identify
-  the same publication.
+  `PMID_DOI_CONSISTENCY_UNVERIFIED`; the machine-review rationale must state
+  whether the retrieval material resolves them to the same publication.
 
 ## Research Expansion Step: Research & Expand
 

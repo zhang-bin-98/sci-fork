@@ -11,7 +11,7 @@
 M1 and M2 provide a validated Research Project and a usable Companion, but the
 packaged Skills are still M0 stubs. M3 must make literature retrieval and
 evidence formatting useful without allowing a retrieval provider or model output
-to bypass the Research Import Draft and user-review boundaries.
+to bypass the Research Import Draft and automatic machine-review boundaries.
 
 ## Goals
 
@@ -106,13 +106,14 @@ when formatting or reasoning is needed. Skills never call each other. If
 `scifork-research` is loaded before real retrieval output exists, it waits for
 that context and does not fabricate a Draft.
 
-`scifork-research` may produce a candidate `ResearchImportDraft`, execute the
+`scifork-research` may produce a `ResearchImportDraft` for automatic review, execute the
 approved [bounded simulation branch workflow](simulation-branches.md), or
 produce a critique. A Draft must use `formatterSkill:
 "scifork-research"`, preserve the actual retrieval Skill name, include a
-locator for every candidate, and never claim `review_status: reviewed` or
-directly create a Finding, Edge, or Result. SciFork Core validates the complete
-Draft before the user selects candidates for one-at-a-time typed persistence.
+locator, Citation Snapshot, and machine-review rationale for every importable
+candidate, and never claim `review_status` or directly create a Finding, Edge,
+or Result. SciFork Core validates the complete Draft before qualifying items are
+persisted one at a time as `machine_reviewed`.
 The Draft restriction does not prevent a real `Simulate & Save` click from
 authorizing low-confidence Hypothesis/Prediction plus Edge commands under the
 separate bounded simulation contract.
@@ -168,8 +169,10 @@ two bounded records, and DOI lookup for `10.1016/j.cell.2019.06.002` resolved
 PMID `31251913`. Only after retrieval completed did the model load
 `scifork-research` and format a Draft containing both identifiers, a
 `pubmed_abstract` locator, title-metadata limitations, and an explicit
-PMID/DOI-consistency warning. Selecting one candidate created exactly one
-candidate Evidence Assertion through `import_draft_item` and a Git checkpoint.
+PMID/DOI-consistency warning. Importing one qualifying item created exactly one
+Evidence Assertion through `import_draft_item` and a Git checkpoint. This
+historical smoke predated unified automatic review; the current command stores
+the item as `machine_reviewed` with Citation Snapshot and rationale.
 Invalid IDs and an attempted unreviewed evidence reference were rejected by
 Core without a write.
 
@@ -201,7 +204,7 @@ no temporary absolute path or request artifact was written into the project.
   of a resource base on `scifork-research`, resource disposal, and path-free
   initialization diagnostics.
 - An offline workflow test proves retrieval output formatted by
-  `scifork-research` passes Core Draft validation and becomes one candidate-only
+  `scifork-research` passes Core Draft validation and becomes one machine-reviewed
   typed import command; identifier-free PDF candidates remain non-importable.
 - Disposable pinned DSH E2E is never run implicitly. The approved v0.0.1 release
   exercise covers Skill discovery/loading, real PubMed retrieval and lookup,

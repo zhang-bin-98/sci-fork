@@ -92,7 +92,7 @@ const CREATE_EVIDENCE_COMMAND_SCHEMA = z
     locator: LOCATOR_SCHEMA,
     assertion: z.string().min(1).max(ASSERTION_MAX),
     direction: DIRECTION_SCHEMA,
-    reviewStatus: z.enum(['candidate', 'machine_reviewed']).optional(),
+    reviewStatus: z.literal('machine_reviewed').optional(),
     citation: CITATION_SNAPSHOT_SCHEMA.optional(),
     machineReviewRationale: z.string().min(1).max(4000).optional(),
     limitations: LIMITATIONS_SCHEMA.optional(),
@@ -100,7 +100,6 @@ const CREATE_EVIDENCE_COMMAND_SCHEMA = z
   })
   .strict()
   .superRefine((command, context) => {
-    if (command.reviewStatus !== 'machine_reviewed') return
     if (command.citation === undefined) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ['citation'], message: 'machine_reviewed evidence requires citation' })
     }
@@ -450,7 +449,7 @@ function planCreateEvidence(project: LoadedProject, command: Extract<ResearchCom
     locator: command.locator,
     assertion: command.assertion,
     direction: command.direction,
-    review_status: command.reviewStatus ?? 'candidate',
+    review_status: 'machine_reviewed',
     ...(command.citation !== undefined ? { citation: command.citation } : {}),
     ...(command.machineReviewRationale !== undefined
       ? { machine_review_rationale: command.machineReviewRationale }
@@ -907,13 +906,19 @@ function planImportDraftItem(project: LoadedProject, command: Extract<ResearchCo
     )
     return undefined
   }
+  if (candidate.citation === undefined || candidate.machineReviewRationale === undefined) {
+    issues.push(commandIssue('INVALID_IMPORT_DRAFT', `candidate ${command.index} is missing machine-review fields`, command.id))
+    return undefined
+  }
   const data: EvidenceData = {
     id: command.id,
     publication_ref: assessment.publicationRef,
     locator: candidate.locator,
     assertion: candidate.assertion,
     direction: candidate.direction,
-    review_status: 'candidate',
+    review_status: 'machine_reviewed',
+    citation: candidate.citation,
+    machine_review_rationale: candidate.machineReviewRationale,
     ...(candidate.limitations !== undefined ? { limitations: candidate.limitations } : {}),
   }
   return { content: renderMarkdown(evidenceFrontMatter(data), '') }

@@ -19,6 +19,8 @@ function draft(overrides: Record<string, unknown> = {}): Record<string, unknown>
         assertion: 'STAT3 is phosphorylated.',
         locator: { kind: 'pubmed_abstract' },
         direction: 'supports',
+        citation: { title: 'STAT3 signaling study', journal: 'Example Journal', year: 2025 },
+        machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
         limitations: ['in vitro'],
       },
     ],
@@ -44,6 +46,8 @@ describe('validateImportDraft', () => {
         assertion: 'Claim.',
         locator: { kind: 'pubmed_abstract' },
         direction: 'context',
+        citation: { title: 'DOI source article' },
+        machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
       }],
     }))
     expect(result.ok).toBe(true)
@@ -51,7 +55,7 @@ describe('validateImportDraft', () => {
     expect(result.value.assessments[0]?.publicationRef).toEqual({ doi: '10.1000/XYZ-9' })
   })
 
-  it('warns that PMID/DOI consistency needs user confirmation', () => {
+  it('warns when PMID/DOI consistency remains unresolved', () => {
     const result = validateImportDraft(draft({
       evidenceCandidates: [{
         publicationRef: { pmid: '12345678', doi: '10.1000/abc' },

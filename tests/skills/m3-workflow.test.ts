@@ -16,7 +16,7 @@ const emptyProject = parseAndValidateProject(
 )
 
 describe('M3 retrieval to import workflow', () => {
-  it('accepts a retrieval result formatted by scifork-research and plans one candidate import', () => {
+  it('accepts a retrieval result formatted by scifork-research and plans one machine-reviewed import', () => {
     const draft = {
       schemaVersion: 1,
       producer: {
@@ -29,6 +29,8 @@ describe('M3 retrieval to import workflow', () => {
         assertion: 'The retrieved study reports the prespecified observation.',
         locator: { kind: 'pubmed_abstract' },
         direction: 'supports',
+        citation: { title: 'Imported source article', journal: 'Example Journal', year: 2025 },
+        machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
         limitations: ['observational design'],
       }],
     }
@@ -43,7 +45,7 @@ describe('M3 retrieval to import workflow', () => {
     expect(planned.ok).toBe(true)
     if (!planned.ok) return
     expect(planned.path).toBe(`evidence/${evidenceId}.md`)
-    expect(planned.content).toContain('review_status: candidate')
+    expect(planned.content).toContain('review_status: machine_reviewed')
     expect(planned.content).toContain("pmid: '12345678'")
     expect(planned.content).not.toContain('review_status: reviewed')
   })
