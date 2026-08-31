@@ -8,13 +8,17 @@ import {
   normalizeDoi,
   parseEdgeFile,
   parseEvidenceData,
+  parseFramingLinkFile,
   parseManifest,
   parseNodeData,
+  parseQuestionData,
   parseResultData,
   isValidManagedFileName,
   type EdgeFile,
   type EvidenceData,
+  type FramingLinkFile,
   type NodeData,
+  type QuestionData,
   type ResearchManifest,
   type ResultData,
   utf8ByteLength,
@@ -35,9 +39,11 @@ export interface Diagnostic {
 }
 
 export type ResearchNode = NodeData & { body: string }
+export type ResearchQuestion = QuestionData & { body: string }
 export type EvidenceAssertion = EvidenceData & { body: string }
 export type ResearchResult = ResultData & { body: string }
 export type ResearchEdge = EdgeFile
+export type FramingLink = FramingLinkFile
 
 /**
  * Architecture §6 projection surface. `manifest` is undefined while the
@@ -46,6 +52,8 @@ export type ResearchEdge = EdgeFile
  */
 export interface ResearchProject {
   manifest: ResearchManifest | undefined
+  questions: ReadonlyMap<string, ResearchQuestion>
+  framingLinks: ReadonlyMap<string, FramingLink>
   nodes: ReadonlyMap<string, ResearchNode>
   edges: ReadonlyMap<string, ResearchEdge>
   evidenceAssertions: ReadonlyMap<string, EvidenceAssertion>
@@ -56,11 +64,11 @@ export interface ResearchProject {
 
 /** Core-internal loaded state: the parsed project plus its managed files. */
 export interface LoadedProject extends ResearchProject {
-  /** Only managed files (research.json + the four directories). */
+  /** Only managed files (research.json + the managed entity directories). */
   files: ReadonlyMap<string, string>
 }
 
-const MANAGED_DIRS = ['nodes', 'edges', 'evidence', 'results'] as const
+const MANAGED_DIRS = ['questions', 'question-links', 'nodes', 'edges', 'evidence', 'results'] as const
 
 /**
  * Front matter uses the same js-yaml v4 (YAML 1.2) for parsing and rendering
@@ -174,6 +182,24 @@ function parseEdgeEntity(path: string, content: string): { diagnostics: Diagnost
   return { diagnostics, entity: { id: parsedEdge.value.id, entity: parsedEdge.value } }
 }
 
+function parseFramingLinkEntity(path: string, content: string): { diagnostics: Diagnostic[]; entity?: { id: string; entity: FramingLink } } {
+  const diagnostics: Diagnostic[] = []
+  const fileName = path.slice(path.indexOf('/') + 1)
+  const stem = stemOf(fileName)
+  const parsedLink = parseFramingLinkFile(content)
+  if (!parsedLink.ok) {
+    for (const issue of parsedLink.issues) {
+      diagnostics.push(diag(path, 'invalid_entity', issue))
+    }
+    return { diagnostics }
+  }
+  if (parsedLink.value.id !== stem) {
+    diagnostics.push(diag(path, 'id_filename_mismatch', `entity id ${parsedLink.value.id} does not match file name`))
+    return { diagnostics }
+  }
+  return { diagnostics, entity: { id: parsedLink.value.id, entity: parsedLink.value } }
+}
+
 /**
  * Parse a complete Research Project. The returned LoadedProject always has a
  * projectRevision; diagnostics carry every structural problem found.
@@ -219,6 +245,8 @@ export function parseProject(files: ReadonlyMap<string, string>, hash: HashFn): 
     }
   }
 
+  const questions = new Map<string, ResearchQuestion>()
+  const framingLinks = new Map<string, FramingLink>()
   const nodes = new Map<string, ResearchNode>()
   const edges = new Map<string, ResearchEdge>()
   const evidenceAssertions = new Map<string, EvidenceAssertion>()
@@ -240,15 +268,29 @@ export function parseProject(files: ReadonlyMap<string, string>, hash: HashFn): 
       if (entity !== undefined) edges.set(entity.id, entity.entity)
       continue
     }
+    if (dir === 'question-links') {
+      const { diagnostics: fileDiagnostics, entity } = parseFramingLinkEntity(path, content)
+      diagnostics.push(...fileDiagnostics)
+      if (entity !== undefined) framingLinks.set(entity.id, entity.entity)
+      continue
+    }
     const { diagnostics: fileDiagnostics, entity } = parseMarkdownEntity(
       path,
       content,
-      dir === 'nodes' ? parseNodeData : dir === 'evidence' ? parseEvidenceData : parseResultData,
-      dir !== 'evidence',
+      dir === 'questions'
+        ? parseQuestionData
+        : dir === 'nodes'
+          ? parseNodeData
+          : dir === 'evidence'
+            ? parseEvidenceData
+            : parseResultData,
+      dir === 'nodes' || dir === 'results',
     )
     diagnostics.push(...fileDiagnostics)
     if (entity === undefined) continue
-    if (dir === 'nodes') {
+    if (dir === 'questions') {
+      questions.set(entity.id, entity.entity as ResearchQuestion)
+    } else if (dir === 'nodes') {
       nodes.set(entity.id, entity.entity as ResearchNode)
     } else if (dir === 'evidence') {
       evidenceAssertions.set(entity.id, entity.entity as EvidenceAssertion)
@@ -259,6 +301,8 @@ export function parseProject(files: ReadonlyMap<string, string>, hash: HashFn): 
 
   return {
     manifest,
+    questions,
+    framingLinks,
     nodes,
     edges,
     evidenceAssertions,

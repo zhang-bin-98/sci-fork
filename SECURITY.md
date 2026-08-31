@@ -39,12 +39,27 @@ does not choose a project license.
 
 ## Skills and model output
 
-Retrieval Skills stay in Chat context. `scifork-research` formats a candidate
-`ResearchImportDraft`; Core validates the whole Draft, and the user selects
-individual candidates before persistence. Skills do not call each other or
-write project files. A Draft cannot declare reviewed evidence or directly
-create a Finding, Edge, or Result. PMID/DOI and locator information must come
-from the retrieval context.
+Retrieval Skills stay in Chat context. For ordinary import,
+`scifork-research` formats a candidate `ResearchImportDraft`; Core validates
+the whole Draft, and the user selects individual candidates before persistence.
+For an authorized Research Expansion or Progressive Research Run, the model may
+instead persist a minimal `machine_reviewed` Evidence Assertion before its
+dependent low-confidence branch. That transition requires an actual abstract or
+explicitly user-provided bounded PDF/full-text passage, PMID/DOI, locator,
+Citation Snapshot, and machine-review rationale. Title-only metadata cannot
+qualify, and machine review never satisfies a Finding or literature-Edge
+threshold. Skills do not call each other or write project files directly. A
+Draft cannot declare reviewed evidence or directly create a Finding, Edge, or
+Result.
+
+SciFork persists no complete retrieval record. Project files, Git checkpoints,
+logs, errors, and caches may contain only PMID/normalized DOI, a minimal Citation
+Snapshot, derived Evidence fields, machine-review rationale, and bounded Edge
+provenance/Evidence Gap. They must not contain authors, publication types,
+canonical URLs, retrieval times, abstract/full-text bodies, PDFs, parsed source
+text, complete metadata, or raw provider responses. The packaged helper emits a
+bounded result without saving files; DSH Chat may retain that Skill output, and
+SciFork has no public contract to delete DSH Chat history.
 
 The pinned DSH Skill contract renders a directory `resourceBase` as an absolute
 base directory in the model-facing Skill load result. SciFork uses this only for

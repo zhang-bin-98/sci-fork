@@ -18,6 +18,8 @@ import type {
   ProjectionEntitySummary,
   SnapshotGraph,
   SnapshotSuccess,
+  LiteratureEvidenceItem,
+  LiteratureProjection,
 } from '../shared/companion-contract.js'
 import { channelNameForPageKey } from '../shared/page-key.js'
 import { CompanionApiClient, CompanionApiError } from './api.js'
@@ -25,6 +27,7 @@ import { DetailsMarkdown } from './details.js'
 import { FocusSelectionQueue } from './focus-selection.js'
 import {
   focusViewportCenter,
+  evidenceVisibilityGraph,
   layoutGraph,
   selectGraphView,
 } from './graph.js'
@@ -64,14 +67,16 @@ const WORKSPACE_OPEN =
 const WORKSPACE_CLOSED =
   'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_44px] xl:grid-cols-[minmax(0,1fr)_44px] xl:grid-rows-[minmax(0,1fr)]'
 
-type EntityVisualType = 'finding' | 'hypothesis' | 'prediction' | 'evidence' | 'result' | 'edge'
+type EntityVisualType = 'question' | 'finding' | 'hypothesis' | 'prediction' | 'evidence' | 'result' | 'framing_link' | 'edge'
 
 const ENTITY_DOT_CLASS: Record<EntityVisualType, string> = {
+  question: 'bg-sf-muted ring-sf-muted/15',
   finding: 'bg-sf-finding ring-sf-finding/15',
   hypothesis: 'bg-sf-hypothesis ring-sf-hypothesis/15',
   prediction: 'bg-sf-prediction ring-sf-prediction/15',
   evidence: 'bg-sf-evidence ring-sf-evidence/15',
   result: 'bg-sf-result ring-sf-result/15',
+  framing_link: 'bg-sf-edge ring-sf-edge/15',
   edge: 'bg-sf-edge ring-sf-edge/15',
 }
 
@@ -82,11 +87,13 @@ function humanize(value: string): string {
 type EntityTypeCarrier =
   | Pick<Extract<ProjectionEntitySummary, { type: 'node' }>, 'type' | 'kind'>
   | Pick<Extract<EntityDocument, { type: 'node' }>, 'type' | 'kind'>
-  | { type: 'evidence' | 'result' | 'edge' }
+  | { type: 'question' | 'evidence' | 'result' | 'framing_link' | 'edge' }
 
 function entityTypeLabel(entity: EntityTypeCarrier): string {
   if (entity.type === 'node') return entity.kind.toUpperCase()
   if (entity.type === 'evidence') return 'EVIDENCE'
+  if (entity.type === 'question') return 'RESEARCH QUESTION'
+  if (entity.type === 'framing_link') return 'FRAMING LINK'
   return entity.type.toUpperCase()
 }
 
@@ -98,15 +105,28 @@ export function formatReferenceCounts(referenceCount: number, reviewedCount: num
   return `${referenceCount} ${referenceCount === 1 ? 'ref' : 'refs'} (${reviewedCount} reviewed)`
 }
 
+export function formatEvidenceCounts(
+  publicationCount: number,
+  machineReviewedCount: number,
+  humanReviewedCount: number,
+): string {
+  return `${publicationCount} ${publicationCount === 1 ? 'publication' : 'publications'} · ${machineReviewedCount} machine-reviewed · ${humanReviewedCount} human-reviewed`
+}
+
 function entityMeta(entity: ProjectionEntitySummary): string {
   if (entity.type === 'node') {
     return (
       entity.confidence +
       ' confidence · ' +
-      formatReferenceCounts(entity.referenceCount, entity.reviewedEvidenceCount)
+      formatEvidenceCounts(
+        entity.publicationCount ?? entity.referenceCount,
+        entity.machineReviewedEvidenceCount ?? 0,
+        entity.humanReviewedEvidenceCount ?? entity.reviewedEvidenceCount,
+      )
     )
   }
   if (entity.type === 'evidence') return entity.reviewStatus
+  if (entity.type === 'question') return 'open question'
   return entity.status
 }
 
@@ -389,7 +409,149 @@ function EdgeDetails(props: {
           <dd>{entity.evidenceGap}</dd>
         </>
       )}
+      {entity.literature === undefined ? null : (
+        <>
+          <dt>Literature</dt>
+          <dd><LiteratureDetails literature={entity.literature} /></dd>
+        </>
+      )}
     </dl>
+  )
+}
+
+function publicationLabel(item: LiteratureEvidenceItem): string {
+  const identity = item.publicationRef.pmid !== undefined
+    ? `PMID ${item.publicationRef.pmid}`
+    : `DOI ${item.publicationRef.doi ?? ''}`
+  const citation = item.citation
+  if (citation === undefined) return identity
+  return [citation.title, citation.journal, citation.year, identity]
+    .filter((part) => part !== undefined && part !== '')
+    .join(' · ')
+}
+
+function LiteratureEvidenceList(props: { items: LiteratureEvidenceItem[] }): React.ReactElement {
+  return (
+    <ul className="m-0 grid list-none gap-2 p-0">
+      {props.items.map((item) => (
+        <li key={item.id} className="rounded-md border border-sf-border bg-sf-surface-muted p-2.5">
+          <strong className="block text-xs text-sf-heading">{publicationLabel(item)}</strong>
+          <span className="block text-xs text-sf-muted">{item.id} · {humanize(item.direction)} · {humanize(item.locator.kind)}</span>
+          <p className="my-1.5 text-sm">{item.assertion}</p>
+          {item.limitations === undefined ? null : <p className="my-1 text-xs">Limitations: {item.limitations.join('; ')}</p>}
+          {item.machineReviewRationale === undefined ? null : <p className="my-1 text-xs">Machine review: {item.machineReviewRationale}</p>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function LiteratureDetails(props: { literature: LiteratureProjection }): React.ReactElement {
+  const groups: Array<[string, LiteratureEvidenceItem[]]> = [
+    ['Human-reviewed Evidence', props.literature.humanReviewed],
+    ['Machine-reviewed Evidence', props.literature.machineReviewed],
+    ['Candidate Evidence', props.literature.candidate],
+  ]
+  return (
+    <section className="grid gap-3" aria-label="Literature">
+      {groups.map(([label, items]) => items.length === 0 ? null : (
+        <div key={label}>
+          <h3 className="m-0 mb-1 text-xs font-bold text-sf-heading">{label}</h3>
+          <LiteratureEvidenceList items={items} />
+        </div>
+      ))}
+      {props.literature.rejected.length === 0 ? null : (
+        <details>
+          <summary className="cursor-pointer text-xs font-bold">Rejected Evidence ({props.literature.rejected.length})</summary>
+          <LiteratureEvidenceList items={props.literature.rejected} />
+        </details>
+      )}
+      {props.literature.retrievalOnly.length === 0 ? null : (
+        <div>
+          <h3 className="m-0 mb-1 text-xs font-bold text-sf-heading">Retrieval-only references</h3>
+          <ul className="m-0 pl-4 text-xs">
+            {props.literature.retrievalOnly.map((reference, index) => (
+              <li key={(reference.pmid ?? reference.doi ?? '') + index}>
+                {reference.pmid !== undefined ? `PMID ${reference.pmid}` : `DOI ${reference.doi ?? ''}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function FramingLinkDetails(props: { entity: Extract<EntityDocument, { type: 'framing_link' }> }): React.ReactElement {
+  return (
+    <dl className="m-0 grid grid-cols-[90px_minmax(0,1fr)] gap-3 p-5 text-sm">
+      <dt>Relation</dt><dd>{props.entity.relation}</dd>
+      <dt>From</dt><dd>{props.entity.from}</dd>
+      <dt>To</dt><dd>{props.entity.to}</dd>
+    </dl>
+  )
+}
+
+function QuestionDetails(props: { entity: Extract<EntityDocument, { type: 'question' }> }): React.ReactElement {
+  const { entity } = props
+  return (
+    <article className="m-0 grid gap-3 p-5 text-sm leading-6">
+      <h1 className="m-0 text-xl font-semibold">{entity.question}</h1>
+      {entity.scopeAssumptions.length === 0 ? null : <p className="m-0">Scope: {entity.scopeAssumptions.join('; ')}</p>}
+      <p className="m-0">Addressed by: {entity.addressedEntityIds.length}</p>
+      {entity.addressedEntityIds.length === 0 ? null : (
+        <ul className="m-0 pl-5">
+          {entity.addressedEntityIds.map((id) => <li key={id}><code>{id}</code></li>)}
+        </ul>
+      )}
+      <p className="m-0">{formatEvidenceCounts(entity.publicationCount, entity.machineReviewedEvidenceCount, entity.humanReviewedEvidenceCount)}</p>
+      {entity.body.length === 0 ? null : <DetailsMarkdown markdown={entity.body} />}
+    </article>
+  )
+}
+
+function EvidenceDetails(props: { entity: Extract<EntityDocument, { type: 'evidence' }> }): React.ReactElement {
+  const { entity } = props
+  const item: LiteratureEvidenceItem = {
+    id: entity.id,
+    publicationRef: entity.publicationRef,
+    ...(entity.citation !== undefined ? { citation: entity.citation } : {}),
+    assertion: entity.assertion,
+    locator: entity.locator,
+    direction: entity.direction,
+    ...(entity.limitations !== undefined ? { limitations: entity.limitations } : {}),
+    ...(entity.machineReviewRationale !== undefined ? { machineReviewRationale: entity.machineReviewRationale } : {}),
+    reviewStatus: entity.reviewStatus,
+  }
+  return <div className="p-5"><LiteratureEvidenceList items={[item]} />{entity.body.length === 0 ? null : <DetailsMarkdown markdown={entity.body} />}</div>
+}
+
+function entityEvidenceCountLabel(entity: EntityDocument): string | undefined {
+  if (entity.type === 'question') {
+    return formatEvidenceCounts(
+      entity.publicationCount,
+      entity.machineReviewedEvidenceCount,
+      entity.humanReviewedEvidenceCount,
+    )
+  }
+  if (entity.type !== 'node') return undefined
+  return formatEvidenceCounts(
+    entity.publicationCount ?? entity.referenceCount,
+    entity.machineReviewedEvidenceCount ?? 0,
+    entity.humanReviewedEvidenceCount ?? entity.reviewedEvidenceCount,
+  )
+}
+
+function MarkdownEntityDetails(props: {
+  entity: Extract<EntityDocument, { type: 'node' | 'result' }>
+}): React.ReactElement {
+  return (
+    <article className="markdown-details m-0 p-5 text-sm leading-[1.65] text-sf-ink [overflow-wrap:anywhere] [&_a]:text-sf-accent [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 [&_a]:focus-visible:rounded-sm [&_a]:focus-visible:outline-none [&_a]:focus-visible:ring-3 [&_a]:focus-visible:ring-sf-focus/45 [&_code]:font-mono [&_h1]:mt-0 [&_h1]:mb-3 [&_h1]:text-[21px] [&_h1]:leading-tight [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:text-sf-heading [&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-[17px] [&_h2]:font-semibold [&_h2]:text-sf-heading [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-[15px] [&_h3]:font-semibold [&_h3]:text-sf-heading [&_pre]:overflow-x-auto [&_pre]:border-l-[3px] [&_pre]:border-sf-markdown-accent [&_pre]:bg-sf-surface-muted [&_pre]:px-3 [&_pre]:py-2.5 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:border-collapse [&_td]:border [&_td]:border-sf-border [&_td]:px-2 [&_td]:py-1.5 [&_td]:text-left [&_th]:border [&_th]:border-sf-border [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left">
+      <DetailsMarkdown markdown={props.entity.body} />
+      {props.entity.type !== 'node' || props.entity.literature === undefined ? null : (
+        <LiteratureDetails literature={props.entity.literature} />
+      )}
+    </article>
   )
 }
 
@@ -553,11 +715,11 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
           data-details-row="primary"
         >
           {entity === undefined ? null : <EntityTypeMark entity={entity} />}
-          {entity?.type === 'node' ? (
+          {entity === undefined || entityEvidenceCountLabel(entity) === undefined ? null : (
             <span className="min-w-0 whitespace-nowrap text-[11px] text-sf-muted">
-              {formatReferenceCounts(entity.referenceCount, entity.reviewedEvidenceCount)}
+              {entityEvidenceCountLabel(entity)}
             </span>
-          ) : null}
+          )}
           {entity !== undefined && props.focusEntityId === entity.id ? (
             <span className="shrink-0 rounded-full bg-sf-accent-soft px-2 py-1 text-[10px] font-bold text-sf-accent">
               Focused
@@ -608,10 +770,14 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
           <div className="min-h-56" aria-label="No Details" />
         ) : entity.type === 'edge' ? (
           <EdgeDetails entity={entity} />
+        ) : entity.type === 'framing_link' ? (
+          <FramingLinkDetails entity={entity} />
+        ) : entity.type === 'question' ? (
+          <QuestionDetails entity={entity} />
+        ) : entity.type === 'evidence' ? (
+          <EvidenceDetails entity={entity} />
         ) : (
-          <article className="markdown-details m-0 p-5 text-sm leading-[1.65] text-sf-ink [overflow-wrap:anywhere] [&_a]:text-sf-accent [&_a]:underline [&_a]:decoration-1 [&_a]:underline-offset-2 [&_a]:focus-visible:rounded-sm [&_a]:focus-visible:outline-none [&_a]:focus-visible:ring-3 [&_a]:focus-visible:ring-sf-focus/45 [&_code]:font-mono [&_h1]:mt-0 [&_h1]:mb-3 [&_h1]:text-[21px] [&_h1]:leading-tight [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:text-sf-heading [&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-[17px] [&_h2]:font-semibold [&_h2]:text-sf-heading [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-[15px] [&_h3]:font-semibold [&_h3]:text-sf-heading [&_pre]:overflow-x-auto [&_pre]:border-l-[3px] [&_pre]:border-sf-markdown-accent [&_pre]:bg-sf-surface-muted [&_pre]:px-3 [&_pre]:py-2.5 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:border-collapse [&_td]:border [&_td]:border-sf-border [&_td]:px-2 [&_td]:py-1.5 [&_td]:text-left [&_th]:border [&_th]:border-sf-border [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left">
-            <DetailsMarkdown markdown={entity.body} />
-          </article>
+          <MarkdownEntityDetails entity={entity} />
         )}
       </div>
     </aside>
@@ -646,6 +812,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string>()
   const [details, setDetails] = React.useState<EntityDocument>()
   const [detailsOpen, setDetailsOpen] = React.useState(true)
+  const [showEvidence, setShowEvidence] = React.useState(false)
   const [error, setError] = React.useState<string>()
   const [pendingFocusId, setPendingFocusId] = React.useState<string>()
   const [researchExpansionState, setResearchExpansionState] =
@@ -842,8 +1009,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   }, [])
 
   const graphView = React.useMemo(
-    () => selectGraphView(graph ?? EMPTY_GRAPH),
-    [graph],
+    () => selectGraphView(evidenceVisibilityGraph(graph ?? EMPTY_GRAPH, showEvidence)),
+    [graph, showEvidence],
   )
 
   const submitResearchExpansion = (): void => {
@@ -876,6 +1043,14 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           {...(project?.head === undefined ? {} : { head: project.head })}
         />
         <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
+          <button
+            type="button"
+            className={BUTTON_HEADER}
+            aria-pressed={showEvidence}
+            onClick={() => setShowEvidence((visible) => !visible)}
+          >
+            {showEvidence ? 'Hide evidence' : 'Show evidence'}
+          </button>
           {acknowledgement === undefined ? null : (
             <output className="min-w-14 text-right text-xs font-bold text-sf-header-success">
               {acknowledgement}
@@ -950,7 +1125,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
             </>
           )}
         </section>
-      ) : graph.entities.length === 0 ? (
+      ) : graphView.entities.length === 0 ? (
         <section className="flex min-h-0 flex-1 items-center justify-center gap-3 bg-sf-surface-muted text-sf-muted">
           <span>No research entities</span>
         </section>

@@ -1,6 +1,6 @@
 ---
 name: scifork-research
-description: Format retrieved biomedical literature into reviewable SciFork import drafts, preserve retrieval-supported AI-inference branches with structured publication references, critique graph branches, and apply accepted graph changes through SciFork tools. Use after a literature-retrieval or PDF-reading skill has placed real source results in the current conversation.
+description: Format retrieved biomedical literature into reviewable SciFork import drafts, preserve abstract- or PDF-grounded machine-reviewed Evidence and connected research branches, frame open Research Questions, critique graph branches, and apply accepted graph changes through SciFork tools. Use after a literature-retrieval or PDF-reading skill has placed real source results in the current conversation.
 ---
 
 # SciFork Research
@@ -36,6 +36,21 @@ change Focus. Entity reads return `fileVersion` for update/delete commands.
 Always use the latest returned `projectRevision` after a successful mutation.
 
 Skills do not call each other and a retrieval result is not itself a Draft.
+
+## Start from an open Research Question
+
+Classify the user's initial statement before creating a scientific Node. An
+interrogative or exploratory imperative such as “what drives bone aging?” or
+“identify the key drivers of bone aging” is an open inquiry, not a proposition.
+Use `find`, then apply `create_question` and set the new Research Question as
+Focus. Preserve material scope assumptions but do not assign confidence or
+invent Evidence.
+
+A truth-valued proposition that can be supported or contradicted remains a
+Hypothesis. Hypotheses and Findings may address a Research Question through
+`create_framing_link`; Predictions never directly address a Question. The
+`addresses` Framing Link is organizational, not a scientific Edge, and carries
+no basis, Evidence, confidence, provenance, or Evidence Gap.
 
 ## Research Import Draft
 
@@ -94,37 +109,46 @@ orchestrating model must complete `search` and then `lookup` for promising PMID 
 DOI records before loading this Skill. This Skill never calls `pubmed-search`.
 When actual results are absent, stop without graph mutation.
 
-1. Read the latest Focus and its full entity. Use `neighbors` with `incoming`,
-   `outgoing`, or `both` according to the objective; read a neighbor's full entity
-   only when needed. Use `find` to check semantic duplicates outside the current
-   component.
-2. If Focus is an Edge, read it with `entity`, choose the scientifically relevant
-   Node/Result endpoint, and use that endpoint as the anchor. Include the Focus
-   Edge id in provenance. If Focus is an Evidence Assertion, use a connected
-   Node/Result anchor; if none exists, retain no branch.
+1. Read the latest Focus and its full entity. For a Research Question, use its
+   returned `addressedEntities`. For other anchors use `neighbors` with
+   `incoming`, `outgoing`, or `both` according to the objective. Read a
+   neighbor's full entity only when needed, and use `find` to check semantic
+   duplicates outside the current component.
+2. If Focus is a scientific Edge, read it with `entity`, choose the relevant
+   Node/Result endpoint, and include the Focus Edge id in provenance. If Focus is
+   an Evidence Assertion, use a connected Node/Result anchor; retain no branch
+   when none exists.
 3. Choose zero to five scientifically distinct direct branches at depth one.
-   Zero is correct when retrieval reveals no novel, defensible, explicit
-   scientific relationship. Do not recurse. Focus remains unchanged.
-4. Each branch is one `hypothesis` or `prediction` Node with `confidence: low`.
-   Never create or promote a Finding, reviewed Evidence Assertion, or validated
-   Result in this workflow.
-5. Immediately after each `create_node`, call `create_edge` so no completed
-   branch is isolated. Every generated Edge uses `basis: ai_inference` with
-   non-empty provenance naming the query, an `evidenceGap` that states why the
-   relation remains unverified, and `publicationRefs` containing the one to
-   fifty normalized, distinct PMID/DOI records that support that exact inference.
-   Copy these identifiers from completed retrieval results; never recover them
-   by parsing prose provenance. These structured references do not create or
-   review an Evidence Assertion and do not satisfy a Finding threshold.
-6. Use `predicts` only from a Finding/Hypothesis to a Prediction. Otherwise choose
-   the narrowest valid relation from `supports`, `contradicts`, `causes`, or
-   `associated_with` based on the scientific claim.
-7. Use the revision returned by `create_node` for `create_edge`. If Edge creation
+   Zero is correct when retrieval has no actual abstract or explicitly
+   user-provided bounded PDF/full-text passage that supports a novel, defensible
+   relationship. A title-only or metadata-only record never qualifies. Do not
+   recurse. Focus remains unchanged.
+4. Before creating each dependent branch, call
+   `create_evidence_assertion` with `reviewStatus: machine_reviewed`. Supply the
+   exact PMID or normalized DOI, a precise entailed assertion, a
+   `pubmed_abstract` or bounded PDF page/section locator, direction, preserved
+   limitations, a minimal Citation Snapshot containing title and optional
+   journal/year, and a non-empty `machineReviewRationale` covering publication
+   identity, locator, entailment, direction, and limitations.
+5. After Evidence exists, call `create_node` for one `hypothesis` or
+   `prediction` with `confidence: low` and the exact applicable Evidence ids.
+   Never create or promote a Finding, human `reviewed` Evidence Assertion, or
+   validated Result in this workflow.
+6. When the anchor is a Research Question, create only a Hypothesis and then call
+   `create_framing_link` from that Hypothesis to the Question. Do not create a
+   scientific Edge to a Question. For any other anchor, immediately call
+   `create_edge` so the branch is not isolated.
+7. Every generated scientific Edge uses `basis: ai_inference`, applicable
+   machine-reviewed `evidenceRefs`, non-empty provenance naming the query, an
+   `evidenceGap`, and `publicationRefs` containing the one to fifty normalized,
+   distinct PMID/DOI records used for that exact inference. Use `predicts` only
+   from a Finding/Hypothesis to a Prediction; otherwise select the narrowest
+   valid scientific relation.
+8. Use the latest revision after every mutation. If a relationship creation
    fails, re-read and retry only for a recoverable stale state. If the Node still
-   cannot be connected, delete the orphan when safe and report any unresolved
-   partial state.
-8. Re-read the graph and report the retrieval query, consulted identifiers, and
-   exact Node and Edge ids retained or rejected.
+   cannot be connected, delete the orphan when safe and report unresolved
+   partial state. Re-read and report every query, identifier, Evidence id, Node
+   id, scientific Edge id, and Framing Link id retained or rejected.
 
 For each branch, state its assumptions, observable outcome, falsifying result,
 alternative explanations, and Evidence Gap. Keep Result (observation) separate
@@ -147,9 +171,10 @@ and alternates complete phases:
 2. Form one focused retrieval question. Complete one retrieval/PDF Skill and keep
    its actual results in the current Chat. The default is `pubmed-search` with
    `search` followed by `lookup`, but honor a user-selected reliable source.
-3. Load this Skill and retain only novel branches with an explicit scientific
-   relationship. Apply the same low-confidence Node + immediate Edge rules and
-   scientific boundaries as the Research Expansion Step.
+3. Load this Skill and retain only novel branches grounded by qualifying source
+   text. Apply the same Evidence-first machine review, low-confidence Node, and
+   immediate scientific Edge or Framing Link rules as the Research Expansion
+   Step.
 4. Add retained Node ids to the frontier, mark the expanded entity visited, and
    repeat only while the user's request and declared plan authorize another turn.
 
@@ -159,6 +184,20 @@ error occurs, or a decision would materially change the objective. Report all
 queries and identifiers consulted, retained and rejected branches, remaining
 Evidence Gaps, and the final frontier. Do not silently broaden the objective.
 Do not continue in the background.
+
+## Review an Evidence Assertion
+
+Human review happens after the uninterrupted run unless the user asks sooner.
+To accept machine-reviewed Evidence, read its current entity and apply
+`review_evidence_assertion` with `reviewStatus: reviewed`, the current
+`fileVersion`, and latest `projectRevision`. The new state means explicit human
+acceptance; never infer it from retrieval success or model confidence.
+
+To reject Evidence, first read every active Node/Edge reference and report the
+affected branches. Remove those references one entity at a time with guarded
+updates, then apply `review_evidence_assertion` with
+`reviewStatus: rejected`. Re-read to confirm. Evidence Assertions are durable
+audit records and are never physically deleted; `rejected` is terminal.
 
 ## Delete a branch
 
@@ -173,23 +212,40 @@ When the user rejects a research expansion branch:
    silently include an ambiguous descendant.
 3. If an entity to remove is Focus or appears in its path, clear or move Focus
    with `research_graph_focus` before deletion.
-4. Always delete Edges before Nodes with `delete_edge`, then delete
-   Hypothesis/Prediction Nodes leaf-first with `delete_node`. Use each entity's
-   current `fileVersion` and the latest `projectRevision`.
+4. Always delete Framing Links with `delete_framing_link` and scientific Edges
+   with `delete_edge` before Nodes, then delete Hypothesis/Prediction Nodes
+   leaf-first with `delete_node`. Use each entity's current `fileVersion` and
+   the latest `projectRevision`.
 5. If Core reports an incident Edge, a support-critical Edge, a Finding, or a
    stale version, re-read and either continue safely or explain why deletion is
    blocked. Never bypass the invariant with direct file or Git commands.
 6. Re-read and report exactly what was deleted, including every exact entity id.
-   Evidence Assertions are rejected,
-   Results are superseded, and Findings are not physically deleted.
+   Evidence Assertions are rejected, Results are superseded, and Findings and
+   Research Questions are not physically deleted.
+
+## Retention boundary
+
+Persist only PMID/normalized DOI, a Citation Snapshot with title and optional
+journal/year, the derived assertion/locator/direction/limitations/review state,
+the machine-review rationale, and bounded Edge provenance/Evidence Gap.
+Never persist authors, publication types, canonical URLs, retrieval timestamps,
+abstract bodies, full text, PDFs, parsed source text, complete metadata, or raw
+provider output in SciFork files, Git, logs, errors, or caches.
+
+Retrieval material is transient and untrusted. Release it after the current
+extraction phase; do not write a temporary project file or retrieval cache. The
+packaged retrieval helper may leave its bounded output in DSH Chat, and SciFork
+has no public contract to erase that history. DSH Chat retention is outside
+SciFork's control and must not be described as deletion of the source material.
 
 ## Critique
 
 When asked to critique the graph, inspect the supplied graph context for:
 
-- contradictions between reviewed evidence, validated Results, and claims;
+- contradictions between human-reviewed or machine-reviewed Evidence, validated
+  Results, and claims, without treating the two review states as equivalent;
 - missing or context-only locators, unsupported Finding thresholds, duplicate
-  entities, and stale references;
+  entities, stale references, and title-only records presented as Evidence;
 - over-strong language, causal claims without experimental basis, and
   `ai_inference` edges without provenance, an evidence gap, and structured
   `publicationRefs`; and

@@ -42,12 +42,24 @@ function edgeJson(id: string, from: string, to: string): string {
   })
 }
 
+function questionMd(id: string, body = ''): string {
+  return `---\nid: ${id}\nquestion: What are the key drivers of bone aging?\nscope_assumptions:\n  - mammalian skeletal aging\n---\n${body}`
+}
+
+function framingLinkJson(id: string, from: string, to: string): string {
+  return JSON.stringify({ id, from, to, relation: 'addresses' })
+}
+
 describe('parseProject', () => {
   it('parses a complete valid project', () => {
     const node = `node_${UUID}`
     const ev = `ev_${UUID}`
+    const question = `question_${UUID}`
+    const framingLink = `qlink_${UUID}`
     const files = new Map([
       ['research.json', MANIFEST],
+      [`questions/${question}.md`, questionMd(question)],
+      [`question-links/${framingLink}.json`, framingLinkJson(framingLink, node, question)],
       [`nodes/${node}.md`, nodeMd(node)],
       [`evidence/${ev}.md`, evidenceMd(ev)],
     ])
@@ -59,10 +71,30 @@ describe('parseProject', () => {
       name: 'Parser Project',
     })
     expect(project.nodes.size).toBe(1)
+    expect(project.questions.get(question)?.question).toContain('bone aging')
+    expect(project.framingLinks.get(framingLink)).toMatchObject({
+      from: node,
+      to: question,
+      relation: 'addresses',
+    })
     expect(project.nodes.get(node)?.body).toContain('Body text.')
     expect(project.evidenceAssertions.get(ev)?.assertion).toBe('STAT3 is phosphorylated.')
     expect(project.projectRevision).toMatch(/^[0-9a-f]{64}$/)
     expect([...project.files.entries()]).toEqual([...files.entries()])
+  })
+
+  it('allows optional Question notes but strictly validates Question and Framing Link files', () => {
+    const node = `node_${UUID}`
+    const question = `question_${UUID}`
+    const framingLink = `qlink_${UUID}`
+    const project = parseProject(new Map([
+      ['research.json', MANIFEST],
+      [`nodes/${node}.md`, nodeMd(node)],
+      [`questions/${question}.md`, questionMd(question)],
+      [`question-links/${framingLink}.json`, framingLinkJson(framingLink, node, question)],
+    ]), sha256)
+    expect(project.diagnostics).toEqual([])
+    expect(project.questions.get(question)?.body).toBe('')
   })
 
   it('reports a missing manifest and still returns the entities', () => {

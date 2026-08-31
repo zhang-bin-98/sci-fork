@@ -82,7 +82,14 @@ function hasOnlyKeys(value, keys) {
   return Object.keys(value).every((key) => keys.includes(key))
 }
 
-async function requestJson(endpoint, params, method = 'GET') {
+async function requestBody(
+  endpoint,
+  params,
+  method = 'GET',
+  accept = 'application/json',
+  expectedContentType = /application\/json/i,
+  invalidContentTypeMessage = 'NCBI response was not JSON',
+) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs())
   const search = new URLSearchParams()
@@ -96,13 +103,13 @@ async function requestJson(endpoint, params, method = 'GET') {
     const init = method === 'POST'
       ? {
           method,
-          headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'SciFork/0.0 PubMed helper' },
+          headers: { accept, 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'SciFork/0.0 PubMed helper' },
           body: search.toString(),
           signal: controller.signal,
         }
       : {
           method,
-          headers: { accept: 'application/json', 'user-agent': 'SciFork/0.0 PubMed helper' },
+          headers: { accept, 'user-agent': 'SciFork/0.0 PubMed helper' },
           signal: controller.signal,
         }
     const url = method === 'POST' ? endpointUrl(endpoint) : `${endpointUrl(endpoint)}?${search.toString()}`
@@ -126,22 +133,88 @@ async function requestJson(endpoint, params, method = 'GET') {
     if (response === undefined) throw lastError ?? new Error('request failed')
     if (!response.ok) return { ok: false, error: { code: 'UPSTREAM_HTTP', message: `NCBI returned HTTP ${response.status}` } }
     const contentType = response.headers.get('content-type') ?? ''
-    if (!/application\/json/i.test(contentType)) return { ok: false, error: { code: 'INVALID_RESPONSE', message: 'NCBI response was not JSON' } }
+    if (!expectedContentType.test(contentType)) {
+      return { ok: false, error: { code: 'INVALID_RESPONSE', message: invalidContentTypeMessage } }
+    }
     const body = await response.text()
     if (new TextEncoder().encode(body).byteLength > MAX_RESPONSE_BYTES) {
       return { ok: false, error: { code: 'INVALID_RESPONSE', message: 'NCBI response exceeded the bounded response limit' } }
     }
-    try {
-      return { ok: true, value: JSON.parse(body) }
-    } catch {
-      return { ok: false, error: { code: 'INVALID_RESPONSE', message: 'NCBI response contained invalid JSON' } }
-    }
+    return { ok: true, value: body }
   } catch (error) {
     if (error?.name === 'AbortError') return { ok: false, error: { code: 'TIMEOUT', message: 'NCBI request timed out' } }
     return { ok: false, error: { code: 'NETWORK_ERROR', message: 'NCBI request failed' } }
   } finally {
     clearTimeout(timer)
   }
+}
+
+async function requestJson(endpoint, params, method = 'GET') {
+  const response = await requestBody(endpoint, params, method)
+  if (!response.ok) return response
+  try {
+    return { ok: true, value: JSON.parse(response.value) }
+  } catch {
+    return { ok: false, error: { code: 'INVALID_RESPONSE', message: 'NCBI response contained invalid JSON' } }
+  }
+}
+
+function decodeXmlText(value) {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x([0-9a-f]+);/gi, (_match, digits) => {
+      const codePoint = Number.parseInt(digits, 16)
+      return Number.isInteger(codePoint) && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : ''
+    })
+    .replace(/&#([0-9]+);/g, (_match, digits) => {
+      const codePoint = Number.parseInt(digits, 10)
+      return Number.isInteger(codePoint) && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : ''
+    })
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parseAbstractXml(raw, pmid) {
+  if (typeof raw !== 'string' || !/<PubmedArticleSet\b/i.test(raw)) return undefined
+  const pmidMatch = /<PMID\b[^>]*>\s*([1-9][0-9]{0,7})\s*<\/PMID>/i.exec(raw)
+  if (pmidMatch?.[1] !== pmid) return undefined
+  const sections = []
+  const pattern = /<AbstractText\b([^>]*)>([\s\S]*?)<\/AbstractText>/gi
+  for (const match of raw.matchAll(pattern)) {
+    const text = decodeXmlText(match[2] ?? '')
+    if (text.length === 0) continue
+    const attributes = match[1] ?? ''
+    const labelMatch = /\bLabel\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(attributes)
+    const label = decodeXmlText(labelMatch?.[1] ?? labelMatch?.[2] ?? '')
+    sections.push(label.length === 0 ? text : `${label}: ${text}`)
+  }
+  return { ...(sections.length === 0 ? {} : { abstract: sections.join('\n\n') }) }
+}
+
+async function abstractFor(pmid) {
+  const response = await requestBody(
+    'efetch',
+    { db: 'pubmed', id: pmid, retmode: 'xml' },
+    'GET',
+    'application/xml, text/xml;q=0.9',
+    /(?:application|text)\/xml/i,
+    'NCBI abstract response was not XML',
+  )
+  if (!response.ok) return response
+  const parsed = parseAbstractXml(response.value, pmid)
+  return parsed === undefined
+    ? { ok: false, error: { code: 'INVALID_RESPONSE', message: 'NCBI abstract response had an unexpected shape' } }
+    : { ok: true, ...parsed }
 }
 
 function parsePage(raw) {
@@ -269,11 +342,14 @@ async function lookup(request) {
   const record = metadata.records[0]
   if (record === undefined) return errorResult('NOT_FOUND', 'no PubMed record matched the identifier')
   if (valid.doi !== undefined && record.doi !== undefined && record.doi.toLowerCase() !== valid.doi.toLowerCase()) return errorResult('INVALID_RESPONSE', 'NCBI returned a DOI that did not match the lookup')
+  const abstract = await abstractFor(record.pmid)
+  if (!abstract.ok) return { ok: false, error: abstract.error }
   return {
     ok: true,
     operation: 'lookup',
     record: {
       ...record,
+      ...(abstract.abstract === undefined ? {} : { abstract: abstract.abstract }),
       canonicalUrl: `https://pubmed.ncbi.nlm.nih.gov/${record.pmid}/`,
       retrievedAt: new Date().toISOString(),
     },

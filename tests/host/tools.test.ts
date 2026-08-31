@@ -22,6 +22,8 @@ const RES = `res_${UUID_B}`
 const OTHER_RES = `res_${UUID_D}`
 const UNRELATED_NODE = `node_${UUID_F}`
 const EDGE = `edge_${UUID_B}`
+const QUESTION = `question_${UUID_E}`
+const FRAMING_LINK = `qlink_${UUID_F}`
 const INCOMING_EDGE = `edge_${UUID_C}`
 const OUTGOING_EDGE = `edge_${UUID_D}`
 const CONVERGING_EDGE = `edge_${UUID_E}`
@@ -129,6 +131,23 @@ const CONVERGING_EDGE_FILE = JSON.stringify({
   basis: 'experiment',
 })
 
+const QUESTION_FILE = [
+  '---',
+  `id: ${QUESTION}`,
+  'question: What drives treatment resistance?',
+  'scope_assumptions:',
+  '  - solid tumors',
+  '---',
+  'Open question.',
+].join('\n') + '\n'
+
+const FRAMING_LINK_FILE = JSON.stringify({
+  id: FRAMING_LINK,
+  from: NODE,
+  to: QUESTION,
+  relation: 'addresses',
+})
+
 function healthyGit(statusOutput = '') {
   const { port } = scriptedGit((argv, cwd) => {
     const sub = argv[1]
@@ -202,7 +221,17 @@ describe('registerResearchTools', () => {
     const command = (apply.parameters as { properties: { command: Record<string, unknown> } }).properties.command
     expect(command).toMatchObject({ type: 'object', oneOf: expect.any(Array) })
     expect((command.oneOf as Array<{ properties: { kind: { const: string } } }>).map((branch) => branch.properties.kind.const))
-      .toEqual(expect.arrayContaining(['create_node', 'update_edge', 'import_draft_item', 'delete_edge', 'delete_node']))
+      .toEqual(expect.arrayContaining([
+        'create_question',
+        'update_question',
+        'create_framing_link',
+        'delete_framing_link',
+        'create_node',
+        'update_edge',
+        'import_draft_item',
+        'delete_edge',
+        'delete_node',
+      ]))
     const edgeBranches = command.oneOf as Array<{ properties: Record<string, { enum?: string[]; const?: string }> }>
     for (const branch of edgeBranches.filter(({ properties }) => {
       const kind = properties['kind']?.const
@@ -310,6 +339,49 @@ describe('research_graph_read', () => {
     const edges = (neighborhood as { edges: unknown[] }).edges
     expect(edges).toHaveLength(1)
     expect(edges[0]).toMatchObject({ from: EV, to: NODE, source: 'evidence_ref' })
+  })
+
+  it('reads open Questions and keeps framing out of scientific Node neighborhoods', async () => {
+    const { byName } = await registered({
+      '/proj/research.json': MANIFEST,
+      [`/proj/questions/${QUESTION}.md`]: QUESTION_FILE,
+      [`/proj/question-links/${FRAMING_LINK}.json`]: FRAMING_LINK_FILE,
+      [`/proj/nodes/${NODE}.md`]: NODE_FILE,
+      [`/proj/evidence/${EV}.md`]: EV_FILE,
+    })
+    const read = byName.get('research_graph_read')!
+
+    await expect(read.execute({ operation: 'entity', entityId: QUESTION }, execFor())).resolves.toMatchObject({
+      ok: true,
+      entity: {
+        type: 'question',
+        question: 'What drives treatment resistance?',
+        addressedEntities: [{ linkId: FRAMING_LINK, entityId: NODE }],
+      },
+      fileVersion: sha256(QUESTION_FILE),
+    })
+    const questionNeighbors = await read.execute(
+      { operation: 'neighbors', entityId: QUESTION, direction: 'incoming' },
+      execFor(),
+    )
+    expect(questionNeighbors).toMatchObject({
+      ok: true,
+      neighbors: [{
+        direction: 'incoming',
+        edge: { id: FRAMING_LINK, relation: 'addresses', source: 'framing_link' },
+        entity: { id: NODE, type: 'node' },
+      }],
+    })
+
+    const nodeNeighbors = await read.execute(
+      { operation: 'neighbors', entityId: NODE, direction: 'both' },
+      execFor(),
+    )
+    expect(JSON.stringify(nodeNeighbors)).not.toContain(FRAMING_LINK)
+    await expect(read.execute({ operation: 'entity', entityId: FRAMING_LINK }, execFor())).resolves.toMatchObject({
+      ok: true,
+      entity: { type: 'framing_link', from: NODE, to: QUESTION, relation: 'addresses' },
+    })
   })
 
   it('returns compact incoming, outgoing, or bidirectional neighbors without entity bodies', async () => {

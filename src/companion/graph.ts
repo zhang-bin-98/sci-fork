@@ -55,6 +55,22 @@ export function selectGraphView(input: SnapshotGraph): SnapshotGraph {
   }
 }
 
+export function evidenceVisibilityGraph(input: SnapshotGraph, showEvidence: boolean): SnapshotGraph {
+  if (showEvidence) return input
+  const hiddenIds = new Set(
+    input.entities.filter((entity) => entity.type === 'evidence').map((entity) => entity.id),
+  )
+  return {
+    entities: input.entities.filter((entity) => !hiddenIds.has(entity.id)),
+    edges: input.edges.filter(
+      (edge) =>
+        edge.source !== 'evidence_ref' &&
+        !hiddenIds.has(edge.from) &&
+        !hiddenIds.has(edge.to),
+    ),
+  }
+}
+
 function stableCoordinate(value: number): number {
   const rounded = Math.round(value * 1_000) / 1_000
   return Object.is(rounded, -0) ? 0 : rounded

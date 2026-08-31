@@ -1,6 +1,7 @@
 import type { ResearchProject } from './parser.js'
 import type {
   ConfidenceBand,
+  CitationSnapshot,
   EvidenceDirection,
   EvidenceRef,
   EvidenceReview,
@@ -20,6 +21,13 @@ import type {
 export type ProjectionEntity =
   | {
       id: string
+      type: 'question'
+      question: string
+      scopeAssumptions: string[]
+      body: string
+    }
+  | {
+      id: string
       type: 'node'
       kind: NodeKind
       confidence: ConfidenceBand
@@ -35,6 +43,8 @@ export type ProjectionEntity =
       publicationRef: PublicationReference
       locator: Locator
       limitations?: string[]
+      citation?: CitationSnapshot
+      machineReviewRationale?: string
       body: string
     }
   | {
@@ -48,9 +58,9 @@ export type ProjectionEntity =
 export interface ProjectionEdge {
   from: string
   to: string
-  relation: Relation
-  /** `edge` = stored edge file; `evidence_ref` = node reference to an assertion. */
-  source: 'edge' | 'evidence_ref'
+  relation: Relation | 'addresses'
+  /** Stored scientific edge, non-scientific framing link, or evidence reference. */
+  source: 'edge' | 'framing_link' | 'evidence_ref'
   basis?: 'literature' | 'experiment' | 'ai_inference'
   /** Stored edge id; absent for evidence refs. */
   id?: string
@@ -63,6 +73,13 @@ export interface ResearchProjection {
 
 export function buildProjection(project: ResearchProject): ResearchProjection {
   const entities: ProjectionEntity[] = [
+    ...[...project.questions.values()].map((question) => ({
+      id: question.id,
+      type: 'question' as const,
+      question: question.question,
+      scopeAssumptions: question.scope_assumptions ?? [],
+      body: question.body,
+    })),
     ...[...project.nodes.values()].map((node) => ({
       id: node.id,
       type: 'node' as const,
@@ -80,6 +97,10 @@ export function buildProjection(project: ResearchProject): ResearchProjection {
       publicationRef: evidence.publication_ref,
       locator: evidence.locator,
       ...(evidence.limitations !== undefined ? { limitations: evidence.limitations } : {}),
+      ...(evidence.citation !== undefined ? { citation: evidence.citation } : {}),
+      ...(evidence.machine_review_rationale !== undefined
+        ? { machineReviewRationale: evidence.machine_review_rationale }
+        : {}),
       body: evidence.body,
     })),
     ...[...project.results.values()].map((result) => ({
@@ -121,5 +142,15 @@ export function buildProjection(project: ResearchProject): ResearchProjection {
             : 0,
     )
 
-  return { entities, edges: [...edgeEdges, ...evidenceRefEdges] }
+  const framingLinkEdges: ProjectionEdge[] = [...project.framingLinks.values()]
+    .map((link) => ({
+      id: link.id,
+      from: link.from,
+      to: link.to,
+      relation: link.relation,
+      source: 'framing_link' as const,
+    }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+
+  return { entities, edges: [...edgeEdges, ...framingLinkEdges, ...evidenceRefEdges] }
 }

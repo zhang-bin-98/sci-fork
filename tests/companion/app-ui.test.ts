@@ -23,6 +23,9 @@ const summary = {
   confidence: 'low',
   referenceCount: 2,
   reviewedEvidenceCount: 1,
+  publicationCount: 2,
+  machineReviewedEvidenceCount: 0,
+  humanReviewedEvidenceCount: 1,
   label: LONG_LABEL,
 } satisfies ProjectionEntitySummary
 
@@ -36,12 +39,55 @@ const singularSummary = {
   ...summary,
   referenceCount: 1,
   reviewedEvidenceCount: 0,
+  publicationCount: 1,
+  machineReviewedEvidenceCount: 1,
+  humanReviewedEvidenceCount: 0,
 } satisfies ProjectionEntitySummary
 
 const singularEntity = {
   ...entity,
   referenceCount: 1,
   reviewedEvidenceCount: 0,
+  publicationCount: 1,
+  machineReviewedEvidenceCount: 1,
+  humanReviewedEvidenceCount: 0,
+} satisfies EntityDocument
+
+const literatureEntity = {
+  ...entity,
+  literature: {
+    humanReviewed: [],
+    machineReviewed: [{
+      id: 'ev_cccccccc-3333-4333-8333-333333333333',
+      publicationRef: { pmid: '87654321' },
+      citation: {
+        title: 'STAT3 activity and treatment resistance',
+        journal: 'Example Oncology',
+        year: 2025,
+      },
+      assertion: 'A retrieved abstract links STAT3 activity to treatment resistance.',
+      locator: { kind: 'pubmed_abstract' },
+      direction: 'supports',
+      limitations: ['observational design'],
+      machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
+      reviewStatus: 'machine_reviewed',
+    }],
+    candidate: [],
+    rejected: [],
+    retrievalOnly: [{ doi: '10.1000/second' }],
+  },
+} satisfies EntityDocument
+
+const questionEntity = {
+  id: 'question_dddddddd-4444-4444-8444-444444444444',
+  type: 'question',
+  question: 'What drives treatment resistance?',
+  scopeAssumptions: ['solid tumors'],
+  body: 'Open framing note.',
+  addressedEntityIds: [ENTITY_ID],
+  publicationCount: 2,
+  machineReviewedEvidenceCount: 1,
+  humanReviewedEvidenceCount: 1,
 } satisfies EntityDocument
 
 describe('Companion graph UI', () => {
@@ -99,7 +145,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain(LONG_LABEL)
     expect(html).not.toContain('aria-describedby=')
     expect(html).toContain('HYPOTHESIS')
-    expect(html).toContain('2 refs (1 reviewed)')
+    expect(html).toContain('2 publications · 0 machine-reviewed · 1 human-reviewed')
   })
 
   it('makes the complete quiet identity row the copy control in open Details', () => {
@@ -115,7 +161,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain(ENTITY_ID)
     expect(html).toContain('Focused')
     expect(html).toContain('HYPOTHESIS')
-    expect(html).toContain('2 refs (1 reviewed)')
+    expect(html).toContain('2 publications · 0 machine-reviewed · 1 human-reviewed')
     expect(html).toContain('<h2 class="sr-only">Details</h2>')
     expect(html).not.toContain('<h2>Details</h2>')
     expect(html.match(/data-details-row=/g)).toHaveLength(2)
@@ -211,9 +257,48 @@ describe('Companion graph UI', () => {
     expect(actionClasses).not.toContain('bg-sf-accent')
     expect(actionClasses).not.toContain('text-white')
     expect(actionClasses).not.toContain('shadow-sm')
+    expect(html).toContain('Show evidence')
   })
 
-  it('uses singular reference grammar on cards and in Details', () => {
+  it('shows grouped machine-reviewed and retrieval-only literature in Node Details', () => {
+    const html = renderToStaticMarkup(
+      createElement(DetailsPane, {
+        entity: literatureEntity,
+        focusEntityId: ENTITY_ID,
+        open: true,
+        onToggle: () => undefined,
+      }),
+    )
+
+    expect(html).toContain('Machine-reviewed Evidence')
+    expect(html).toContain('STAT3 activity and treatment resistance')
+    expect(html).toContain('PMID 87654321')
+    expect(html).toContain('A retrieved abstract links STAT3 activity')
+    expect(html).toContain('observational design')
+    expect(html).toContain('Machine review:')
+    expect(html).toContain('Retrieval-only references')
+    expect(html).toContain('DOI 10.1000/second')
+  })
+
+  it('shows a Research Question scope, coverage, and addressed entity ids', () => {
+    const html = renderToStaticMarkup(
+      createElement(DetailsPane, {
+        entity: questionEntity,
+        focusEntityId: questionEntity.id,
+        open: true,
+        onToggle: () => undefined,
+      }),
+    )
+
+    expect(html).toContain('RESEARCH QUESTION')
+    expect(html).toContain('What drives treatment resistance?')
+    expect(html).toContain('solid tumors')
+    expect(html).toContain('Addressed by: 1')
+    expect(html).toContain(ENTITY_ID)
+    expect(html).toContain('2 publications · 1 machine-reviewed · 1 human-reviewed')
+  })
+
+  it('reports publication and review-state counts explicitly on cards and in Details', () => {
     const card = renderToStaticMarkup(createElement(EntityNodeCard, { entity: singularSummary }))
     const details = renderToStaticMarkup(
       createElement(DetailsPane, {
@@ -224,10 +309,8 @@ describe('Companion graph UI', () => {
       }),
     )
 
-    expect(card).toContain('1 ref (0 reviewed)')
-    expect(details).toContain('1 ref (0 reviewed)')
-    expect(card).not.toContain('1 refs')
-    expect(details).not.toContain('1 refs')
+    expect(card).toContain('1 publication · 1 machine-reviewed · 0 human-reviewed')
+    expect(details).toContain('1 publication · 1 machine-reviewed · 0 human-reviewed')
   })
 
   it('renders only a reopen handle when Details is collapsed', () => {

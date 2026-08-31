@@ -12,6 +12,8 @@ const NODE_B = `node_${UUID_B}`
 const EV = `ev_${UUID_A}`
 const RES = `res_${UUID_A}`
 const EDGE = `edge_${UUID_A}`
+const QUESTION = `question_${UUID_A}`
+const QLINK = `qlink_${UUID_A}`
 
 const MANIFEST = JSON.stringify({ schema_version: 1, project_id: UUID_A, name: 'Projection' })
 
@@ -61,6 +63,14 @@ describe('buildProjection', () => {
       `---\nid: ${RES}\nstatus: validated\nobserved_at: "2026-08-24"\n---\n# Result\n\nBody.\n`,
     ],
     [
+      `questions/${QUESTION}.md`,
+      `---\nid: ${QUESTION}\nquestion: What drives bone aging?\nscope_assumptions:\n  - mammalian aging\n---\nNotes.\n`,
+    ],
+    [
+      `question-links/${QLINK}.json`,
+      JSON.stringify({ id: QLINK, from: NODE_B, to: QUESTION, relation: 'addresses' }),
+    ],
+    [
       `edges/${EDGE}.json`,
       JSON.stringify({ id: EDGE, from: RES, to: NODE_B, relation: 'causes', basis: 'experiment' }),
     ],
@@ -68,7 +78,7 @@ describe('buildProjection', () => {
 
   it('projects every entity type with its fields', () => {
     const projection = build(baseFiles)
-    expect(projection.entities).toHaveLength(4)
+    expect(projection.entities).toHaveLength(5)
     const byId = new Map(projection.entities.map((entity) => [entity.id, entity]))
     expect(byId.get(NODE)).toMatchObject({ type: 'node', kind: 'finding', confidence: 'high' })
     expect(byId.get(EV)).toMatchObject({
@@ -78,6 +88,11 @@ describe('buildProjection', () => {
       publicationRef: { pmid: '12345678' },
     })
     expect(byId.get(RES)).toMatchObject({ type: 'result', status: 'validated' })
+    expect(byId.get(QUESTION)).toMatchObject({
+      type: 'question',
+      question: 'What drives bone aging?',
+      scopeAssumptions: ['mammalian aging'],
+    })
   })
 
   it('projects edge files and evidence refs as edges', () => {
@@ -89,6 +104,9 @@ describe('buildProjection', () => {
     const evidenceEdges = projection.edges.filter((edge) => edge.source === 'evidence_ref')
     expect(evidenceEdges).toEqual([
       { from: EV, to: NODE, relation: 'supports', source: 'evidence_ref' },
+    ])
+    expect(projection.edges.filter((edge) => edge.source === 'framing_link')).toEqual([
+      { from: NODE_B, to: QUESTION, relation: 'addresses', source: 'framing_link', id: QLINK },
     ])
   })
 

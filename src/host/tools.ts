@@ -83,6 +83,12 @@ function findMatches(project: LoadedProject, query: string, limit: number): { id
       matches.push({ id, type })
     }
   }
+  for (const question of project.questions.values()) {
+    consider(question.id, 'question', [question.id, question.question, question.body, ...(question.scope_assumptions ?? [])])
+  }
+  for (const link of project.framingLinks.values()) {
+    consider(link.id, 'framing_link', [link.id, link.from, link.to, link.relation])
+  }
   for (const node of project.nodes.values()) {
     consider(node.id, 'node', [node.id, node.body, node.kind])
   }
@@ -100,6 +106,26 @@ function findMatches(project: LoadedProject, query: string, limit: number): { id
 
 function entityPayload(project: LoadedProject, entityId: string): Record<string, unknown> | undefined {
   const type = entityTypeOfId(entityId)
+  if (type === 'question') {
+    const question = project.questions.get(entityId)
+    if (question === undefined) return undefined
+    const framingLinks = [...project.framingLinks.values()]
+      .filter((link) => link.to === entityId)
+      .sort((left, right) => left.id.localeCompare(right.id))
+    return {
+      type,
+      question: question.question,
+      scopeAssumptions: question.scope_assumptions ?? [],
+      body: question.body,
+      addressedEntities: framingLinks.map((link) => ({ linkId: link.id, entityId: link.from })),
+    }
+  }
+  if (type === 'framing_link') {
+    const link = project.framingLinks.get(entityId)
+    return link === undefined
+      ? undefined
+      : { type, from: link.from, to: link.to, relation: link.relation }
+  }
   if (type === 'node') {
     const node = project.nodes.get(entityId)
     return node !== undefined ? { type: 'node', kind: node.kind, confidence: node.confidence, evidenceRefs: node.evidence_refs ?? [], body: node.body } : undefined
@@ -115,6 +141,10 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
           publicationRef: evidence.publication_ref,
           locator: evidence.locator,
           ...(evidence.limitations !== undefined ? { limitations: evidence.limitations } : {}),
+          ...(evidence.citation !== undefined ? { citation: evidence.citation } : {}),
+          ...(evidence.machine_review_rationale !== undefined
+            ? { machineReviewRationale: evidence.machine_review_rationale }
+            : {}),
           body: evidence.body,
         }
       : undefined
@@ -147,6 +177,13 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
 }
 
 function compactEntity(entity: ProjectionEntity): Record<string, unknown> {
+  if (entity.type === 'question') {
+    return {
+      id: entity.id,
+      type: entity.type,
+      label: boundedLabel(entity.question, 'Research Question'),
+    }
+  }
   if (entity.type === 'node') {
     return {
       id: entity.id,
@@ -203,6 +240,8 @@ async function executeRead(
       ...manifestFields,
       revision: project.projectRevision,
       counts: {
+        questions: project.questions.size,
+        framingLinks: project.framingLinks.size,
         nodes: project.nodes.size,
         edges: project.edges.size,
         evidenceAssertions: project.evidenceAssertions.size,
@@ -242,7 +281,11 @@ async function executeRead(
       }
       return { ok: true, entityId, entity, fileVersion: fileVersion(content, deps.hash) }
     }
-    const edges = buildProjection(project).edges.filter((edge) => edge.from === entityId || edge.to === entityId)
+    const includeFraming = entityTypeOfId(entityId) === 'question'
+    const edges = buildProjection(project).edges.filter((edge) =>
+      (edge.from === entityId || edge.to === entityId) &&
+      (includeFraming ? edge.source === 'framing_link' : edge.source !== 'framing_link'),
+    )
     return { ok: true, entityId, entity, edges }
   }
 
@@ -263,13 +306,16 @@ async function executeRead(
       return {
         ok: false,
         code: 'INVALID_ENTITY',
-        message: `neighbor endpoint ${entityId} must be an existing Node, Result, or Evidence Assertion`,
+        message: `neighbor endpoint ${entityId} must be an existing Research Question, Node, Result, or Evidence Assertion`,
         recoverable: true,
         entityId,
       }
     }
     const entities = new Map(projection.entities.map((entity) => [entity.id, entity]))
     const neighbors = projection.edges.flatMap((edge) => {
+      if (requested.type === 'question' ? edge.source !== 'framing_link' : edge.source === 'framing_link') {
+        return []
+      }
       const incoming = edge.to === entityId
       const outgoing = edge.from === entityId
       if (
@@ -334,6 +380,18 @@ const APPLY_COMMAND_SCHEMA = {
   type: 'object',
   oneOf: [
     commandBranch(
+      'create_question',
+      { id: ID, question: { type: 'string' }, scopeAssumptions: { type: 'array', items: { type: 'string' } }, body: { type: 'string' } },
+      ['id', 'question'],
+    ),
+    commandBranch(
+      'update_question',
+      { id: ID, expectedFileVersion: VERSION, question: { type: 'string' }, scopeAssumptions: { type: 'array', items: { type: 'string' } }, body: { type: 'string' } },
+      ['id', 'expectedFileVersion'],
+    ),
+    commandBranch('create_framing_link', { id: ID, from: ID, to: ID }, ['id', 'from', 'to']),
+    commandBranch('delete_framing_link', { id: ID, expectedFileVersion: VERSION }, ['id', 'expectedFileVersion']),
+    commandBranch(
       'create_evidence_assertion',
       {
         id: ID,
@@ -341,6 +399,9 @@ const APPLY_COMMAND_SCHEMA = {
         locator: { type: 'object' },
         assertion: { type: 'string' },
         direction: { type: 'string', enum: ['supports', 'contradicts', 'context'] },
+        reviewStatus: { type: 'string', enum: ['candidate', 'machine_reviewed'] },
+        citation: { type: 'object' },
+        machineReviewRationale: { type: 'string' },
         limitations: { type: 'array', items: { type: 'string' } },
         body: { type: 'string' },
       },
@@ -351,7 +412,9 @@ const APPLY_COMMAND_SCHEMA = {
       {
         id: ID,
         expectedFileVersion: VERSION,
-        reviewStatus: { type: 'string', enum: ['reviewed', 'rejected'] },
+        reviewStatus: { type: 'string', enum: ['machine_reviewed', 'reviewed', 'rejected'] },
+        citation: { type: 'object' },
+        machineReviewRationale: { type: 'string' },
         limitations: { type: 'array', items: { type: 'string' } },
       },
       ['id', 'expectedFileVersion', 'reviewStatus'],
@@ -448,7 +511,8 @@ const APPLY_PARAMETERS = {
     command: {
       ...APPLY_COMMAND_SCHEMA,
       description:
-        'One typed single-entity command. kind: create_evidence_assertion | review_evidence_assertion | ' +
+        'One typed single-entity command. kind: create_question | update_question | create_framing_link | delete_framing_link | ' +
+        'create_evidence_assertion | review_evidence_assertion | ' +
         'create_node | update_node | create_edge | update_edge | create_result | update_result | import_draft_item | ' +
         'delete_edge | delete_node. ' +
         'Creates take id plus entity fields; updates/reviews take id + expectedFileVersion + at least one change; ' +
@@ -571,8 +635,9 @@ function applyTool(deps: ResearchHostDeps): ToolDefinition {
     name: 'research_graph_apply',
     description:
       'Apply one typed single-entity command to the SciFork Research Graph and create a local git checkpoint. ' +
-      'Requires the current projectRevision. Model-proposed evidence stays candidate; only user-reviewed evidence ' +
-      'supports Findings. Edge and detached Hypothesis/Prediction deletion is guarded by fileVersion and Core invariants.',
+      'Requires the current projectRevision. Ordinary imports stay candidate; an authorized research expansion may ' +
+      'create machine_reviewed Evidence with citation and rationale. Only human-reviewed evidence supports Findings. ' +
+      'Question, Framing Link, Edge, and detached Hypothesis/Prediction changes are guarded by Core invariants.',
     parameters: APPLY_PARAMETERS,
     output: { schema: {}, render: renderJson },
     execute: (args, exec) => executeApply(deps, (args ?? {}) as Record<string, unknown>, exec),

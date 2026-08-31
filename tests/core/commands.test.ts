@@ -22,6 +22,8 @@ const NODE_B = `node_${UUID_B}`
 const EV = `ev_${UUID_A}`
 const RES = `res_${UUID_A}`
 const EDGE = `edge_${UUID_A}`
+const QUESTION = `question_${UUID_A}`
+const QLINK = `qlink_${UUID_A}`
 
 const MANIFEST = JSON.stringify({ schema_version: 1, project_id: UUID_A, name: 'Commands' })
 
@@ -38,10 +40,27 @@ function evidenceFile(id: string, reviewStatus: string, direction: string): [str
       `assertion: "Assertion for ${id}."`,
       `direction: ${direction}`,
       `review_status: ${reviewStatus}`,
+      ...(reviewStatus === 'machine_reviewed'
+        ? [
+            'citation:',
+            '  title: "A source article"',
+            '  journal: Bone',
+            '  year: 2025',
+            'machine_review_rationale: "Identity, locator, entailment, direction, and limitations checked."',
+          ]
+        : []),
       '---',
       'note',
     ].join('\n') + '\n',
   ]
+}
+
+function questionFile(id: string): [string, string] {
+  return [`questions/${id}.md`, `---\nid: ${id}\nquestion: What drives bone aging?\n---\n`]
+}
+
+function framingLinkFile(id: string, from: string, to: string): [string, string] {
+  return [`question-links/${id}.json`, JSON.stringify({ id, from, to, relation: 'addresses' }) + '\n']
 }
 
 function nodeFile(id: string, kind: string, refs = ''): [string, string] {
@@ -74,9 +93,19 @@ function build(files: [string, string][]) {
   return parseAndValidateProject(new Map([['research.json', MANIFEST], ...files]), sha256)
 }
 
-function versionOf(projectFiles: ReadonlyMap<string, string>, id: string, type: 'node' | 'evidence' | 'result' | 'edge'): string {
-  const dir = type === 'node' ? 'nodes' : type === 'evidence' ? 'evidence' : type === 'edge' ? 'edges' : 'results'
-  const ext = type === 'edge' ? '.json' : '.md'
+function versionOf(projectFiles: ReadonlyMap<string, string>, id: string, type: 'question' | 'framing_link' | 'node' | 'evidence' | 'result' | 'edge'): string {
+  const dir = type === 'question'
+    ? 'questions'
+    : type === 'framing_link'
+      ? 'question-links'
+      : type === 'node'
+        ? 'nodes'
+        : type === 'evidence'
+          ? 'evidence'
+          : type === 'edge'
+            ? 'edges'
+            : 'results'
+  const ext = type === 'edge' || type === 'framing_link' ? '.json' : '.md'
   const content = projectFiles.get(`${dir}/${id}${ext}`)
   return content !== undefined ? fileVersion(content, sha256) : ''
 }
@@ -84,6 +113,16 @@ function versionOf(projectFiles: ReadonlyMap<string, string>, id: string, type: 
 describe('parseCommand', () => {
   it('parses every command kind', () => {
     const commands: unknown[] = [
+      {
+        kind: 'create_question', id: QUESTION, question: 'What drives bone aging?'
+      },
+      {
+        kind: 'update_question', id: QUESTION, expectedFileVersion: '1'.repeat(64), question: 'What accelerates bone aging?'
+      },
+      {
+        kind: 'create_framing_link', id: QLINK, from: NODE, to: QUESTION,
+      },
+      { kind: 'delete_framing_link', id: QLINK, expectedFileVersion: '2'.repeat(64) },
       {
         kind: 'create_evidence_assertion',
         id: EV,
@@ -207,6 +246,30 @@ describe('planCommand: create_evidence_assertion', () => {
     }, sha256)
     expect(missing.ok).toBe(false)
   })
+
+  it('creates machine-reviewed evidence only with a citation snapshot and rationale', () => {
+    const project = build([])
+    const command: ResearchCommand = {
+      kind: 'create_evidence_assertion',
+      id: EV,
+      publicationRef: { pmid: '12345678' },
+      locator: { kind: 'pubmed_abstract' },
+      assertion: 'The abstract directly supports the bounded claim.',
+      direction: 'supports',
+      reviewStatus: 'machine_reviewed',
+      citation: { title: 'A source article', journal: 'Bone', year: 2025 },
+      machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
+    }
+    const plan = planCommand(project, command, sha256)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(writeContent(plan)).toContain('review_status: machine_reviewed')
+    expect(writeContent(plan)).toContain('title: A source article')
+    expect(writeContent(plan)).not.toContain('abstract:')
+
+    expect(parseCommand({ ...command, citation: undefined }).ok).toBe(false)
+    expect(parseCommand({ ...command, machineReviewRationale: undefined }).ok).toBe(false)
+  })
 })
 
 describe('planCommand: review_evidence_assertion', () => {
@@ -251,6 +314,83 @@ describe('planCommand: review_evidence_assertion', () => {
     if (!plan.ok) {
       expect(plan.issues.some((issue) => issue.code === 'STALE_TARGET')).toBe(true)
     }
+  })
+
+  it('accepts machine-reviewed evidence as human reviewed and blocks rejection while referenced', () => {
+    const machine = build([evidenceFile(EV, 'machine_reviewed', 'supports')])
+    const accept = planCommand(machine, {
+      kind: 'review_evidence_assertion',
+      id: EV,
+      expectedFileVersion: versionOf(machine.files, EV, 'evidence'),
+      reviewStatus: 'reviewed',
+    }, sha256)
+    expect(accept.ok).toBe(true)
+
+    const referenced = build([
+      evidenceFile(EV, 'machine_reviewed', 'supports'),
+      nodeFile(NODE, 'hypothesis', `evidence_refs:\n  - id: ${EV}\n    role: supports\n`),
+    ])
+    const reject = planCommand(referenced, {
+      kind: 'review_evidence_assertion',
+      id: EV,
+      expectedFileVersion: versionOf(referenced.files, EV, 'evidence'),
+      reviewStatus: 'rejected',
+    }, sha256)
+    expect(reject.ok).toBe(false)
+  })
+})
+
+describe('planCommand: questions and framing links', () => {
+  it('creates and updates an open Research Question without claim fields', () => {
+    const empty = build([])
+    const create = planCommand(empty, {
+      kind: 'create_question',
+      id: QUESTION,
+      question: 'What drives bone aging?',
+      scopeAssumptions: ['mammalian skeletal aging'],
+      body: '',
+    }, sha256)
+    expect(create.ok).toBe(true)
+    if (!create.ok) return
+    expect(create.path).toBe(`questions/${QUESTION}.md`)
+    expect(writeContent(create)).not.toContain('confidence:')
+
+    const project = build([[create.path, writeContent(create)]])
+    const update = planCommand(project, {
+      kind: 'update_question',
+      id: QUESTION,
+      expectedFileVersion: versionOf(project.files, QUESTION, 'question'),
+      question: 'Which mechanisms accelerate bone aging?',
+    }, sha256)
+    expect(update.ok).toBe(true)
+  })
+
+  it('creates/deletes addresses links and blocks source deletion while linked', () => {
+    const project = build([questionFile(QUESTION), nodeFile(NODE, 'hypothesis')])
+    const create = planCommand(project, {
+      kind: 'create_framing_link',
+      id: QLINK,
+      from: NODE,
+      to: QUESTION,
+    }, sha256)
+    expect(create.ok).toBe(true)
+    if (!create.ok) return
+    expect(writeContent(create)).toContain('"relation": "addresses"')
+
+    const linked = build([questionFile(QUESTION), nodeFile(NODE, 'hypothesis'), framingLinkFile(QLINK, NODE, QUESTION)])
+    const deleteNode = planCommand(linked, {
+      kind: 'delete_node',
+      id: NODE,
+      expectedFileVersion: versionOf(linked.files, NODE, 'node'),
+    }, sha256)
+    expect(deleteNode.ok).toBe(false)
+
+    const deleteLink = planCommand(linked, {
+      kind: 'delete_framing_link',
+      id: QLINK,
+      expectedFileVersion: versionOf(linked.files, QLINK, 'framing_link'),
+    }, sha256)
+    expect(deleteLink).toMatchObject({ ok: true, writeKind: 'delete', path: `question-links/${QLINK}.json` })
   })
 })
 

@@ -31,10 +31,27 @@ function evidenceFile(id: string, reviewStatus: string, direction: string, body 
     `assertion: "Assertion for ${id}."`,
     `direction: ${direction}`,
     `review_status: ${reviewStatus}`,
+    ...(reviewStatus === 'machine_reviewed'
+      ? [
+          'citation:',
+          '  title: "A source article"',
+          '  journal: Bone',
+          '  year: 2025',
+          'machine_review_rationale: "Identity, locator, entailment, direction, and limitations checked."',
+        ]
+      : []),
     '---',
     body,
   ].join('\n') + '\n'
   return [`evidence/${id}.md`, md]
+}
+
+function questionFile(id: string): [string, string] {
+  return [`questions/${id}.md`, `---\nid: ${id}\nquestion: What drives bone aging?\n---\n`]
+}
+
+function framingLinkFile(id: string, from: string, to: string): [string, string] {
+  return [`question-links/${id}.json`, JSON.stringify({ id, from, to, relation: 'addresses' })]
 }
 
 function nodeFile(id: string, kind: string, refs: string): [string, string] {
@@ -148,6 +165,51 @@ describe('validateProject', () => {
       nodeFile(NODE, 'hypothesis', SUPPORTING_REFS),
     ])
     expect(rejected.diagnostics.some((d) => d.code === 'evidence_not_reviewed')).toBe(true)
+  })
+
+  it('allows machine-reviewed evidence on provisional claims but not as Finding support', () => {
+    const hypothesis = build([
+      evidenceFile(EV, 'machine_reviewed', 'supports'),
+      nodeFile(NODE, 'hypothesis', SUPPORTING_REFS),
+    ])
+    expect(hypothesis.diagnostics).toEqual([])
+
+    const finding = build([
+      evidenceFile(EV, 'machine_reviewed', 'supports'),
+      nodeFile(NODE, 'finding', SUPPORTING_REFS),
+    ])
+    expect(finding.diagnostics.some((d) => d.code === 'finding_lacks_support')).toBe(true)
+  })
+
+  it('requires human-reviewed evidence for literature edges', () => {
+    const project = build([
+      evidenceFile(EV, 'machine_reviewed', 'supports'),
+      nodeFile(NODE, 'hypothesis', ''),
+      nodeFile(NODE_B, 'hypothesis', ''),
+      edgeJsonFile(EDGE, NODE, NODE_B, {
+        basis: 'literature',
+        evidence_refs: [{ id: EV, role: 'supports' }],
+      }),
+    ])
+    expect(project.diagnostics.some((d) => d.code === 'literature_evidence_not_human_reviewed')).toBe(true)
+  })
+
+  it('validates Framing Link endpoints independently from scientific edges', () => {
+    const question = `question_${UUID_A}`
+    const link = `qlink_${UUID_A}`
+    const valid = build([
+      questionFile(question),
+      nodeFile(NODE, 'hypothesis', ''),
+      framingLinkFile(link, NODE, question),
+    ])
+    expect(valid.diagnostics).toEqual([])
+
+    const invalidSource = build([
+      questionFile(question),
+      nodeFile(NODE, 'prediction', ''),
+      framingLinkFile(link, NODE, question),
+    ])
+    expect(invalidSource.diagnostics.some((d) => d.code === 'invalid_framing_source')).toBe(true)
   })
 
   it('flags role/direction mismatches and context references', () => {
