@@ -62,6 +62,12 @@ function sendJson(response: import('node:http').ServerResponse, value: unknown):
   response.end(JSON.stringify(value))
 }
 
+function sendXml(response: import('node:http').ServerResponse, value: string): void {
+  response.statusCode = 200
+  response.setHeader('content-type', 'application/xml')
+  response.end(value)
+}
+
 describe('pubmed helper', () => {
   it('rejects malformed requests without making a network call', async () => {
     let called = false
@@ -178,9 +184,18 @@ describe('pubmed helper', () => {
       calls.push(`${request.method} ${request.url}`)
       if ((request.url ?? '').includes('esearch.fcgi')) {
         sendJson(response, { esearchresult: { count: '1', idlist: ['123456'] } })
-      } else {
-        sendJson(response, { result: { uids: ['123456'], '123456': { uid: '123456', title: 'Lookup claim', pubdate: '2022', authors: [], pubtype: [], articleids: [{ idtype: 'doi', value: '10.1000/lookup' }] } } })
-      }
+        } else if ((request.url ?? '').includes('esummary.fcgi')) {
+          sendJson(response, { result: { uids: ['123456'], '123456': { uid: '123456', title: 'Lookup claim', pubdate: '2022', authors: [], pubtype: [], articleids: [{ idtype: 'doi', value: '10.1000/lookup' }] } } })
+        } else {
+          sendXml(response, [
+            '<?xml version="1.0"?>',
+            '<PubmedArticleSet><PubmedArticle><MedlineCitation>',
+            '<PMID>123456</PMID><Article><Abstract>',
+            '<AbstractText Label="BACKGROUND">STAT3 &amp; IL-6 rise together.</AbstractText>',
+            '<AbstractText>A second <i>bounded</i> observation.</AbstractText>',
+            '</Abstract></Article></MedlineCitation></PubmedArticle></PubmedArticleSet>',
+          ].join(''))
+        }
     })
     servers.push(server)
     server.listen(0, '127.0.0.1')
@@ -188,10 +203,20 @@ describe('pubmed helper', () => {
     const address = server.address() as AddressInfo
     const run = await runHelper({ operation: 'lookup', identifier: { doi: 'https://doi.org/10.1000/LOOKUP' } }, `http://127.0.0.1:${address.port}/entrez/eutils`)
     const output = JSON.parse(run.stdout)
-    expect(output).toMatchObject({ ok: true, operation: 'lookup', record: { pmid: '123456', doi: '10.1000/lookup', canonicalUrl: 'https://pubmed.ncbi.nlm.nih.gov/123456/' } })
+    expect(output).toMatchObject({
+      ok: true,
+      operation: 'lookup',
+      record: {
+        pmid: '123456',
+        doi: '10.1000/lookup',
+        abstract: 'BACKGROUND: STAT3 & IL-6 rise together.\n\nA second bounded observation.',
+        canonicalUrl: 'https://pubmed.ncbi.nlm.nih.gov/123456/',
+      },
+    })
     expect(output.record.retrievedAt).toMatch(/Z$/)
     expect(calls[0]).toContain('esearch.fcgi')
     expect(calls[1]).toContain('esummary.fcgi')
+    expect(calls[2]).toContain('efetch.fcgi')
   })
 
   it('reports a missing DOI without fabricating a record', async () => {

@@ -5,8 +5,8 @@ import { entityFilePath } from './schema.js'
 
 /**
  * Cross-entity domain invariants (architecture §5.2): reference resolution,
- * reviewed-only evidence references, role/direction consistency, and the
- * Finding support threshold. Structural problems stay in the parser; this
+ * active evidence references, role/direction consistency, Framing Link
+ * endpoints, and the Finding support threshold. Structural problems stay in the parser; this
  * module only rules about relationships between entities.
  */
 
@@ -19,7 +19,7 @@ function refPath(ownerId: string): string {
 }
 
 /**
- * Issues for one evidence reference list: resolution, reviewed-only, and
+ * Issues for one evidence reference list: resolution, active-review state, and
  * role/direction consistency. Shared by project validation and command
  * planning.
  */
@@ -35,7 +35,7 @@ export function evidenceRefIssues(
       diagnostics.push(diag(ownerPath, 'unknown_reference', `evidence ${ref.id} does not exist`))
       continue
     }
-    if (evidence.review_status !== 'reviewed') {
+    if (evidence.review_status !== 'machine_reviewed' && evidence.review_status !== 'reviewed') {
       diagnostics.push(
         diag(ownerPath, 'evidence_not_reviewed', `evidence ${ref.id} is ${evidence.review_status}, not reviewed`),
       )
@@ -119,6 +119,39 @@ export function validateProject(project: ResearchProject): Diagnostic[] {
       )
     }
     diagnostics.push(...evidenceRefIssues(project, path, edge.evidence_refs))
+    if (edge.basis === 'literature') {
+      for (const ref of edge.evidence_refs ?? []) {
+        const evidence = project.evidenceAssertions.get(ref.id)
+        if (evidence !== undefined && evidence.review_status !== 'reviewed') {
+          diagnostics.push(
+            diag(
+              path,
+              'literature_evidence_not_human_reviewed',
+              `literature edge ${edge.id} requires human-reviewed evidence; ${ref.id} is ${evidence.review_status}`,
+            ),
+          )
+        }
+      }
+    }
+  }
+
+  for (const link of project.framingLinks.values()) {
+    const path = refPath(link.id)
+    const source = project.nodes.get(link.from)
+    if (source === undefined) {
+      diagnostics.push(diag(path, 'unknown_endpoint', `framing link source ${link.from} does not exist`))
+    } else if (source.kind !== 'hypothesis' && source.kind !== 'finding') {
+      diagnostics.push(
+        diag(
+          path,
+          'invalid_framing_source',
+          `framing link ${link.id} must start from a Hypothesis or Finding`,
+        ),
+      )
+    }
+    if (!project.questions.has(link.to)) {
+      diagnostics.push(diag(path, 'unknown_endpoint', `framing link target ${link.to} does not exist`))
+    }
   }
 
   return diagnostics

@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 import type { SubprocessPort } from './contracts.js'
-import { EDGE_ID_RE, MANAGED_PATHS, NODE_ID_RE, entityFilePath } from '../core/schema.js'
+import { EDGE_ID_RE, FRAMING_LINK_ID_RE, MANAGED_PATHS, NODE_ID_RE, entityFilePath } from '../core/schema.js'
 
 /** Fixed executable name resolved through the provider's scrubbed PATH. */
 export const GIT_EXECUTABLE = 'git'
@@ -258,11 +258,11 @@ function deletableManagedPath(path: string): boolean {
     : name.endsWith('.json')
       ? name.slice(0, -'.json'.length)
       : ''
-  if (!NODE_ID_RE.test(id) && !EDGE_ID_RE.test(id)) return false
+  if (!NODE_ID_RE.test(id) && !EDGE_ID_RE.test(id) && !FRAMING_LINK_ID_RE.test(id)) return false
   return entityFilePath(id) === path
 }
 
-/** Remove one Core-derived Node/Edge path through fixed, argv-only Git. */
+/** Remove one Core-derived Node, scientific Edge, or Framing Link path through fixed argv-only Git. */
 export async function gitRemoveManagedPath(
   subprocess: SubprocessPort,
   cwd: string,

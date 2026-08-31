@@ -1,5 +1,6 @@
 import type {
   ConfidenceBand,
+  CitationSnapshot,
   EdgeBasis,
   EvidenceDirection,
   EvidenceRef,
@@ -45,11 +46,19 @@ export interface SnapshotProject {
 export type ProjectionEntitySummary =
   | {
       id: string
+      type: 'question'
+      label: string
+    }
+  | {
+      id: string
       type: 'node'
       kind: NodeKind
       confidence: ConfidenceBand
       referenceCount: number
       reviewedEvidenceCount: number
+      publicationCount: number
+      machineReviewedEvidenceCount: number
+      humanReviewedEvidenceCount: number
       label: string
     }
   | {
@@ -70,8 +79,8 @@ export type ProjectionEntitySummary =
 export interface ProjectionEdgeSummary {
   from: string
   to: string
-  relation: Relation
-  source: 'edge' | 'evidence_ref'
+  relation: Relation | 'addresses'
+  source: 'edge' | 'framing_link' | 'evidence_ref'
   id?: string
   basis?: EdgeBasis
   evidenceGap?: string
@@ -90,7 +99,45 @@ export interface SnapshotSuccess {
   graph?: SnapshotGraph
 }
 
+export interface LiteratureEvidenceItem {
+  id: string
+  publicationRef: PublicationReference
+  citation?: CitationSnapshot
+  assertion: string
+  locator: Locator
+  direction: EvidenceDirection
+  limitations?: string[]
+  machineReviewRationale?: string
+  reviewStatus: EvidenceReview
+}
+
+export interface LiteratureProjection {
+  humanReviewed: LiteratureEvidenceItem[]
+  machineReviewed: LiteratureEvidenceItem[]
+  candidate: LiteratureEvidenceItem[]
+  rejected: LiteratureEvidenceItem[]
+  retrievalOnly: PublicationReference[]
+}
+
 export type EntityDocument =
+  | {
+      id: string
+      type: 'question'
+      question: string
+      scopeAssumptions: string[]
+      body: string
+      addressedEntityIds: string[]
+      publicationCount: number
+      machineReviewedEvidenceCount: number
+      humanReviewedEvidenceCount: number
+    }
+  | {
+      id: string
+      type: 'framing_link'
+      from: string
+      to: string
+      relation: 'addresses'
+    }
   | {
       id: string
       type: 'node'
@@ -99,6 +146,10 @@ export type EntityDocument =
       evidenceRefs: EvidenceRef[]
       referenceCount: number
       reviewedEvidenceCount: number
+      publicationCount?: number
+      machineReviewedEvidenceCount?: number
+      humanReviewedEvidenceCount?: number
+      literature?: LiteratureProjection
       body: string
     }
   | {
@@ -110,6 +161,8 @@ export type EntityDocument =
       publicationRef: PublicationReference
       locator: Locator
       limitations?: string[]
+      citation?: CitationSnapshot
+      machineReviewRationale?: string
       body: string
     }
   | {
@@ -130,6 +183,7 @@ export type EntityDocument =
       publicationRefs?: PublicationReference[]
       provenance?: string
       evidenceGap?: string
+      literature?: LiteratureProjection
     }
 
 export interface EntitySuccess {

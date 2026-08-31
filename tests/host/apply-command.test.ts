@@ -22,7 +22,7 @@ const MANIFEST = JSON.stringify({ schema_version: 1, project_id: PROJECT_ID, nam
 function revisionOf(fs: FakeFs): string {
   const files = new Map<string, string>()
   for (const [path, content] of fs.entries()) {
-    if (path === '/proj/research.json' || /^\/proj\/(nodes|edges|evidence|results)\//.test(path)) {
+    if (path === '/proj/research.json' || /^\/proj\/(questions|question-links|nodes|edges|evidence|results)\//.test(path)) {
       files.set(path.slice('/proj/'.length), content)
     }
   }

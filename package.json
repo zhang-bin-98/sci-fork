@@ -24,7 +24,8 @@
     "docs/specs/m2-companion.md",
     "docs/specs/m3-research.md",
     "docs/specs/simulation-branches.md",
-    "docs/specs/progressive-research-expansion.md"
+    "docs/specs/progressive-research-expansion.md",
+    "docs/specs/research-questions-machine-review.md"
   ],
   "keywords": [
     "dsh-plugin",

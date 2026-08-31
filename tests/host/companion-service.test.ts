@@ -17,8 +17,12 @@ const PROJECT_ID = 'aaaaaaaa-1111-4111-8111-111111111111'
 const OTHER_PROJECT_ID = 'dddddddd-4444-4444-8444-444444444444'
 const UUID_NODE = 'bbbbbbbb-2222-4222-8222-222222222222'
 const UUID_RESULT = 'cccccccc-3333-4333-8333-333333333333'
+const UUID_MACHINE = 'eeeeeeee-5555-4555-8555-555555555555'
 const NODE = `node_${UUID_NODE}`
 const EVIDENCE = `ev_${UUID_NODE}`
+const MACHINE_EVIDENCE = `ev_${UUID_MACHINE}`
+const QUESTION = `question_${UUID_RESULT}`
+const FRAMING_LINK = `qlink_${UUID_MACHINE}`
 const RESULT = `res_${UUID_RESULT}`
 const EDGE = `edge_${UUID_NODE}`
 
@@ -55,6 +59,60 @@ const EVIDENCE_FILE = [
   '---',
   'Reviewed note.',
 ].join('\n') + '\n'
+
+const MACHINE_EVIDENCE_FILE = [
+  '---',
+  `id: ${MACHINE_EVIDENCE}`,
+  'publication_ref:',
+  '  pmid: "87654321"',
+  'locator:',
+  '  kind: pubmed_abstract',
+  'assertion: "A retrieved abstract links STAT3 activity to treatment resistance."',
+  'direction: supports',
+  'limitations:',
+  '  - observational design',
+  'review_status: machine_reviewed',
+  'citation:',
+  '  title: "STAT3 activity and treatment resistance"',
+  '  journal: "Example Oncology"',
+  '  year: 2025',
+  'machine_review_rationale: "PMID identity, abstract locator, entailment, direction, and limitations checked."',
+  '---',
+  '',
+].join('\n') + '\n'
+
+const MACHINE_NODE_FILE = [
+  '---',
+  `id: ${NODE}`,
+  'kind: hypothesis',
+  'confidence: low',
+  'evidence_refs:',
+  `  - id: ${EVIDENCE}`,
+  '    role: supports',
+  `  - id: ${MACHINE_EVIDENCE}`,
+  '    role: supports',
+  '---',
+  '# STAT3 sustains resistant-cell proliferation',
+  '',
+  'The interpretation remains provisional.',
+].join('\n') + '\n'
+
+const QUESTION_FILE = [
+  '---',
+  `id: ${QUESTION}`,
+  'question: "What drives treatment resistance?"',
+  'scope_assumptions:',
+  '  - solid tumors',
+  '---',
+  'Open framing note.',
+].join('\n') + '\n'
+
+const FRAMING_LINK_FILE = JSON.stringify({
+  id: FRAMING_LINK,
+  from: NODE,
+  to: QUESTION,
+  relation: 'addresses',
+})
 
 const RESULT_FILE = [
   '---',
@@ -287,6 +345,73 @@ describe('CompanionService reads', () => {
     await expect(setupState.service.entity(key, 'node_missing')).resolves.toMatchObject({
       ok: false,
       code: 'INVALID_ENTITY',
+    })
+  })
+
+  it('projects Research Questions and framing while grouping retained literature without raw source text', async () => {
+    const state = await setup({
+      ...entries(),
+      [`/project/nodes/${NODE}.md`]: MACHINE_NODE_FILE,
+      [`/project/evidence/${MACHINE_EVIDENCE}.md`]: MACHINE_EVIDENCE_FILE,
+      [`/project/questions/${QUESTION}.md`]: QUESTION_FILE,
+      [`/project/question-links/${FRAMING_LINK}.json`]: FRAMING_LINK_FILE,
+    })
+    const launched = await state.service.launch('session-1')
+    if (!launched.ok) throw new Error('launch failed')
+    const localKey = launched.url.split('#key=')[1]!
+
+    const snapshot = await state.service.snapshot(localKey)
+    if (!snapshot.ok || snapshot.graph === undefined) throw new Error('snapshot failed')
+    expect(snapshot.graph.entities.find(({ id }) => id === QUESTION)).toMatchObject({
+      type: 'question',
+      label: 'What drives treatment resistance?',
+    })
+    expect(snapshot.graph.entities.find(({ id }) => id === NODE)).toMatchObject({
+      publicationCount: 3,
+      machineReviewedEvidenceCount: 1,
+      humanReviewedEvidenceCount: 1,
+    })
+    expect(snapshot.graph.edges.find(({ id }) => id === FRAMING_LINK)).toMatchObject({
+      from: NODE,
+      to: QUESTION,
+      relation: 'addresses',
+      source: 'framing_link',
+    })
+
+    await expect(state.service.entity(localKey, QUESTION)).resolves.toMatchObject({
+      ok: true,
+      entity: {
+        type: 'question',
+        addressedEntityIds: [NODE],
+        publicationCount: 3,
+        machineReviewedEvidenceCount: 1,
+        humanReviewedEvidenceCount: 1,
+      },
+    })
+    const node = await state.service.entity(localKey, NODE)
+    expect(node).toMatchObject({
+      ok: true,
+      entity: {
+        literature: {
+          humanReviewed: [{ id: EVIDENCE }],
+          machineReviewed: [{
+            id: MACHINE_EVIDENCE,
+            citation: {
+              title: 'STAT3 activity and treatment resistance',
+              journal: 'Example Oncology',
+              year: 2025,
+            },
+            machineReviewRationale: expect.stringContaining('entailment'),
+          }],
+          retrievalOnly: [{ doi: '10.1000/second' }],
+        },
+      },
+    })
+    expect(JSON.stringify(node)).not.toContain('abstract/full text')
+    expect(JSON.stringify(node)).not.toContain('authors')
+    await expect(state.service.entity(localKey, FRAMING_LINK)).resolves.toMatchObject({
+      ok: true,
+      entity: { type: 'framing_link', from: NODE, to: QUESTION, relation: 'addresses' },
     })
   })
 

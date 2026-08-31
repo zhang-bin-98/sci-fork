@@ -6,15 +6,21 @@ import { fileVersion, HASH_RE, type HashFn } from './revision.js'
 import {
   ASSERTION_MAX,
   BODY_SCHEMA,
+  CITATION_SNAPSHOT_SCHEMA,
   EDGE_ID_RE,
   ENDPOINT_ID_RE,
   EVIDENCE_ID_RE,
+  EVIDENCE_DATA_SCHEMA,
   EVIDENCE_REFS_MAX,
   PUBLICATION_REFS_MAX,
   LIMITATION_MAX,
   LIMITATIONS_MAX,
   LOCATOR_SCHEMA,
   NODE_ID_RE,
+  QUESTION_ID_RE,
+  FRAMING_LINK_ID_RE,
+  QUESTION_DATA_SCHEMA,
+  FRAMING_LINK_FILE_SCHEMA,
   RESULT_ID_RE,
   EDGE_FILE_SCHEMA,
   NON_EMPTY_BODY_SCHEMA,
@@ -25,17 +31,20 @@ import {
   normalizePmid,
   resultOf,
   type ConfidenceBand,
+  type CitationSnapshot,
   type EdgeBasis,
   type EdgeFile,
   type EvidenceData,
   type EvidenceDirection,
   type EvidenceRef,
   type EvidenceReview,
+  type FramingLinkFile,
   type Locator,
   type NodeData,
   type NodeKind,
   type ParseResult,
   type PublicationReference,
+  type QuestionData,
   type Relation,
   type ResearchManifest,
   type ResultData,
@@ -75,28 +84,93 @@ const BASIS_SCHEMA = z.enum(['literature', 'experiment', 'ai_inference'])
 const DIRECTION_SCHEMA = z.enum(['supports', 'contradicts', 'context'])
 const LIMITATIONS_SCHEMA = z.array(z.string().min(1).max(LIMITATION_MAX)).max(LIMITATIONS_MAX)
 
+const CREATE_EVIDENCE_COMMAND_SCHEMA = z
+  .object({
+    kind: z.literal('create_evidence_assertion'),
+    id: z.string().regex(EVIDENCE_ID_RE, 'must be an ev_<uuid> id'),
+    publicationRef: PUBLICATION_REF_COMMAND_SCHEMA.optional(),
+    locator: LOCATOR_SCHEMA,
+    assertion: z.string().min(1).max(ASSERTION_MAX),
+    direction: DIRECTION_SCHEMA,
+    reviewStatus: z.enum(['candidate', 'machine_reviewed']).optional(),
+    citation: CITATION_SNAPSHOT_SCHEMA.optional(),
+    machineReviewRationale: z.string().min(1).max(4000).optional(),
+    limitations: LIMITATIONS_SCHEMA.optional(),
+    body: BODY_SCHEMA.optional(),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.reviewStatus !== 'machine_reviewed') return
+    if (command.citation === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['citation'], message: 'machine_reviewed evidence requires citation' })
+    }
+    if (command.machineReviewRationale === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['machineReviewRationale'], message: 'machine_reviewed evidence requires rationale' })
+    }
+  })
+
+const REVIEW_EVIDENCE_COMMAND_SCHEMA = z
+  .object({
+    kind: z.literal('review_evidence_assertion'),
+    id: z.string().regex(EVIDENCE_ID_RE, 'must be an ev_<uuid> id'),
+    expectedFileVersion: HASH_SCHEMA,
+    reviewStatus: z.enum(['machine_reviewed', 'reviewed', 'rejected']),
+    citation: CITATION_SNAPSHOT_SCHEMA.optional(),
+    machineReviewRationale: z.string().min(1).max(4000).optional(),
+    limitations: LIMITATIONS_SCHEMA.optional(),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    if (command.reviewStatus !== 'machine_reviewed') return
+    if (command.citation === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['citation'], message: 'machine_reviewed evidence requires citation' })
+    }
+    if (command.machineReviewRationale === undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['machineReviewRationale'], message: 'machine_reviewed evidence requires rationale' })
+    }
+  })
+
 export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
   z
     .object({
-      kind: z.literal('create_evidence_assertion'),
-      id: z.string().regex(EVIDENCE_ID_RE, 'must be an ev_<uuid> id'),
-      publicationRef: PUBLICATION_REF_COMMAND_SCHEMA.optional(),
-      locator: LOCATOR_SCHEMA,
-      assertion: z.string().min(1).max(ASSERTION_MAX),
-      direction: DIRECTION_SCHEMA,
-      limitations: LIMITATIONS_SCHEMA.optional(),
+      kind: z.literal('create_question'),
+      id: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
+      question: z.string().min(1).max(4000),
+      scopeAssumptions: LIMITATIONS_SCHEMA.optional(),
       body: BODY_SCHEMA.optional(),
     })
     .strict(),
   z
     .object({
-      kind: z.literal('review_evidence_assertion'),
-      id: z.string().regex(EVIDENCE_ID_RE, 'must be an ev_<uuid> id'),
+      kind: z.literal('update_question'),
+      id: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
       expectedFileVersion: HASH_SCHEMA,
-      reviewStatus: z.enum(['reviewed', 'rejected']),
-      limitations: LIMITATIONS_SCHEMA.optional(),
+      question: z.string().min(1).max(4000).optional(),
+      scopeAssumptions: LIMITATIONS_SCHEMA.optional(),
+      body: BODY_SCHEMA.optional(),
+    })
+    .strict()
+    .refine(
+      (command) => command.question !== undefined || command.scopeAssumptions !== undefined || command.body !== undefined,
+      'update_question requires at least one change',
+    ),
+  z
+    .object({
+      kind: z.literal('create_framing_link'),
+      id: z.string().regex(FRAMING_LINK_ID_RE, 'must be a qlink_<uuid> id'),
+      from: z.string().regex(NODE_ID_RE, 'must be a node_<uuid> id'),
+      to: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal('delete_framing_link'),
+      id: z.string().regex(FRAMING_LINK_ID_RE, 'must be a qlink_<uuid> id'),
+      expectedFileVersion: HASH_SCHEMA,
+    })
+    .strict(),
+  CREATE_EVIDENCE_COMMAND_SCHEMA,
+  REVIEW_EVIDENCE_COMMAND_SCHEMA,
   z
     .object({
       kind: z.literal('create_node'),
@@ -242,6 +316,16 @@ function renderEdge(edge: EdgeFile): string {
   return JSON.stringify(edge, null, 2) + '\n'
 }
 
+function renderFramingLink(link: FramingLinkFile): string {
+  return JSON.stringify(link, null, 2) + '\n'
+}
+
+function questionFrontMatter(data: QuestionData): Record<string, unknown> {
+  const frontMatter: Record<string, unknown> = { id: data.id, question: data.question }
+  if (data.scope_assumptions !== undefined) frontMatter['scope_assumptions'] = data.scope_assumptions
+  return frontMatter
+}
+
 function nodeFrontMatter(data: NodeData): Record<string, unknown> {
   const frontMatter: Record<string, unknown> = {
     id: data.id,
@@ -262,6 +346,10 @@ function evidenceFrontMatter(data: EvidenceData): Record<string, unknown> {
     review_status: data.review_status,
   }
   if (data.limitations !== undefined) frontMatter['limitations'] = data.limitations
+  if (data.citation !== undefined) frontMatter['citation'] = data.citation
+  if (data.machine_review_rationale !== undefined) {
+    frontMatter['machine_review_rationale'] = data.machine_review_rationale
+  }
   return frontMatter
 }
 
@@ -331,7 +419,8 @@ function normalizeCommandPublicationRef(
 }
 
 const REVIEW_TRANSITIONS: Record<EvidenceReview, readonly EvidenceReview[]> = {
-  candidate: ['reviewed', 'rejected'],
+  candidate: ['machine_reviewed', 'reviewed', 'rejected'],
+  machine_reviewed: ['reviewed', 'rejected'],
   reviewed: ['rejected'],
   rejected: [],
 }
@@ -361,8 +450,19 @@ function planCreateEvidence(project: LoadedProject, command: Extract<ResearchCom
     locator: command.locator,
     assertion: command.assertion,
     direction: command.direction,
-    review_status: 'candidate',
+    review_status: command.reviewStatus ?? 'candidate',
+    ...(command.citation !== undefined ? { citation: command.citation } : {}),
+    ...(command.machineReviewRationale !== undefined
+      ? { machine_review_rationale: command.machineReviewRationale }
+      : {}),
     ...(command.limitations !== undefined ? { limitations: command.limitations } : {}),
+  }
+  const parsed = EVIDENCE_DATA_SCHEMA.safeParse(data)
+  if (!parsed.success) {
+    for (const issueMessage of parsed.error.issues.map((issue) => issue.message)) {
+      issues.push(commandIssue('INVALID_ENTITY', issueMessage, command.id))
+    }
+    return undefined
   }
   return { content: renderMarkdown(evidenceFrontMatter(data), command.body ?? '') }
 }
@@ -380,12 +480,140 @@ function planReviewEvidence(project: LoadedProject, command: Extract<ResearchCom
     )
     return undefined
   }
+  if (command.reviewStatus === 'rejected') {
+    const nodeOwners = [...project.nodes.values()]
+      .filter((node) => (node.evidence_refs ?? []).some((ref) => ref.id === command.id))
+      .map((node) => node.id)
+    const edgeOwners = [...project.edges.values()]
+      .filter((edge) => (edge.evidence_refs ?? []).some((ref) => ref.id === command.id))
+      .map((edge) => edge.id)
+    const owners = [...nodeOwners, ...edgeOwners].sort()
+    if (owners.length > 0) {
+      issues.push(
+        commandIssue(
+          'INVALID_ENTITY',
+          `evidence ${command.id} is still referenced by: ${owners.join(', ')}`,
+          command.id,
+        ),
+      )
+    }
+  }
   const data: EvidenceData = {
-    ...current,
+    id: current.id,
+    publication_ref: current.publication_ref,
+    locator: current.locator,
+    assertion: current.assertion,
+    direction: current.direction,
     review_status: command.reviewStatus,
+    ...(current.citation !== undefined ? { citation: current.citation } : {}),
+    ...(current.machine_review_rationale !== undefined
+      ? { machine_review_rationale: current.machine_review_rationale }
+      : {}),
+    ...(current.limitations !== undefined ? { limitations: current.limitations } : {}),
+    ...(command.citation !== undefined ? { citation: command.citation } : {}),
+    ...(command.machineReviewRationale !== undefined
+      ? { machine_review_rationale: command.machineReviewRationale }
+      : {}),
     ...(command.limitations !== undefined ? { limitations: command.limitations } : {}),
   }
+  const parsed = EVIDENCE_DATA_SCHEMA.safeParse(data)
+  if (!parsed.success) {
+    for (const issueMessage of parsed.error.issues.map((issue) => issue.message)) {
+      issues.push(commandIssue('INVALID_ENTITY', issueMessage, command.id))
+    }
+    return undefined
+  }
   return { content: renderMarkdown(evidenceFrontMatter(data), current.body) }
+}
+
+function planCreateQuestion(
+  project: LoadedProject,
+  command: Extract<ResearchCommand, { kind: 'create_question' }>,
+  issues: CommandIssue[],
+): { content: string } | undefined {
+  if (!checkAbsent(project, command.id, issues)) return undefined
+  const data: QuestionData = {
+    id: command.id,
+    question: command.question,
+    ...(command.scopeAssumptions !== undefined ? { scope_assumptions: command.scopeAssumptions } : {}),
+  }
+  const parsed = QUESTION_DATA_SCHEMA.safeParse(data)
+  if (!parsed.success) {
+    for (const issueMessage of parsed.error.issues.map((issue) => issue.message)) {
+      issues.push(commandIssue('INVALID_ENTITY', issueMessage, command.id))
+    }
+    return undefined
+  }
+  return { content: renderMarkdown(questionFrontMatter(data), command.body ?? '') }
+}
+
+function planUpdateQuestion(
+  project: LoadedProject,
+  command: Extract<ResearchCommand, { kind: 'update_question' }>,
+  hash: HashFn,
+  issues: CommandIssue[],
+): { content: string } | undefined {
+  if (checkVersion(project, command.id, command.expectedFileVersion, hash, issues) === undefined) return undefined
+  const current = project.questions.get(command.id)
+  if (current === undefined) {
+    issues.push(commandIssue('INVALID_ENTITY', `question ${command.id} does not exist`, command.id))
+    return undefined
+  }
+  const data: QuestionData = {
+    id: command.id,
+    question: command.question ?? current.question,
+    ...(command.scopeAssumptions !== undefined
+      ? { scope_assumptions: command.scopeAssumptions }
+      : current.scope_assumptions !== undefined
+        ? { scope_assumptions: current.scope_assumptions }
+        : {}),
+  }
+  return { content: renderMarkdown(questionFrontMatter(data), command.body ?? current.body) }
+}
+
+function planCreateFramingLink(
+  project: LoadedProject,
+  command: Extract<ResearchCommand, { kind: 'create_framing_link' }>,
+  issues: CommandIssue[],
+): { content: string } | undefined {
+  if (!checkAbsent(project, command.id, issues)) return undefined
+  const source = project.nodes.get(command.from)
+  if (source === undefined) {
+    issues.push(commandIssue('INVALID_ENTITY', `framing link source ${command.from} does not exist`, command.id))
+  } else if (source.kind !== 'hypothesis' && source.kind !== 'finding') {
+    issues.push(commandIssue('INVALID_ENTITY', 'framing link source must be a Hypothesis or Finding', command.id))
+  }
+  if (!project.questions.has(command.to)) {
+    issues.push(commandIssue('INVALID_ENTITY', `framing link target ${command.to} does not exist`, command.id))
+  }
+  const data: FramingLinkFile = {
+    id: command.id,
+    from: command.from,
+    to: command.to,
+    relation: 'addresses',
+  }
+  const parsed = FRAMING_LINK_FILE_SCHEMA.safeParse(data)
+  if (!parsed.success) {
+    for (const issueMessage of parsed.error.issues.map((issue) => issue.message)) {
+      issues.push(commandIssue('INVALID_ENTITY', issueMessage, command.id))
+    }
+    return undefined
+  }
+  return { content: renderFramingLink(data) }
+}
+
+function planDeleteFramingLink(
+  project: LoadedProject,
+  command: Extract<ResearchCommand, { kind: 'delete_framing_link' }>,
+  hash: HashFn,
+  issues: CommandIssue[],
+): { delete: true } | undefined {
+  if (checkVersion(project, command.id, command.expectedFileVersion, hash, issues) === undefined) return undefined
+  if (!project.framingLinks.has(command.id)) {
+    issues.push(commandIssue('INVALID_ENTITY', `framing link ${command.id} does not exist`, command.id))
+    return undefined
+  }
+  return { delete: true }
 }
 
 function planCreateNode(project: LoadedProject, command: Extract<ResearchCommand, { kind: 'create_node' }>, issues: CommandIssue[]): { content: string } | undefined {
@@ -514,6 +742,20 @@ function validateEdgeShape(project: LoadedProject, shape: EdgeShape, issues: Com
     )
   }
   pushEvidenceRefIssues(project, entityFilePath(shape.id) ?? '', shape.evidence_refs, issues)
+  if (shape.basis === 'literature') {
+    for (const ref of shape.evidence_refs ?? []) {
+      const evidence = project.evidenceAssertions.get(ref.id)
+      if (evidence !== undefined && evidence.review_status !== 'reviewed') {
+        issues.push(
+          commandIssue(
+            'INVALID_ENTITY',
+            `literature edge ${shape.id} requires human-reviewed evidence; ${ref.id} is ${evidence.review_status}`,
+            shape.id,
+          ),
+        )
+      }
+    }
+  }
   return parsed.data
 }
 
@@ -733,6 +975,16 @@ function planDeleteNode(
       ),
     )
   }
+  const framing = [...project.framingLinks.values()].filter((link) => link.from === command.id)
+  if (framing.length > 0) {
+    issues.push(
+      commandIssue(
+        'INVALID_ENTITY',
+        `node ${command.id} still has framing links: ${framing.map((link) => link.id).sort().join(', ')}`,
+        command.id,
+      ),
+    )
+  }
   return { delete: true }
 }
 
@@ -745,6 +997,18 @@ export function planCommand(project: LoadedProject, command: ResearchCommand, ha
   const issues: CommandIssue[] = []
   let planned: { content: string } | { delete: true } | undefined
   switch (command.kind) {
+    case 'create_question':
+      planned = planCreateQuestion(project, command, issues)
+      break
+    case 'update_question':
+      planned = planUpdateQuestion(project, command, hash, issues)
+      break
+    case 'create_framing_link':
+      planned = planCreateFramingLink(project, command, issues)
+      break
+    case 'delete_framing_link':
+      planned = planDeleteFramingLink(project, command, hash, issues)
+      break
     case 'create_evidence_assertion':
       planned = planCreateEvidence(project, command, issues)
       break

@@ -15,6 +15,8 @@ import type {
   LaunchResponse,
   ProjectionEntitySummary,
   ProjectionEdgeSummary,
+  LiteratureEvidenceItem,
+  LiteratureProjection,
   SnapshotGraph,
   SnapshotProject,
   SnapshotResponse,
@@ -69,6 +71,8 @@ function pageKeyInvalid(): CompanionFailure {
 
 function entityExists(project: LoadedProject, entityId: string): boolean {
   const type = entityTypeOfId(entityId)
+  if (type === 'question') return project.questions.has(entityId)
+  if (type === 'framing_link') return project.framingLinks.has(entityId)
   if (type === 'node') return project.nodes.has(entityId)
   if (type === 'evidence') return project.evidenceAssertions.has(entityId)
   if (type === 'result') return project.results.has(entityId)
@@ -79,47 +83,120 @@ function entityExists(project: LoadedProject, entityId: string): boolean {
 interface ReferenceCounts {
   referenceCount: number
   reviewedEvidenceCount: number
+  publicationCount: number
+  machineReviewedEvidenceCount: number
+  humanReviewedEvidenceCount: number
 }
 
-function evidenceReferences(
-  project: LoadedProject,
-  refs: readonly EvidenceRef[],
-): { all: PublicationReference[]; reviewed: PublicationReference[] } {
-  const all: PublicationReference[] = []
-  const reviewed: PublicationReference[] = []
-  for (const ref of refs) {
-    const evidence = project.evidenceAssertions.get(ref.id)
-    if (evidence === undefined) continue
-    all.push(evidence.publication_ref)
-    if (evidence.review_status === 'reviewed') reviewed.push(evidence.publication_ref)
+interface LiteratureInputs {
+  evidenceRefs: EvidenceRef[]
+  publicationRefs: PublicationReference[]
+}
+
+function nodeLiteratureInputs(project: LoadedProject, nodeId: string): LiteratureInputs {
+  const node = project.nodes.get(nodeId)
+  const evidenceRefs = [...(node?.evidence_refs ?? [])]
+  const publicationRefs: PublicationReference[] = []
+  for (const edge of project.edges.values()) {
+    if (edge.from !== nodeId && edge.to !== nodeId) continue
+    evidenceRefs.push(...(edge.evidence_refs ?? []))
+    if (edge.basis === 'ai_inference') publicationRefs.push(...edge.publication_refs)
   }
-  return { all, reviewed }
+  return { evidenceRefs, publicationRefs }
+}
+
+function questionLiteratureInputs(project: LoadedProject, questionId: string): LiteratureInputs {
+  const evidenceRefs: EvidenceRef[] = []
+  const publicationRefs: PublicationReference[] = []
+  for (const link of project.framingLinks.values()) {
+    if (link.to !== questionId) continue
+    const inputs = nodeLiteratureInputs(project, link.from)
+    evidenceRefs.push(...inputs.evidenceRefs)
+    publicationRefs.push(...inputs.publicationRefs)
+  }
+  return { evidenceRefs, publicationRefs }
+}
+
+function referenceCounts(project: LoadedProject, inputs: LiteratureInputs): ReferenceCounts {
+  const evidenceIds = new Set(inputs.evidenceRefs.map((ref) => ref.id))
+  const publications = [...inputs.publicationRefs]
+  let machineReviewedEvidenceCount = 0
+  let humanReviewedEvidenceCount = 0
+  for (const id of evidenceIds) {
+    const evidence = project.evidenceAssertions.get(id)
+    if (evidence === undefined) continue
+    publications.push(evidence.publication_ref)
+    if (evidence.review_status === 'machine_reviewed') machineReviewedEvidenceCount += 1
+    if (evidence.review_status === 'reviewed') humanReviewedEvidenceCount += 1
+  }
+  const publicationCount = distinctPublicationReferenceCount(publications)
+  return {
+    referenceCount: publicationCount,
+    reviewedEvidenceCount: humanReviewedEvidenceCount,
+    publicationCount,
+    machineReviewedEvidenceCount,
+    humanReviewedEvidenceCount,
+  }
 }
 
 function nodeReferenceCounts(project: LoadedProject, nodeId: string): ReferenceCounts {
-  const node = project.nodes.get(nodeId)
-  const total: PublicationReference[] = []
-  const reviewed: PublicationReference[] = []
-  const collectEvidence = (refs: readonly EvidenceRef[]): void => {
-    const collected = evidenceReferences(project, refs)
-    total.push(...collected.all)
-    reviewed.push(...collected.reviewed)
-  }
-  collectEvidence(node?.evidence_refs ?? [])
-  for (const edge of project.edges.values()) {
-    if (edge.from !== nodeId && edge.to !== nodeId) continue
-    collectEvidence(edge.evidence_refs ?? [])
-    if (edge.basis === 'ai_inference') total.push(...edge.publication_refs)
-  }
+  return referenceCounts(project, nodeLiteratureInputs(project, nodeId))
+}
+
+function samePublication(left: PublicationReference, right: PublicationReference): boolean {
+  return (
+    (left.pmid !== undefined && left.pmid === right.pmid) ||
+    (left.doi !== undefined && left.doi === right.doi)
+  )
+}
+
+function evidenceItem(project: LoadedProject, id: string): LiteratureEvidenceItem | undefined {
+  const evidence = project.evidenceAssertions.get(id)
+  if (evidence === undefined) return undefined
   return {
-    referenceCount: distinctPublicationReferenceCount(total),
-    reviewedEvidenceCount: distinctPublicationReferenceCount(reviewed),
+    id: evidence.id,
+    publicationRef: evidence.publication_ref,
+    ...(evidence.citation !== undefined ? { citation: evidence.citation } : {}),
+    assertion: evidence.assertion,
+    locator: evidence.locator,
+    direction: evidence.direction,
+    ...(evidence.limitations !== undefined ? { limitations: evidence.limitations } : {}),
+    ...(evidence.machine_review_rationale !== undefined
+      ? { machineReviewRationale: evidence.machine_review_rationale }
+      : {}),
+    reviewStatus: evidence.review_status,
+  }
+}
+
+function literatureProjection(project: LoadedProject, inputs: LiteratureInputs): LiteratureProjection {
+  const items = [...new Set(inputs.evidenceRefs.map((ref) => ref.id))]
+    .map((id) => evidenceItem(project, id))
+    .filter((item): item is LiteratureEvidenceItem => item !== undefined)
+    .sort((left, right) => left.id.localeCompare(right.id))
+  const retrievalOnly = inputs.publicationRefs.filter(
+    (reference, index, all) =>
+      !items.some((item) => samePublication(item.publicationRef, reference)) &&
+      all.findIndex((candidate) => samePublication(candidate, reference)) === index,
+  )
+  return {
+    humanReviewed: items.filter((item) => item.reviewStatus === 'reviewed'),
+    machineReviewed: items.filter((item) => item.reviewStatus === 'machine_reviewed'),
+    candidate: items.filter((item) => item.reviewStatus === 'candidate'),
+    rejected: items.filter((item) => item.reviewStatus === 'rejected'),
+    retrievalOnly,
   }
 }
 
 function graphSnapshot(project: LoadedProject): SnapshotGraph {
   const projection = buildProjection(project)
   const entities: ProjectionEntitySummary[] = projection.entities.map((entity) => {
+    if (entity.type === 'question') {
+      return {
+        id: entity.id,
+        type: entity.type,
+        label: boundedLabel(entity.question, 'Research Question'),
+      }
+    }
     if (entity.type === 'node') {
       const counts = nodeReferenceCounts(project, entity.id)
       return {
@@ -168,6 +245,32 @@ function graphSnapshot(project: LoadedProject): SnapshotGraph {
 
 function entityDocument(project: LoadedProject, entityId: string): EntityDocument | undefined {
   const type = entityTypeOfId(entityId)
+  if (type === 'question') {
+    const question = project.questions.get(entityId)
+    if (question === undefined) return undefined
+    const addressedEntityIds = [...project.framingLinks.values()]
+      .filter((link) => link.to === entityId)
+      .map((link) => link.from)
+      .sort()
+    const counts = referenceCounts(project, questionLiteratureInputs(project, entityId))
+    return {
+      id: question.id,
+      type,
+      question: question.question,
+      scopeAssumptions: question.scope_assumptions ?? [],
+      body: question.body,
+      addressedEntityIds,
+      publicationCount: counts.publicationCount,
+      machineReviewedEvidenceCount: counts.machineReviewedEvidenceCount,
+      humanReviewedEvidenceCount: counts.humanReviewedEvidenceCount,
+    }
+  }
+  if (type === 'framing_link') {
+    const link = project.framingLinks.get(entityId)
+    return link === undefined
+      ? undefined
+      : { id: link.id, type, from: link.from, to: link.to, relation: link.relation }
+  }
   if (type === 'node') {
     const node = project.nodes.get(entityId)
     return node === undefined
@@ -179,6 +282,7 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           confidence: node.confidence,
           evidenceRefs: node.evidence_refs ?? [],
           ...nodeReferenceCounts(project, node.id),
+          literature: literatureProjection(project, nodeLiteratureInputs(project, node.id)),
           body: node.body,
         }
   }
@@ -196,6 +300,10 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           locator: evidence.locator,
           ...(evidence.limitations !== undefined
             ? { limitations: evidence.limitations }
+            : {}),
+          ...(evidence.citation !== undefined ? { citation: evidence.citation } : {}),
+          ...(evidence.machine_review_rationale !== undefined
+            ? { machineReviewRationale: evidence.machine_review_rationale }
             : {}),
           body: evidence.body,
         }
@@ -216,7 +324,12 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
     const edge = project.edges.get(entityId)
     return edge === undefined
       ? undefined
-      : {
+      : (() => {
+          const inputs: LiteratureInputs = {
+            evidenceRefs: edge.evidence_refs ?? [],
+            publicationRefs: edge.basis === 'ai_inference' ? edge.publication_refs : [],
+          }
+          return {
           id: edge.id,
           type,
           from: edge.from,
@@ -230,7 +343,9 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           ...(edge.basis === 'ai_inference'
             ? { provenance: edge.provenance, evidenceGap: edge.evidence_gap }
             : {}),
+          literature: literatureProjection(project, inputs),
         }
+        })()
   }
   return undefined
 }
