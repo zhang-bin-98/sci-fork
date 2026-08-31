@@ -1,0 +1,367 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify and package tarball
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: true
+      TAG_NAME: ${{ github.ref_name }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Verify release source
+        id: source
+        run: |
+          node scripts/verify-release.mjs "$TAG_NAME"
+
+          default_ref="refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git show-ref --verify --quiet "$default_ref"; then
+            echo "Default branch ref ${default_ref} was not fetched." >&2
+            exit 1
+          fi
+          tag_commit="$(git rev-list -n 1 "$TAG_NAME")"
+          if ! git merge-base --is-ancestor "$tag_commit" "$default_ref"; then
+            echo "Release tag must point to a commit on ${DEFAULT_BRANCH}." >&2
+            exit 1
+          fi
+          echo "commit=${tag_commit}" >> "$GITHUB_OUTPUT"
+
+      - name: Install locked dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Verify source and dry-run package
+        run: |
+          corepack pnpm check
+          node --check index.js
+          corepack pnpm verify:pack
+          git diff --check
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Build release assets
+        run: |
+          mkdir release
+          corepack pnpm pack --pack-destination release
+
+          shopt -s nullglob
+          tarballs=(release/*.tgz)
+          if [[ ${#tarballs[@]} -ne 1 ]]; then
+            echo "Expected exactly one release tarball, found ${#tarballs[@]}." >&2
+            exit 1
+          fi
+
+          package_version="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")"
+          package_name="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).name")"
+          archive_stem="${package_name#@}"
+          archive_stem="${archive_stem//\//-}"
+          expected="release/${archive_stem}-${package_version}.tgz"
+          tarball="${tarballs[0]}"
+          if [[ "$tarball" != "$expected" ]]; then
+            echo "Expected tarball ${expected}, got ${tarball}." >&2
+            exit 1
+          fi
+
+          tar -tzf "$tarball" > release/tarball-files.txt
+          required=(
+            package/package.json
+            package/index.js
+            package/cordis.patch.yml
+            package/README.md
+            package/dist/host/index.js
+            package/dist/client.js
+            package/dist/companion/index.html
+            package/dist/companion/app.js
+            package/dist/companion/styles.css
+            package/skills/pubmed-search/helper.mjs
+            package/skills/pubmed-search/SKILL.md
+            package/skills/scifork-research/SKILL.md
+          )
+          for path in "${required[@]}"; do
+            if ! grep -Fqx "$path" release/tarball-files.txt; then
+              echo "Release tarball is missing ${path}." >&2
+              exit 1
+            fi
+          done
+          if ! grep -Eq '^package/LICENSE(\.md|\.txt)?$' release/tarball-files.txt; then
+            echo "Release tarball is missing its license file." >&2
+            exit 1
+          fi
+
+          tarball_name="$(basename "$tarball")"
+          (
+            cd release || exit 1
+            sha256sum "$tarball_name" > "${tarball_name}.sha256"
+          )
+
+      - name: Upload verified release assets
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release-assets
+          path: |
+            release/*.tgz
+            release/*.tgz.sha256
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  release:
+    name: Publish tarball
+    needs: verify
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+      TAG_NAME: ${{ github.ref_name }}
+      VERIFIED_COMMIT: ${{ needs.verify.outputs.commit }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Verify release does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          if ! release_exists="$(
+            # GraphQL variables must remain literal for gh to bind them.
+            # shellcheck disable=SC2016
+            gh api graphql \
+              -f query='query($owner:String!,$name:String!,$tag:String!){repository(owner:$owner,name:$name){release(tagName:$tag){id}}}' \
+              -f owner="$GITHUB_REPOSITORY_OWNER" \
+              -f name="$repository_name" \
+              -f tag="$TAG_NAME" \
+              --jq '.data.repository.release != null'
+          )"; then
+            echo "Unable to verify whether GitHub Release ${TAG_NAME} exists." >&2
+            exit 1
+          fi
+
+          if [[ "$release_exists" == "true" ]]; then
+            echo "GitHub Release ${TAG_NAME} already exists; refusing to replace it." >&2
+            exit 1
+          elif [[ "$release_exists" != "false" ]]; then
+            echo "GitHub returned an unexpected release lookup result: ${release_exists}" >&2
+            exit 1
+          fi
+
+      - name: Download verified release assets
+        id: package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir release
+          gh run download "$GITHUB_RUN_ID" --name release-assets --dir release
+
+          shopt -s nullglob
+          tarballs=(release/*.tgz)
+          checksums=(release/*.sha256)
+          if [[ ${#tarballs[@]} -ne 1 || ${#checksums[@]} -ne 1 ]]; then
+            echo "Expected one tarball and one checksum, found ${#tarballs[@]} and ${#checksums[@]}." >&2
+            exit 1
+          fi
+
+          tarball="${tarballs[0]}"
+          checksum="${tarball}.sha256"
+          if [[ "${checksums[0]}" != "$checksum" ]]; then
+            echo "Checksum filename does not match the release tarball." >&2
+            exit 1
+          fi
+          (
+            cd release || exit 1
+            sha256sum -c "$(basename "$checksum")"
+          )
+
+          echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
+          echo "checksum=${checksum}" >> "$GITHUB_OUTPUT"
+          package_version="${TAG_NAME#v}"
+          if [[ "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+- ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          TARBALL: ${{ steps.package.outputs.tarball }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+          PRERELEASE: ${{ steps.package.outputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_id=""
+          cleanup_draft() {
+            status=$?
+            trap - EXIT
+            if [[ -n "$release_id" ]]; then
+              draft_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --jq '.draft' 2>/dev/null)" \
+                || draft_state=unknown
+              if [[ "$draft_state" == "true" ]]; then
+                echo "Release publication failed; removing the incomplete draft." >&2
+                if ! gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --silent; then
+                  echo "Unable to remove the incomplete draft; manual cleanup is required." >&2
+                fi
+              else
+                echo "Release publication failed, but the release is not confirmed as a draft; retaining it for inspection." >&2
+              fi
+            fi
+            exit "$status"
+          }
+          trap cleanup_draft EXIT
+
+          resolve_tag_commit() {
+            local tag_fields
+            local object_type
+            local tag_object_sha
+            local depth
+            if ! tag_fields="$(
+              gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" \
+                --jq '[.object.type, .object.sha] | @tsv'
+            )"; then
+              return 1
+            fi
+            IFS=$'\t' read -r object_type tag_object_sha <<< "$tag_fields"
+
+            for ((depth = 0; depth < 10; depth++)); do
+              if [[ "$object_type" == "commit" && -n "$tag_object_sha" ]]; then
+                printf '%s\n' "$tag_object_sha"
+                return 0
+              fi
+              if [[ "$object_type" != "tag" || -z "$tag_object_sha" ]]; then
+                return 1
+              fi
+              if ! tag_fields="$(
+                gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object_sha}" \
+                  --jq '[.object.type, .object.sha] | @tsv'
+              )"; then
+                return 1
+              fi
+              IFS=$'\t' read -r object_type tag_object_sha <<< "$tag_fields"
+            done
+            return 1
+          }
+
+          if ! current_tag_commit="$(resolve_tag_commit)"; then
+            echo "Release tag ${TAG_NAME} no longer resolves to a commit." >&2
+            exit 1
+          fi
+          if [[ "$current_tag_commit" != "$VERIFIED_COMMIT" ]]; then
+            echo "Release tag ${TAG_NAME} moved after packaging; refusing to publish." >&2
+            exit 1
+          fi
+
+          release_fields="$(
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$TAG_NAME" \
+              -f name="SciFork ${TAG_NAME}" \
+              -F draft=true \
+              -F prerelease="$PRERELEASE" \
+              -F generate_release_notes=true \
+              --jq '[.id, .tag_name, .draft] | @tsv'
+          )"
+          IFS=$'\t' read -r release_id created_release_tag created_draft_state <<< "$release_fields"
+          if ! [[ "$release_id" =~ ^[1-9][0-9]*$ ]] \
+            || [[ "$created_release_tag" != "$TAG_NAME" ]] \
+            || [[ "$created_draft_state" != "true" ]]; then
+            echo "GitHub did not return the expected draft release." >&2
+            exit 1
+          fi
+
+          verify_unique_release() {
+            local release_ids
+            local candidate_id
+            local attempt
+            local matching_release_count
+            local matching_release_id
+
+            for attempt in 1 2 3 4 5; do
+              if ! release_ids="$(
+                gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+                  --jq ".[] | select(.tag_name == \"${TAG_NAME}\") | .id"
+              )"; then
+                echo "Unable to list GitHub Releases for the uniqueness check." >&2
+                return 1
+              fi
+
+              matching_release_count=0
+              matching_release_id=""
+              while IFS= read -r candidate_id; do
+                if [[ -z "$candidate_id" ]]; then
+                  continue
+                fi
+                matching_release_count=$((matching_release_count + 1))
+                matching_release_id="$candidate_id"
+              done <<< "$release_ids"
+
+              if [[ "$matching_release_count" == "1" && "$matching_release_id" == "$release_id" ]]; then
+                return 0
+              fi
+              if [[ "$matching_release_count" != "0" || "$attempt" == "5" ]]; then
+                break
+              fi
+              sleep 2
+            done
+
+            echo "Release tag ${TAG_NAME} is no longer unique; refusing to modify another release." >&2
+            return 1
+          }
+          verify_unique_release
+
+          upload_endpoint="https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets"
+          upload_asset() {
+            local asset_path="$1"
+            local content_type="$2"
+            local asset_name
+            asset_name="$(basename "$asset_path")"
+            gh api --method POST "$upload_endpoint" \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Content-Type: ${content_type}" \
+              --header "Content-Length: $(stat -c%s "$asset_path")" \
+              --input "$asset_path" \
+              -f name="$asset_name" \
+              --silent
+          }
+
+          upload_asset "$TARBALL" 'application/gzip'
+          upload_asset "$CHECKSUM" 'text/plain'
+          verify_unique_release
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            -F draft=false \
+            --silent
+
+          release_id=""
+          trap - EXIT

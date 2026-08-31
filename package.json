@@ -45,6 +45,7 @@
     "test": "vitest run",
     "prepack": "corepack pnpm build",
     "verify:pack": "node scripts/verify-pack.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
     "check": "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
   },
   "dsh": {

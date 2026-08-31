@@ -79,10 +79,11 @@ described above is the sole approved absolute-path exception.
 
 The bundle is pinned to the public DSH `0.1.1-rc.2` contracts recorded in the
 M0 compatibility spike. Install the released prebuilt tarball only after
-checking its file list and checksum. Before upgrading, keep a Git checkpoint
-and verify the Research Project with `/research validate`. Uninstalling the
-bundle leaves ordinary project files and DSH Sessions readable; history
-recovery remains a DSH/user operation.
+checking its file list and the sibling `.sha256` file. From a directory
+containing both downloads, run `sha256sum -c dsh-scifork-<version>.tgz.sha256`.
+Before upgrading, keep a Git checkpoint and verify the Research Project with
+`/research validate`. Uninstalling the bundle leaves ordinary project files and
+DSH Sessions readable; history recovery remains a DSH/user operation.
 
 Report suspected vulnerabilities privately to the project owner rather than
 publishing Page Keys, research content, or local paths in a public issue.
