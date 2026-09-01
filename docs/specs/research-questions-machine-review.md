@@ -155,8 +155,9 @@ request.
 ### Companion evidence presentation
 
 The Companion snapshot remains a rebuildable projection, but the Evidence layer
-is collapsed by default. A `Show evidence` control reveals Evidence nodes and
-their projected scientific relationships without changing project state.
+is collapsed by default. A local Evidence control can keep it hidden, reveal
+only the Evidence referenced by the current Focus Node, or reveal all Evidence
+nodes and their projected relationships without changing project state.
 
 Node and stored scientific Edge Details include a Literature section grouped by:
 
@@ -240,8 +241,9 @@ control and must be disclosed to the user.
 - [x] Research Expansion, Progressive Research, and ordinary Draft import apply
       the same machine-review requirements and persist qualifying Evidence as
       `machine_reviewed` while retaining exact ids.
-- [x] Evidence nodes are hidden by default, can be revealed by `Show evidence`,
-      and related Node/Edge Details identify publications and all review states.
+- [x] Evidence nodes are hidden by default, can be limited to the current Focus
+      Node or revealed in full, and related Node/Edge Details identify
+      publications and all review states.
 - [x] UI counts distinguish unique publications, machine-reviewed Evidence, and
       human-reviewed Evidence; Framing Links are excluded.
 - [x] No Research Project, Git checkpoint, SciFork log, error, or cache contains

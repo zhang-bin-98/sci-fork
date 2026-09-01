@@ -1,19 +1,19 @@
 ---
 name: scifork-research
-description: Format retrieved biomedical literature into SciFork import drafts for automatic review, preserve abstract- or PDF-grounded machine-reviewed Evidence and connected research branches, frame open Research Questions, critique graph branches, and apply accepted graph changes through SciFork tools. Use after a literature-retrieval or PDF-reading skill has placed real source results in the current conversation.
+description: Intake open user questions, format retrieved biomedical literature into SciFork import drafts for automatic review, preserve abstract- or PDF-grounded machine-reviewed Evidence and connected research branches, frame open Research Questions, critique graph branches, and apply accepted graph changes through SciFork tools. Use directly for initial-question intake, or after a literature-retrieval or PDF-reading skill has placed real source results in the current conversation.
 ---
 
 # SciFork Research
 
 This is SciFork's single research-formatting, graph-workflow, and reasoning
-Skill. For evidence import it consumes actual retrieval or PDF results already
-present in the current DSH Chat context. It also decides which connected branches
-to retain after a completed retrieval phase, critiques the graph, and deletes
-rejected branches. It does not browse, retrieve literature, call another Skill,
-or write project files directly. If no actual retrieval or PDF results are
-present, do not produce a Draft or literature-grounded branch; wait for retrieval
-to complete. Persistence always goes through SciFork typed tools and the
-authorization rules below.
+Skill. Its initial-question intake may run directly after the user message is
+submitted; its evidence and graph-expansion paths consume actual retrieval or PDF results already present in the current DSH Chat context. It also decides
+which connected branches to retain after a completed retrieval phase, critiques
+the graph, and deletes rejected branches. It does not browse, retrieve
+literature, call another Skill, or write project files directly. If no actual
+retrieval or PDF results are present, do not produce a Draft or
+literature-grounded branch; wait for retrieval to complete. Persistence always
+goes through SciFork typed tools and the authorization rules below.
 
 ## Orchestration order
 
@@ -37,6 +37,22 @@ change Focus. Entity reads return `fileVersion` for update/delete commands.
 Always use the latest returned `projectRevision` after a successful mutation.
 
 Skills do not call each other and a retrieval result is not itself a Draft.
+
+## Initial question intake
+
+After the user message is submitted, classify the initial statement before
+retrieval or before creating a scientific Node. For an open inquiry, use
+`find`, then apply `create_question` before retrieval and set the resulting
+Research Question as Focus. If an exact normalized matching Question already
+exists, focus that Question instead of creating a duplicate. Preserve material
+scope assumptions but do not assign confidence or invent Evidence.
+
+If the statement is a truth-valued proposition that can be supported or
+contradicted, keep it as a Hypothesis candidate and do not rewrite it as a
+Question. Complete retrieval before creating machine-reviewed Evidence; create
+machine-reviewed Evidence before creating any dependent Hypothesis. If no
+qualifying source text is available, leave the Question as the only new graph
+entity and report that no Hypothesis was persisted.
 
 ## Start from an open Research Question
 

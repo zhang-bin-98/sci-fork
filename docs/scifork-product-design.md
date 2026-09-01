@@ -90,7 +90,8 @@ DSH 或用户。
 ```
 
 页面默认显示不含 Evidence 层的完整主张、Result、Question 与关系投影，并高亮当前 Focus
-路径；`Show evidence` 控件可以临时显示 Evidence 节点，不改变项目文件。只读 Details 默认打开，
+路径；Evidence 显示控件提供隐藏、仅显示当前 Focus Node 的 Evidence、显示全部 Evidence 三种
+临时状态，不改变项目文件。只读 Details 默认打开，
 用户可以通过抽屉拉手收起或重新打开。页面提供 `Research & Expand`、`Details`
 两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心，不改变图谱内容；
 用户可以在保持全局上下文的同时沿关系思考。Git 历史恢复通过对应 DSH Chat 完成。
@@ -283,8 +284,8 @@ basis: literature | experiment | ai_inference
 ### Focus
 
 用户当前讨论的 Research Question、Node、Result、Evidence Assertion、Framing Link 或
-Edge，也是 Research Graph 中的视觉中心。Focus 只影响
-视口位置、高亮、Details 和 Chat context，不筛选图谱实体，也不修改科研文件。
+Edge，也是 Research Graph 中的视觉中心。Focus 影响视口位置、高亮、Details 和 Chat context；
+当用户选择“当前 Focus Node 的 Evidence”时，它也决定临时显示的 Evidence 子集，但不修改科研文件。
 
 ### Confidence Band
 
@@ -435,7 +436,8 @@ research_graph_focus
 读取当前 Focus
 → SciFork Research Skill 选择基本 typed tools
 → 普通 Evidence 导入与扩展使用同一自动审核边界，人工确认仅用于提升为 reviewed
-→ 开放式目标先保存为 Research Question 并设为 Focus
+→ 用户消息提交后，开放式目标先保存为 Research Question 并设为 Focus
+→ 完成真实检索后，先保存 machine-reviewed Evidence，再保存低置信 Hypothesis 与 Framing Link
 → Research & Expand 点击授权一次“检索 → Evidence 自动审核 → 直接扩展”的有界持久化流程
 → 用户在 Chat 中明确请求时，SciFork Research Skill 可按同一证据顺序编排有界 Progressive Research Run
 → Core 校验
@@ -633,8 +635,8 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 ```text
 1. 用户在 DSH 打开研究目录并执行 /research init
 2. 点击 Open Research Graph
-3. 用户给出开放式目标时，大模型创建 Research Question 并设为 Focus
-4. Companion 默认隐藏 Evidence 层，显示 Question 与主张图；Details 可查看来源分组
+3. 用户给出开放式目标时，大模型先创建 Research Question 并设为 Focus
+4. Companion 默认隐藏 Evidence 层；可切换为当前 Focus Node Evidence 或全部 Evidence，Details 可查看来源分组
 5. 用户点击 Research & Expand
 6. 对应 DSH Chat 自动开始或进入 Queue
 7. 大模型读取最新 Question/方向邻居并选择 PubMed Search 或其他检索/PDF Skill
@@ -653,8 +655,8 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
-- Companion 默认显示完整的 Question/主张/Result 主图并隐藏 Evidence 层；`Show evidence`
-  可显示 Evidence，Focus 只改变高亮、Details 和视图中心。
+- Companion 默认显示完整的 Question/主张/Result 主图并隐藏 Evidence 层；Evidence 控件可切换
+  隐藏、当前 Focus Node Evidence 或全部 Evidence，Focus 仍改变高亮、Details 和视图中心。
 - Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID
   可见，ID 本身支持点击/键盘复制和轻量状态反馈。
 - Details 默认打开且可收起；`<xl` 时位于 Graph 下方，`xl` 及以上与 Graph 并列，两行

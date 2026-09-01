@@ -28,6 +28,8 @@ export interface GraphLayout {
   edges: LayoutEdge[]
 }
 
+export type EvidenceVisibility = 'hidden' | 'focused-node' | 'all'
+
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
@@ -55,20 +57,35 @@ export function selectGraphView(input: SnapshotGraph): SnapshotGraph {
   }
 }
 
-export function evidenceVisibilityGraph(input: SnapshotGraph, showEvidence: boolean): SnapshotGraph {
-  if (showEvidence) return input
-  const hiddenIds = new Set(
-    input.entities.filter((entity) => entity.type === 'evidence').map((entity) => entity.id),
+export function evidenceVisibilityGraph(
+  input: SnapshotGraph,
+  visibility: EvidenceVisibility,
+  focusEntityId?: string,
+): SnapshotGraph {
+  if (visibility === 'all') return input
+  const visibleEvidenceIds = new Set<string>()
+  if (visibility === 'focused-node' && focusEntityId !== undefined) {
+    for (const edge of input.edges) {
+      if (edge.source === 'evidence_ref' && edge.to === focusEntityId) {
+        visibleEvidenceIds.add(edge.from)
+      }
+    }
+  }
+  const retainedEntityIds = new Set(
+    input.entities
+      .filter((entity) => entity.type !== 'evidence' || visibleEvidenceIds.has(entity.id))
+      .map((entity) => entity.id),
   )
   return {
-    entities: input.entities.filter((entity) => !hiddenIds.has(entity.id)),
+    entities: input.entities.filter((entity) => retainedEntityIds.has(entity.id)),
     edges: input.edges.filter(
-      (edge) =>
-        edge.source !== 'evidence_ref' &&
-        !hiddenIds.has(edge.from) &&
-        !hiddenIds.has(edge.to),
+      (edge) => retainedEntityIds.has(edge.from) && retainedEntityIds.has(edge.to),
     ),
   }
+}
+
+export function graphDirectionForViewport(wide: boolean): 'LR' | 'TB' {
+  return wide ? 'LR' : 'TB'
 }
 
 function stableCoordinate(value: number): number {

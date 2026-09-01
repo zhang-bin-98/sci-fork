@@ -510,8 +510,9 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
   accent 背景；hover、focus 和 disabled 状态仍由 Tailwind theme tokens 表达。
 - 不渲染独立 Focus 面包屑栏；Focus path 仍用于图内路径高亮。
 - snapshot 始终包含完整投影；Companion 默认只过滤 Evidence entity/投影关系，显示完整
-  Question/主张/Result 主图。`Show evidence` 是当前 React tree 的显示状态，不写 storage
-  或项目；Focus 不参与其他实体或关系筛选。
+  Question/主张/Result 主图。Evidence 显示状态提供隐藏、当前 Focus Node Evidence 和全部
+  Evidence 三种选项，只存在于当前 React tree，不写 storage 或项目；Focus 只有在选择当前
+  Focus Node Evidence 时才决定临时 Evidence 子集。
 - 初始视口适配完整图谱；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
   移到视图中心并更新高亮与 Details。
 - React Flow 临时 `selected` 状态不代表 Focus。只有 Host `setFocus` 成功后才显示正式
@@ -635,7 +636,9 @@ Skill 不直接调用另一个 Skill，也不共享 provider 生命周期或私�
 
 ### 10.2 SciFork Research Skill
 
-Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`。它的 catalog description 明确说明：只有真实检索或 PDF 结果已存在于当前 Chat context 后才加载；它不执行检索，也不配置 `resourceBase`：
+Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`。它的 catalog description 明确说明：
+初始问题 intake 可在用户消息提交后直接加载；证据格式化和扩展路径只有真实检索或 PDF 结果
+已存在于当前 Chat context 后才继续；它不执行检索，也不配置 `resourceBase`：
 
 - Retrieval guidance。
 - Research Import Draft formatting。
@@ -914,8 +917,8 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
   两行固定头部突出精确类型并合并引用/Focus 元数据；
   卡片 hover/focus 本体展开完整标签并保持全图布局稳定。
 - 精确实体类型用文字和颜色圆点共同显示；Question 使用中性卡片，Framing Link 与科学 Edge 可区分。
-- Evidence 默认隐藏且 `Show evidence` 可恢复；Node 卡片与 Details 的 publication、
-  machine-reviewed、human-reviewed 计数和结构化引用一致。
+- Evidence 默认隐藏，可切换为当前 Focus Node Evidence 或全部 Evidence；Node 卡片与 Details
+  的 publication、machine-reviewed、human-reviewed 计数和结构化引用一致。
 - Node/Edge Literature Details 按审核状态及 retrieval-only 分组显示最小 citation 字段，
   rejected 默认收起且不触发远程请求。
 - Tailwind utilities 覆盖页面骨架、顶栏、按钮、通知、卡片、Details、排版和响应式布局，
@@ -954,7 +957,7 @@ fresh DSH profile
 → verify every retained node is connected, no machine Evidence creates a Finding, and the run stops
 → accept one Evidence item and reject another after unlinking active references
 → select a rejected branch, ask Chat to delete the current Focus, verify the reported id, then delete Framing Link/Edge before Node
-→ enable Show evidence and verify citation Details without remote fetch
+→ switch Evidence view to all and verify citation Details without remote fetch
 → repeat with one alternative retrieval/PDF Skill
 → separately format Research Import Draft and import a qualifying machine-reviewed item through the ordinary flow
 → load scifork-research and import one formatted Draft item

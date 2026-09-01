@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   evidenceVisibilityGraph,
   focusViewportCenter,
+  graphDirectionForViewport,
   layoutGraph,
   selectGraphView,
 } from '../../src/companion/graph.js'
@@ -65,11 +66,57 @@ describe('Companion graph', () => {
       ],
     } satisfies SnapshotGraph
 
-    expect(evidenceVisibilityGraph(graph, false)).toEqual({
+    expect(evidenceVisibilityGraph(graph, 'hidden')).toEqual({
       entities: [entities[1]],
       edges: [],
     })
-    expect(evidenceVisibilityGraph(graph, true)).toBe(graph)
+    expect(evidenceVisibilityGraph(graph, 'all')).toBe(graph)
+  })
+
+  it('shows only the focused Node evidence while retaining the non-Evidence graph', () => {
+    const graph = {
+      entities: [
+        entities[0]!,
+        entities[1]!,
+        {
+          id: 'ev_a',
+          type: 'evidence' as const,
+          direction: 'supports' as const,
+          reviewStatus: 'reviewed' as const,
+          label: 'Evidence A',
+        },
+        {
+          id: 'ev_b',
+          type: 'evidence' as const,
+          direction: 'supports' as const,
+          reviewStatus: 'machine_reviewed' as const,
+          label: 'Evidence B',
+        },
+      ],
+      edges: [
+        edges[0]!,
+        { from: 'ev_a', to: 'node_a', relation: 'supports' as const, source: 'evidence_ref' as const },
+        { from: 'ev_b', to: 'node_b', relation: 'supports' as const, source: 'evidence_ref' as const },
+      ],
+    } satisfies SnapshotGraph
+
+    expect(evidenceVisibilityGraph(graph, 'focused-node', 'node_a')).toEqual({
+      entities: [entities[0], entities[1], graph.entities[2]],
+      edges: [graph.edges[0], graph.edges[1]],
+    })
+    expect(evidenceVisibilityGraph(graph, 'focused-node', 'node_missing')).toEqual({
+      entities: [entities[0], entities[1]],
+      edges: [graph.edges[0]],
+    })
+    expect(evidenceVisibilityGraph(graph, 'focused-node', 'ev_a')).toEqual({
+      entities: [entities[0], entities[1]],
+      edges: [graph.edges[0]],
+    })
+  })
+
+  it('maps viewport width mode to the documented graph direction', () => {
+    expect(graphDirectionForViewport(false)).toBe('TB')
+    expect(graphDirectionForViewport(true)).toBe('LR')
   })
 
   it('keeps the complete projection visible when Focus changes', () => {

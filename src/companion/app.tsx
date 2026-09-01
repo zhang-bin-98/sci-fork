@@ -26,8 +26,10 @@ import { CompanionApiClient, CompanionApiError } from './api.js'
 import { DetailsMarkdown } from './details.js'
 import { FocusSelectionQueue } from './focus-selection.js'
 import {
+  type EvidenceVisibility,
   focusViewportCenter,
   evidenceVisibilityGraph,
+  graphDirectionForViewport,
   layoutGraph,
   selectGraphView,
 } from './graph.js'
@@ -282,9 +284,57 @@ function useWideGraphLayout(): boolean {
   return wide
 }
 
+export function EvidenceVisibilityControl(props: {
+  visibility: EvidenceVisibility
+  focusedNodeId: string | undefined
+  onChange(visibility: EvidenceVisibility): void
+}): React.ReactElement {
+  const options: Array<{
+    value: EvidenceVisibility
+    label: string
+    compactLabel: string
+    disabled?: boolean
+  }> = [
+    { value: 'hidden', label: 'Hide evidence', compactLabel: 'Hide' },
+    {
+      value: 'focused-node',
+      label: 'Focus evidence',
+      compactLabel: 'Focus',
+      disabled: props.focusedNodeId === undefined,
+    },
+    { value: 'all', label: 'All evidence', compactLabel: 'All' },
+  ]
+  return (
+    <div
+      className="flex min-w-0 items-center gap-1"
+      role="group"
+      aria-label="Evidence display"
+      data-evidence-visibility-control="true"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={BUTTON_HEADER + ' size-9 px-0 sm:size-auto sm:px-2.5'}
+          aria-pressed={props.visibility === option.value}
+          aria-label={option.label}
+          title={option.disabled ? 'Focus a Node to show its evidence' : option.label}
+          disabled={option.disabled}
+          data-evidence-visibility={option.value}
+          onClick={() => props.onChange(option.value)}
+        >
+          <span className="sm:hidden">{option.compactLabel}</span>
+          <span className="hidden sm:inline">{option.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function GraphPane(props: GraphPaneProps): React.ReactElement {
   const wide = useWideGraphLayout()
-  const direction = wide ? 'LR' : 'TB'
+  const direction = graphDirectionForViewport(wide)
+  const paneRef = React.useRef<HTMLElement | null>(null)
   const [flow, setFlow] = React.useState<
     ReactFlowInstance<EntityFlowNode, RelationFlowEdge> | undefined
   >()
@@ -299,6 +349,17 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
         : focusViewportCenter(laidOut, props.focusEntityId),
     [laidOut, props.focusEntityId],
   )
+  React.useEffect(() => {
+    if (flow === undefined || paneRef.current === null) return
+    const fit = (): void => {
+      void flow.fitView({ padding: 0.18 })
+    }
+    fit()
+    if (typeof ResizeObserver !== 'function') return
+    const observer = new ResizeObserver(fit)
+    observer.observe(paneRef.current)
+    return () => observer.disconnect()
+  }, [flow])
   React.useEffect(() => {
     if (flow === undefined || focusCenter === undefined) return
     const { zoom } = flow.getViewport()
@@ -347,6 +408,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
 
   return (
     <section
+      ref={paneRef}
       className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted xl:border-r xl:border-b-0"
       aria-label="Research Graph"
     >
@@ -812,7 +874,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string>()
   const [details, setDetails] = React.useState<EntityDocument>()
   const [detailsOpen, setDetailsOpen] = React.useState(true)
-  const [showEvidence, setShowEvidence] = React.useState(false)
+  const [evidenceVisibility, setEvidenceVisibility] =
+    React.useState<EvidenceVisibility>('hidden')
   const [error, setError] = React.useState<string>()
   const [pendingFocusId, setPendingFocusId] = React.useState<string>()
   const [researchExpansionState, setResearchExpansionState] =
@@ -1008,9 +1071,19 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
     focusQueueRef.current?.select(entityId)
   }, [])
 
+  const focusedNodeId = React.useMemo(() => {
+    const focusEntityId = snapshot?.focus?.focusEntityId
+    if (focusEntityId === undefined) return undefined
+    const focusedEntity = graph?.entities.find((entity) => entity.id === focusEntityId)
+    return focusedEntity?.type === 'node' ? focusedEntity.id : undefined
+  }, [graph, snapshot?.focus?.focusEntityId])
+
   const graphView = React.useMemo(
-    () => selectGraphView(evidenceVisibilityGraph(graph ?? EMPTY_GRAPH, showEvidence)),
-    [graph, showEvidence],
+    () =>
+      selectGraphView(
+        evidenceVisibilityGraph(graph ?? EMPTY_GRAPH, evidenceVisibility, focusedNodeId),
+      ),
+    [graph, evidenceVisibility, focusedNodeId],
   )
 
   const submitResearchExpansion = (): void => {
@@ -1043,27 +1116,11 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           {...(project?.head === undefined ? {} : { head: project.head })}
         />
         <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
-          <button
-            type="button"
-            className={BUTTON_HEADER + ' size-9 px-0 sm:size-auto sm:px-3'}
-            aria-pressed={showEvidence}
-            aria-label={showEvidence ? 'Hide evidence' : 'Show evidence'}
-            title={showEvidence ? 'Hide evidence' : 'Show evidence'}
-            onClick={() => setShowEvidence((visible) => !visible)}
-          >
-            <svg
-              className="size-4 sm:hidden"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <path d="M1.5 8s2.2-3.5 6.5-3.5S14.5 8 14.5 8 12.2 11.5 8 11.5 1.5 8 1.5 8Z" />
-              <circle cx="8" cy="8" r="1.75" />
-            </svg>
-            <span className="hidden sm:inline">{showEvidence ? 'Hide evidence' : 'Show evidence'}</span>
-          </button>
+          <EvidenceVisibilityControl
+            visibility={evidenceVisibility}
+            focusedNodeId={focusedNodeId}
+            onChange={setEvidenceVisibility}
+          />
           {acknowledgement === undefined ? null : (
             <output className="min-w-14 text-right text-xs font-bold text-sf-header-success">
               {acknowledgement}

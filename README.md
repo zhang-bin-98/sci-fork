@@ -161,9 +161,9 @@ the generated `dist/` assets.
    Research Question and keeps its scope assumptions explicit.
 3. Use `pubmed-search` (or another retrieval/PDF Skill) to obtain real source
    material, then load `scifork-research` to format and validate an import
-   draft.
-4. Review the graph in the Companion. Evidence is hidden by default; use
-   **Show evidence** when you need the citation layer.
+   draft. Hypotheses are created only after qualifying Evidence is saved.
+4. Review the graph in the Companion. Evidence is hidden by default; switch to
+   the current Focus Node's Evidence or all Evidence when you need the citation layer.
 5. Select a question or claim and click **Research & Expand** for one bounded
    literature-first step. A running Chat queues the request; an idle Chat
    starts it. Ask for a Progressive Research Run explicitly in DSH Chat when a
