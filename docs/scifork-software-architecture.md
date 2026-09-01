@@ -21,7 +21,7 @@ MVP 采用以下决策：
 10. MVP 发布一个 SciFork 专用的 `SciFork Research` Skill，以及一个通用的 `pubmed-search` 检索 Skill。
 11. 大模型先完成检索 Skill，再使用 `SciFork Research` 格式化 Draft；普通导入与获授权扩展使用同一套自动 Evidence 审核规则，扩展在审核后继续保存明确关系；Skill 之间不互相调用。
 12. Companion 按钮只执行一个文献支撑的 Research Expansion Step；Progressive Research Run 只能由用户在当前 Chat 中明确请求，并由大模型逐轮编排，二者均不逐条等待证据确认。
-13. 开放式目标保存为 Research Question；Hypothesis/Finding 通过非科学 `addresses` Framing Link 连接 Question。
+13. 开放式目标保存为 Research Question；Question 通过非科学 `frames` Framing Link 连接 Hypothesis/Finding。
 14. 文献 Evidence 直接保存 PMID/DOI 和最小 Citation Snapshot，不建立 Source 实体；完整元信息、abstract、全文、PDF 和原始响应不进入 SciFork 持久化或缓存。
 15. `machine_reviewed` 与人工 `reviewed` 分开；前者可支持低置信探索但不能满足 Finding 或 `basis: literature`。
 16. `better-sidebar` 固定参考 v0.15.2，但不是运行依赖。
@@ -226,7 +226,7 @@ interface FramingLink {
   id: `qlink_${string}`
   from: string
   to: string
-  relation: 'addresses'
+  relation: 'frames'
 }
 ```
 
@@ -235,7 +235,7 @@ interface FramingLink {
 - Finding 至少有一个人工 `reviewed` supporting Evidence Assertion，或一个 validated Result 的 supporting Edge。
 - Hypothesis/Prediction 不得伪装为 Finding。
 - Research Question 是无 confidence 和支持门槛的开放式询问，不是 Node。
-- Framing Link 只能从 Hypothesis/Finding 指向 Research Question，不携带科学 Edge 字段，
+- Framing Link 只能从 Research Question 指向 Hypothesis/Finding，不携带科学 Edge 字段，
   不参与 Finding 支持、方向邻居读取或文献计数。
 - Evidence Assertion 必须直接包含 Publication Reference 和精确 locator；Publication Reference 至少有 PMID 或规范化 DOI。
 - PMID 与 DOI 同时存在时必须指向同一篇文献，并以 PMID 为 canonical、DOI 为 alias。
@@ -407,8 +407,8 @@ checkpoint 状态；entity 读取同时返回目标文件的 `fileVersion`，供
 `neighbors` 按 incoming/outgoing/both 返回 incident scientific Edge 与紧凑相邻实体
 卡片，不内联相邻正文；模型按需再用 entity 读取完整内容。它接受 Node、Result 或投影
 中的 Evidence endpoint；Edge Focus 先用 entity 读取 from/to，再对选定 endpoint 调用
-neighbors。Question 的 entity/neighborhood 读取单独返回 `addressedEntities` 和 Framing
-Links，不把 `addresses` 混入科学方向邻居；Framing Link entity 返回 source 与 Question。
+neighbors。Question 的 entity/neighborhood 读取单独返回 `framedEntities` 和 Framing
+Links，不把 `frames` 混入科学方向邻居；Framing Link entity 返回 Question 与 framed claim。
 
 `research_graph_apply` 只接受 discriminated typed command；模型不能提供任意路径、文件正文或 Git argv。
 
@@ -550,7 +550,7 @@ Evidence 状态计数使用无歧义英语标签。
 `publicationCount` 合并 Node 自身 `evidence_refs` 以及 incident stored Edge 上的结构化
 `publication_refs`/`evidence_refs`，按 PMID 优先、否则规范化 DOI 去重；两个 Evidence
 计数分别统计 `machine_reviewed` 与人工 `reviewed` Assertion，不把同一篇文献的不同
-Assertion 混成一个审核动作。Question Details 通过 addressed entities 聚合文献覆盖与
+Assertion 混成一个审核动作。Question Details 通过 framed entities 聚合文献覆盖与
 状态计数，但不暗示 Question 本身被证据支持。
 
 Companion v1 wire 曾使用 `referenceCount` 和 `reviewedEvidenceCount`。当前 Host 在同一个
@@ -584,7 +584,7 @@ Companion `Research & Expand` user click
 - prompt 有字节上限，只包含当前 Focus id/摘要、当前 Chat 研究目的约束、单步任务和
   明确授权；不内联 Focus 邻域或完整图谱正文。
 - prompt 明确要求先完成默认 PubMed 检索和高价值记录 lookup，再读取 Question 的
-  `addressedEntities` 或普通 Focus 的方向邻居；检索不足时不得用无依据猜测代替。
+  `framedEntities` 或普通 Focus 的方向邻居；检索不足时不得用无依据猜测代替。
 - prompt 明确要求每个保留分支先从真实 abstract 或用户提供的有界 PDF 文字创建
   machine-reviewed Evidence，title-only/metadata-only 不合格；只保存最小 Citation
   Snapshot，不保存原始检索材料。
@@ -657,14 +657,14 @@ Bundle 通过 `ctx.skills` 贡献 package-owned `scifork-research`。它的 cata
 
 ```text
 read current Chat objective + Focus
-→ for Question read addressedEntities; otherwise read directional neighbors
+→ for Question read framedEntities; otherwise read directional neighbors
 → choose an endpoint anchor when Focus is an Edge
 → complete pubmed-search search + lookup
 → deduplicate against the graph with neighbors/entity/find
 → omit records without a real abstract/user-provided PDF passage
 → extract and create one or more machine-reviewed Evidence Assertions per retained branch
 → propose at most five direct low-confidence Hypothesis/Prediction branches
-→ Question: create Hypothesis, then create addresses Framing Link
+→ Question: create Hypothesis, then create Question → Hypothesis frames Framing Link
 → other anchors: create Node, then immediately create scientific Edge
 → use predicts for Finding/Hypothesis → Prediction; otherwise choose the narrowest valid relation
 → on relationship failure, re-read/retry or delete the orphan Node after its relations are clear
@@ -880,7 +880,7 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 ### 15.1 Core
 
 - 所有实体 schema 的成功与失败 fixture。
-- Research Question/Framing Link schema、端点、`addresses` 唯一关系与依赖删除保护。
+- Research Question/Framing Link schema、端点、`frames` 唯一关系与依赖删除保护。
 - Evidence 状态机、machine-review 必填字段、活动引用拒绝保护、Result 与 Finding 支持门槛。
 - Markdown round-trip 与 Publication Reference 规范化、PMID/DOI 一致性。
 - projectRevision/fileVersion guard。
@@ -895,7 +895,7 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - 三个工具注册、卸载与参数上限。
 - directional neighbors 读取 incoming/outgoing/both Edge 与紧凑相邻实体卡片，且不返回
   相邻正文或本地路径。
-- Question 读取返回 addressed entities，Framing Link 不混入 scientific neighbors；所有实体均可合法 Focus。
+- Question 读取返回 framed entities，Framing Link 不混入 scientific neighbors；所有实体均可合法 Focus。
 - entity read 返回 `fileVersion`；apply 暴露 Question/Framing Link commands 与
   `delete_edge`/`delete_node`，删除只使用 Core 派生的受管路径。
 - 两个 packaged Skill 的发现、加载与卸载。
@@ -951,7 +951,7 @@ fresh DSH profile
 → state the Question objective and click Research & Expand
 → verify corresponding Chat starts or queues
 → verify PubMed search/lookup precedes mutation
-→ verify machine-reviewed Evidence precedes each retained Hypothesis and each addresses the Question
+→ verify machine-reviewed Evidence precedes each retained Hypothesis and each frames the Question's scope
 → verify title-only records are omitted and Focus is unchanged
 → explicitly ask Chat for a bounded Progressive Research Run across at least two levels
 → verify every retained node is connected, no machine Evidence creates a Finding, and the run stops

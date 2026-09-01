@@ -96,7 +96,7 @@ export type EdgeBasis = 'literature' | 'experiment' | 'ai_inference'
 export type EvidenceDirection = 'supports' | 'contradicts' | 'context'
 /** Node/edge evidence references only accept supporting or contradicting roles. */
 export type EvidenceRole = 'supports' | 'contradicts'
-export type FramingRelation = 'addresses'
+export type FramingRelation = 'frames'
 
 // -------------------------------------------------------------- parse result
 
@@ -265,9 +265,9 @@ export type QuestionData = z.infer<typeof QUESTION_DATA_SCHEMA>
 export const FRAMING_LINK_FILE_SCHEMA = z
   .object({
     id: z.string().regex(FRAMING_LINK_ID_RE, 'must be a qlink_<uuid> id'),
-    from: z.string().regex(NODE_ID_RE, 'must be a node_<uuid> id'),
-    to: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
-    relation: z.literal('addresses'),
+    from: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
+    to: z.string().regex(NODE_ID_RE, 'must be a node_<uuid> id'),
+    relation: z.literal('frames'),
   })
   .strict()
 export type FramingLinkFile = z.infer<typeof FRAMING_LINK_FILE_SCHEMA>

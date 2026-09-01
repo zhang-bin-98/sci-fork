@@ -137,20 +137,20 @@ export function validateProject(project: ResearchProject): Diagnostic[] {
 
   for (const link of project.framingLinks.values()) {
     const path = refPath(link.id)
-    const source = project.nodes.get(link.from)
-    if (source === undefined) {
+    if (!project.questions.has(link.from)) {
       diagnostics.push(diag(path, 'unknown_endpoint', `framing link source ${link.from} does not exist`))
-    } else if (source.kind !== 'hypothesis' && source.kind !== 'finding') {
+    }
+    const target = project.nodes.get(link.to)
+    if (target === undefined) {
+      diagnostics.push(diag(path, 'unknown_endpoint', `framing link target ${link.to} does not exist`))
+    } else if (target.kind !== 'hypothesis' && target.kind !== 'finding') {
       diagnostics.push(
         diag(
           path,
-          'invalid_framing_source',
-          `framing link ${link.id} must start from a Hypothesis or Finding`,
+          'invalid_framing_target',
+          `framing link ${link.id} must target a Hypothesis or Finding`,
         ),
       )
-    }
-    if (!project.questions.has(link.to)) {
-      diagnostics.push(diag(path, 'unknown_endpoint', `framing link target ${link.to} does not exist`))
     }
   }
 

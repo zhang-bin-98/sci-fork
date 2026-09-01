@@ -109,9 +109,9 @@ const QUESTION_FILE = [
 
 const FRAMING_LINK_FILE = JSON.stringify({
   id: FRAMING_LINK,
-  from: NODE,
-  to: QUESTION,
-  relation: 'addresses',
+  from: QUESTION,
+  to: NODE,
+  relation: 'frames',
 })
 
 const RESULT_FILE = [
@@ -372,9 +372,9 @@ describe('CompanionService reads', () => {
       humanReviewedEvidenceCount: 1,
     })
     expect(snapshot.graph.edges.find(({ id }) => id === FRAMING_LINK)).toMatchObject({
-      from: NODE,
-      to: QUESTION,
-      relation: 'addresses',
+      from: QUESTION,
+      to: NODE,
+      relation: 'frames',
       source: 'framing_link',
     })
 
@@ -382,7 +382,7 @@ describe('CompanionService reads', () => {
       ok: true,
       entity: {
         type: 'question',
-        addressedEntityIds: [NODE],
+        framedEntityIds: [NODE],
         publicationCount: 3,
         machineReviewedEvidenceCount: 1,
         humanReviewedEvidenceCount: 1,
@@ -411,7 +411,7 @@ describe('CompanionService reads', () => {
     expect(JSON.stringify(node)).not.toContain('authors')
     await expect(state.service.entity(localKey, FRAMING_LINK)).resolves.toMatchObject({
       ok: true,
-      entity: { type: 'framing_link', from: NODE, to: QUESTION, relation: 'addresses' },
+      entity: { type: 'framing_link', from: QUESTION, to: NODE, relation: 'frames' },
     })
   })
 

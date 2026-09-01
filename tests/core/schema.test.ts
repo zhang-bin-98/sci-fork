@@ -212,7 +212,7 @@ describe('evidence assertion data', () => {
 })
 
 describe('research question and framing link data', () => {
-  it('accepts an open question and a strict addresses link', () => {
+  it('accepts an open question and a strict frames link from Question to claim', () => {
     expect(parseQuestionData({
       id: QUESTION,
       question: 'What are the key drivers of bone aging?',
@@ -220,9 +220,9 @@ describe('research question and framing link data', () => {
     }).ok).toBe(true)
     expect(parseFramingLinkFile(JSON.stringify({
       id: QLINK,
-      from: NODE,
-      to: QUESTION,
-      relation: 'addresses',
+      from: QUESTION,
+      to: NODE,
+      relation: 'frames',
     })).ok).toBe(true)
   })
 
@@ -230,10 +230,19 @@ describe('research question and framing link data', () => {
     expect(parseQuestionData({ id: QUESTION, question: 'Why?', confidence: 'low' }).ok).toBe(false)
     expect(parseFramingLinkFile(JSON.stringify({
       id: QLINK,
-      from: NODE,
-      to: QUESTION,
+      from: QUESTION,
+      to: NODE,
       relation: 'supports',
       basis: 'literature',
+    })).ok).toBe(false)
+  })
+
+  it('rejects reversed framing endpoints', () => {
+    expect(parseFramingLinkFile(JSON.stringify({
+      id: QLINK,
+      from: NODE,
+      to: QUESTION,
+      relation: 'frames',
     })).ok).toBe(false)
   })
 })

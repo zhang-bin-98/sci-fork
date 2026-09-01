@@ -58,7 +58,7 @@ export type ProjectionEntity =
 export interface ProjectionEdge {
   from: string
   to: string
-  relation: Relation | 'addresses'
+  relation: Relation | 'frames'
   /** Stored scientific edge, non-scientific framing link, or evidence reference. */
   source: 'edge' | 'framing_link' | 'evidence_ref'
   basis?: 'literature' | 'experiment' | 'ai_inference'

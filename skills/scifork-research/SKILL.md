@@ -64,9 +64,9 @@ Focus. Preserve material scope assumptions but do not assign confidence or
 invent Evidence.
 
 A truth-valued proposition that can be supported or contradicted remains a
-Hypothesis. Hypotheses and Findings may address a Research Question through
-`create_framing_link`; Predictions never directly address a Question. The
-`addresses` Framing Link is organizational, not a scientific Edge, and carries
+Hypothesis. A Research Question frames a Hypothesis or Finding through
+`create_framing_link`; Predictions never directly belong to a Question. The
+`frames` Framing Link is organizational, not a scientific Edge, and carries
 no basis, Evidence, confidence, provenance, or Evidence Gap.
 
 ## Research Import Draft
@@ -137,7 +137,7 @@ DOI records before loading this Skill. This Skill never calls `pubmed-search`.
 When actual results are absent, stop without graph mutation.
 
 1. Read the latest Focus and its full entity. For a Research Question, use its
-   returned `addressedEntities`. For other anchors use `neighbors` with
+   returned `framedEntities` and outgoing framing neighbors. For other anchors use `neighbors` with
    `incoming`, `outgoing`, or `both` according to the objective. Read a
    neighbor's full entity only when needed, and use `find` to check semantic
    duplicates outside the current component.

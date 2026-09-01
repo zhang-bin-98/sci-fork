@@ -47,7 +47,7 @@ function questionMd(id: string, body = ''): string {
 }
 
 function framingLinkJson(id: string, from: string, to: string): string {
-  return JSON.stringify({ id, from, to, relation: 'addresses' })
+  return JSON.stringify({ id, from, to, relation: 'frames' })
 }
 
 describe('parseProject', () => {
@@ -59,7 +59,7 @@ describe('parseProject', () => {
     const files = new Map([
       ['research.json', MANIFEST],
       [`questions/${question}.md`, questionMd(question)],
-      [`question-links/${framingLink}.json`, framingLinkJson(framingLink, node, question)],
+      [`question-links/${framingLink}.json`, framingLinkJson(framingLink, question, node)],
       [`nodes/${node}.md`, nodeMd(node)],
       [`evidence/${ev}.md`, evidenceMd(ev)],
     ])
@@ -73,9 +73,9 @@ describe('parseProject', () => {
     expect(project.nodes.size).toBe(1)
     expect(project.questions.get(question)?.question).toContain('bone aging')
     expect(project.framingLinks.get(framingLink)).toMatchObject({
-      from: node,
-      to: question,
-      relation: 'addresses',
+      from: question,
+      to: node,
+      relation: 'frames',
     })
     expect(project.nodes.get(node)?.body).toContain('Body text.')
     expect(project.evidenceAssertions.get(ev)?.assertion).toBe('STAT3 is phosphorylated.')
@@ -91,7 +91,7 @@ describe('parseProject', () => {
       ['research.json', MANIFEST],
       [`nodes/${node}.md`, nodeMd(node)],
       [`questions/${question}.md`, questionMd(question)],
-      [`question-links/${framingLink}.json`, framingLinkJson(framingLink, node, question)],
+      [`question-links/${framingLink}.json`, framingLinkJson(framingLink, question, node)],
     ]), sha256)
     expect(project.diagnostics).toEqual([])
     expect(project.questions.get(question)?.body).toBe('')

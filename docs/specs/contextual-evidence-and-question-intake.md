@@ -81,8 +81,8 @@ classifies the statement before creating a scientific Node:
    explicitly user-provided bounded PDF text in the current Chat.
 4. Only qualifying retrieval material may produce machine-reviewed Evidence.
    Each retained Question branch creates Evidence first, then a low-confidence
-   Hypothesis with the exact Evidence references, followed by an `addresses`
-   Framing Link to the Question. No scientific Edge targets a Question.
+   Hypothesis with the exact Evidence references, followed by a `frames`
+   Framing Link from the Question to that Hypothesis. No scientific Edge targets a Question.
 5. If retrieval yields no qualifying material, the Question may remain the
    only new graph entity and the workflow reports that no Hypothesis was
    persisted.

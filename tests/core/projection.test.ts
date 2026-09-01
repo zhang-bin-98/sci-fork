@@ -68,7 +68,7 @@ describe('buildProjection', () => {
     ],
     [
       `question-links/${QLINK}.json`,
-      JSON.stringify({ id: QLINK, from: NODE_B, to: QUESTION, relation: 'addresses' }),
+      JSON.stringify({ id: QLINK, from: QUESTION, to: NODE_B, relation: 'frames' }),
     ],
     [
       `edges/${EDGE}.json`,
@@ -106,13 +106,13 @@ describe('buildProjection', () => {
       { from: EV, to: NODE, relation: 'supports', source: 'evidence_ref' },
     ])
     expect(projection.edges.filter((edge) => edge.source === 'framing_link')).toEqual([
-      { from: NODE_B, to: QUESTION, relation: 'addresses', source: 'framing_link', id: QLINK },
+      { from: QUESTION, to: NODE_B, relation: 'frames', source: 'framing_link', id: QLINK },
     ])
   })
 
   it('reconstructs reverse relations without storing them', () => {
     const projection = build(baseFiles)
-    const incoming = projection.edges.filter((edge) => edge.to === NODE_B)
+    const incoming = projection.edges.filter((edge) => edge.to === NODE_B && edge.source !== 'framing_link')
     expect(incoming).toHaveLength(1)
     expect(incoming[0]?.from).toBe(RES)
   })

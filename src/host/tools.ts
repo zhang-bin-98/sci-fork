@@ -113,14 +113,14 @@ function entityPayload(project: LoadedProject, entityId: string): Record<string,
     const question = project.questions.get(entityId)
     if (question === undefined) return undefined
     const framingLinks = [...project.framingLinks.values()]
-      .filter((link) => link.to === entityId)
+      .filter((link) => link.from === entityId)
       .sort((left, right) => left.id.localeCompare(right.id))
     return {
       type,
       question: question.question,
       scopeAssumptions: question.scope_assumptions ?? [],
       body: question.body,
-      addressedEntities: framingLinks.map((link) => ({ linkId: link.id, entityId: link.from })),
+      framedEntities: framingLinks.map((link) => ({ linkId: link.id, entityId: link.to })),
     }
   }
   if (type === 'framing_link') {

@@ -17,7 +17,7 @@ An open-ended, user-originated inquiry that frames retrieval and candidate expla
 _Avoid_: Hypothesis, research topic, prompt
 
 **Framing Link**:
-An organizational `addresses` link from a Hypothesis or Finding to the Research Question it attempts to answer; it is not a scientific relationship or evidence-bearing Edge.
+An organizational `frames` link from a Research Question to a Hypothesis or Finding in its scope; it is not a scientific relationship or evidence-bearing Edge.
 _Avoid_: Evidence edge, supports, parent-child link
 
 **Publication Reference**:

@@ -60,7 +60,7 @@ function questionFile(id: string): [string, string] {
 }
 
 function framingLinkFile(id: string, from: string, to: string): [string, string] {
-  return [`question-links/${id}.json`, JSON.stringify({ id, from, to, relation: 'addresses' }) + '\n']
+  return [`question-links/${id}.json`, JSON.stringify({ id, from, to, relation: 'frames' }) + '\n']
 }
 
 function nodeFile(id: string, kind: string, refs = ''): [string, string] {
@@ -120,7 +120,7 @@ describe('parseCommand', () => {
         kind: 'update_question', id: QUESTION, expectedFileVersion: '1'.repeat(64), question: 'What accelerates bone aging?'
       },
       {
-        kind: 'create_framing_link', id: QLINK, from: NODE, to: QUESTION,
+        kind: 'create_framing_link', id: QLINK, from: QUESTION, to: NODE,
       },
       { kind: 'delete_framing_link', id: QLINK, expectedFileVersion: '2'.repeat(64) },
       {
@@ -371,19 +371,19 @@ describe('planCommand: questions and framing links', () => {
     expect(update.ok).toBe(true)
   })
 
-  it('creates/deletes addresses links and blocks source deletion while linked', () => {
+  it('creates/deletes frames links and blocks target deletion while linked', () => {
     const project = build([questionFile(QUESTION), nodeFile(NODE, 'hypothesis')])
     const create = planCommand(project, {
       kind: 'create_framing_link',
       id: QLINK,
-      from: NODE,
-      to: QUESTION,
+      from: QUESTION,
+      to: NODE,
     }, sha256)
     expect(create.ok).toBe(true)
     if (!create.ok) return
-    expect(writeContent(create)).toContain('"relation": "addresses"')
+    expect(writeContent(create)).toContain('"relation": "frames"')
 
-    const linked = build([questionFile(QUESTION), nodeFile(NODE, 'hypothesis'), framingLinkFile(QLINK, NODE, QUESTION)])
+    const linked = build([questionFile(QUESTION), nodeFile(NODE, 'hypothesis'), framingLinkFile(QLINK, QUESTION, NODE)])
     const deleteNode = planCommand(linked, {
       kind: 'delete_node',
       id: NODE,
