@@ -108,4 +108,12 @@ describe('GitHub release workflow', () => {
     expect(publish).toContain('current_tag_commit')
     expect(publish).toContain('VERIFIED_COMMIT')
   })
+
+  it('requires both README languages and the MIT license in the archive', () => {
+    const archive = verifySteps.find((step) => step.name === 'Build release assets')?.run ?? ''
+
+    expect(archive).toContain('package/README.md')
+    expect(archive).toContain('package/README.zh-CN.md')
+    expect(archive).toContain('package/LICENSE')
+  })
 })
