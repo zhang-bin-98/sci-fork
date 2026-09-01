@@ -33,6 +33,8 @@ MVP 采用以下决策：
 
 - `ctx.tools.register()`：注册模型工具。
 - `ctx.fs`：受工作区约束的文件访问。
+- `ctx.sandboxPolicy`：从当前公开 DSH Session 解析逐调用文件策略；所有科研文件
+  mutation 携带该策略，Git/目录 mutation 先执行同一 policy containment 检查。
 - `ctx.storageDomain`：保存 Focus 和 Page Key binding；不保存 Git undo/redo 状态。
 - `ctx.webServer.register()`：注册 `/scifork/*` 同源 exact/prefix 路由。
 - `ctx.subprocess`：用 argv 数组调用本地 Git。
@@ -821,6 +823,7 @@ INVALID_ENTITY
 INVALID_IMPORT_DRAFT
 STALE_REVISION
 STALE_TARGET
+WRITE_DENIED
 READ_ONLY_CONFLICT
 GIT_UNAVAILABLE
 GIT_STATE_UNSUPPORTED

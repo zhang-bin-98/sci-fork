@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { applyCommand, initProject } from '../../src/host/apply-command.js'
-import type { ResearchHostDeps } from '../../src/host/apply-command.js'
-import type { SubprocessPort } from '../../src/host/contracts.js'
+import type { ResearchMutationDeps } from '../../src/host/apply-command.js'
+import type { SandboxExecutionPolicy, SessionPort, SubprocessPort } from '../../src/host/contracts.js'
 import { checkpointMessage, initCheckpointMessage } from '../../src/host/git-checkpoints.js'
 import { FakeFs, scriptedGit } from './fakes.js'
 import type { ResearchCommand } from '../../src/core/commands.js'
@@ -18,6 +18,12 @@ const RES = `res_${UUID_B}`
 const OLD_SHA = 'abcdef1234567890abcdef1234567890abcdef12'
 const NEW_SHA = 'fedcba0987654321fedcba0987654321fedcba09'
 const MANIFEST = JSON.stringify({ schema_version: 1, project_id: PROJECT_ID, name: 'Apply' })
+const SESSION: SessionPort = { id: 'session-1', header: { cwd: '/proj' } }
+const DANGER_POLICY: SandboxExecutionPolicy = { mode: 'danger-full-access', workspaceRoot: '/' }
+
+function sessionFor(cwd: string): SessionPort {
+  return { id: 'session-1', header: { cwd } }
+}
 
 function revisionOf(fs: FakeFs): string {
   const files = new Map<string, string>()
@@ -50,11 +56,12 @@ function healthyGit(opts: { toplevel?: string; dirty?: boolean; failCommit?: boo
   return { port, calls, head: () => currentHead }
 }
 
-function deps(fs: FakeFs, git: SubprocessPort): ResearchHostDeps {
+function deps(fs: FakeFs, git: SubprocessPort): ResearchMutationDeps {
   return {
     fs,
     subprocess: git,
     hash: sha256,
+    sandboxPolicy: { resolve: () => DANGER_POLICY },
   }
 }
 
@@ -74,10 +81,94 @@ const CREATE_NODE: ResearchCommand = {
 }
 
 describe('applyCommand', () => {
+  it('rejects a missing Session before filesystem or Git work', async () => {
+    const { fs, git, host } = await setup({ '/proj/research.json': MANIFEST })
+
+    const result = await applyCommand(host, {
+      session: undefined,
+      command: CREATE_NODE,
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'SESSION_UNAVAILABLE', recoverable: false })
+    expect(fs.writeCalls).toHaveLength(0)
+    expect(git.calls).toHaveLength(0)
+  })
+
+  it('resolves the exact Session once and forwards its policy to the entity write', async () => {
+    const { fs, git } = await setup({ '/proj/research.json': MANIFEST })
+    const session = { id: 'session-1', header: { cwd: '/proj' } }
+    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/proj', sessionId: 'session-1' }
+    const requests: unknown[] = []
+    const host = {
+      ...deps(fs, git.port),
+      sandboxPolicy: {
+        resolve(request: unknown) {
+          requests.push(request)
+          return policy
+        },
+      },
+    }
+
+    const result = await applyCommand(host, {
+      session,
+      command: CREATE_NODE,
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(requests).toEqual([{ session }])
+    expect(fs.writeCalls).toContainEqual({ path: `/proj/nodes/${NODE}.md`, sandboxPolicy: policy })
+  })
+
+  it('rejects read-only before filesystem, directory, or Git mutation', async () => {
+    const fs = new FakeFs({ '/proj/research.json': MANIFEST })
+    const git = healthyGit()
+    const session = { id: 'session-1', header: { cwd: '/proj' } }
+    const host = {
+      ...deps(fs, git.port),
+      sandboxPolicy: {
+        resolve: () => ({ mode: 'read-only' as const, workspaceRoot: '/proj', sessionId: 'session-1' }),
+      },
+    }
+
+    const result = await applyCommand(host, {
+      session,
+      command: CREATE_NODE,
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'WRITE_DENIED' })
+    expect(fs.writeCalls).toHaveLength(0)
+    expect(git.calls).toHaveLength(0)
+  })
+
+  it('rejects a project above the workspace policy root before a mutation', async () => {
+    const fs = new FakeFs({ '/proj/research.json': MANIFEST })
+    const git = healthyGit()
+    const session = { id: 'session-1', header: { cwd: '/proj/deep' } }
+    const host = {
+      ...deps(fs, git.port),
+      sandboxPolicy: {
+        resolve: () => ({ mode: 'workspace-write' as const, workspaceRoot: '/proj/deep', sessionId: 'session-1' }),
+      },
+    }
+
+    const result = await applyCommand(host, {
+      session,
+      command: CREATE_NODE,
+      expectedProjectRevision: revisionOf(fs),
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'WRITE_DENIED' })
+    expect(fs.writeCalls).toHaveLength(0)
+    expect(git.calls.some((call) => ['init', 'rm', 'add', 'commit'].includes(call[1] ?? ''))).toBe(false)
+  })
+
   it('applies one entity and checkpoints only its planned path', async () => {
     const { fs, git, host } = await setup({ '/proj/research.json': MANIFEST })
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: CREATE_NODE,
       expectedProjectRevision: revisionOf(fs),
     })
@@ -93,7 +184,7 @@ describe('applyCommand', () => {
   it('rejects a stale project revision before Git or a write', async () => {
     const { fs, git, host } = await setup({ '/proj/research.json': MANIFEST })
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: CREATE_NODE,
       expectedProjectRevision: '0'.repeat(64),
     })
@@ -110,7 +201,7 @@ describe('applyCommand', () => {
     const git = healthyGit()
     const host = deps(fs, git.port)
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: CREATE_NODE,
       expectedProjectRevision: revisionOf(fs),
     })
@@ -120,7 +211,7 @@ describe('applyCommand', () => {
   it('rejects mutations when managed paths are dirty', async () => {
     const { fs, host } = await setup({ '/proj/research.json': MANIFEST }, { dirty: true })
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: CREATE_NODE,
       expectedProjectRevision: revisionOf(fs),
     })
@@ -130,7 +221,7 @@ describe('applyCommand', () => {
   it('rejects an invalid typed command from Core planning', async () => {
     const { fs, host } = await setup({ '/proj/research.json': MANIFEST })
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: { kind: 'create_node', id: NODE, nodeKind: 'finding', confidence: 'low', body: 'x' },
       expectedProjectRevision: revisionOf(fs),
     })
@@ -157,7 +248,7 @@ describe('applyCommand', () => {
     })
 
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: {
         kind: 'update_node',
         id: NODE,
@@ -175,7 +266,7 @@ describe('applyCommand', () => {
   it('leaves the written file and reports a checkpoint failure without destructive cleanup', async () => {
     const { fs, git, host } = await setup({ '/proj/research.json': MANIFEST }, { failCommit: true })
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: CREATE_NODE,
       expectedProjectRevision: revisionOf(fs),
     })
@@ -202,7 +293,7 @@ describe('applyCommand', () => {
     })
     const host = deps(fs, port)
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: CREATE_NODE,
       expectedProjectRevision: revisionOf(fs),
     })
@@ -216,7 +307,7 @@ describe('applyCommand', () => {
       [`/proj/nodes/${NODE}.md`]: nodeFile,
     })
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: { kind: 'update_node', id: NODE, expectedFileVersion: '0'.repeat(64), body: '# New\n' },
       expectedProjectRevision: revisionOf(fs),
     })
@@ -234,7 +325,7 @@ describe('applyCommand', () => {
     const git = healthyGit()
     const host = deps(fs, git.port)
     const result = await applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: CREATE_NODE,
       expectedProjectRevision: revisionOf(fs),
     })
@@ -248,10 +339,10 @@ describe('applyCommand', () => {
     const { fs, host } = await setup({ '/proj/research.json': MANIFEST })
     const before = revisionOf(fs)
     const first = applyCommand(host, {
-      sessionCwd: '/proj', command: CREATE_NODE, expectedProjectRevision: before,
+      session: SESSION, command: CREATE_NODE, expectedProjectRevision: before,
     })
     const second = applyCommand(host, {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: { kind: 'create_result', id: RES, observedAt: '2026-08-24', body: '# R\n' },
       expectedProjectRevision: before,
     })
@@ -286,7 +377,7 @@ describe('applyCommand', () => {
       return { stdout: '' }
     })
     const result = await applyCommand(deps(fs, git.port), {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: {
         kind: 'delete_node',
         id: NODE,
@@ -323,7 +414,7 @@ describe('applyCommand', () => {
     })
 
     const result = await applyCommand(deps(fs, git.port), {
-      sessionCwd: '/proj',
+      session: SESSION,
       command: {
         kind: 'delete_node',
         id: NODE,
@@ -365,7 +456,7 @@ describe('initProject', () => {
       ...deps(fs, git.port),
       mkdirs: (root: string) => mkdirs.push(root),
     }
-    const result = await initProject(host, { sessionCwd: '/newproj' })
+    const result = await initProject(host, { session: sessionFor('/newproj') })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.name).toBe('newproj')
@@ -376,11 +467,56 @@ describe('initProject', () => {
     expect(commit.slice(5)).toEqual(['--', 'research.json'])
   })
 
+  it('resolves and forwards the Session policy to research.json', async () => {
+    const fs = new FakeFs({})
+    const git = initGit()
+    const session = { id: 'session-1', header: { cwd: '/newproj' } }
+    const policy: SandboxExecutionPolicy = { mode: 'workspace-write', workspaceRoot: '/newproj', sessionId: 'session-1' }
+    const requests: unknown[] = []
+    const host = {
+      ...deps(fs, git.port),
+      mkdirs: () => {},
+      sandboxPolicy: {
+        resolve(request: unknown) {
+          requests.push(request)
+          return policy
+        },
+      },
+    }
+
+    const result = await initProject(host, { session })
+
+    expect(result.ok).toBe(true)
+    expect(requests).toEqual([{ session }])
+    expect(fs.writeCalls).toContainEqual({ path: '/newproj/research.json', sandboxPolicy: policy })
+  })
+
+  it('rejects read-only initialization before Git, directory, or file mutation', async () => {
+    const fs = new FakeFs({})
+    const git = initGit()
+    const mkdirs: string[] = []
+    const session = { id: 'session-1', header: { cwd: '/newproj' } }
+    const host = {
+      ...deps(fs, git.port),
+      mkdirs: (root: string) => mkdirs.push(root),
+      sandboxPolicy: {
+        resolve: () => ({ mode: 'read-only' as const, workspaceRoot: '/newproj', sessionId: 'session-1' }),
+      },
+    }
+
+    const result = await initProject(host, { session })
+
+    expect(result).toMatchObject({ ok: false, code: 'WRITE_DENIED' })
+    expect(git.calls).toHaveLength(0)
+    expect(mkdirs).toEqual([])
+    expect(fs.writeCalls).toHaveLength(0)
+  })
+
   it('leaves the manifest when the baseline checkpoint fails', async () => {
     const fs = new FakeFs({})
     const git = initGit({ failCommit: true })
     const host = { ...deps(fs, git.port), mkdirs: () => {} }
-    const result = await initProject(host, { sessionCwd: '/newproj' })
+    const result = await initProject(host, { session: sessionFor('/newproj') })
     expect(result).toMatchObject({ ok: false, code: 'CHECKPOINT_FAILED' })
     expect(fs.contentOf('/newproj/research.json')).toBeDefined()
     expect(git.calls.some((call) => ['rm', 'clean', 'checkout', 'restore'].includes(call[1] ?? ''))).toBe(false)
@@ -391,7 +527,7 @@ describe('initProject', () => {
     const git = initGit({ detached: true })
     const mkdirs: string[] = []
     const host = { ...deps(fs, git.port), mkdirs: (root: string) => mkdirs.push(root) }
-    const result = await initProject(host, { sessionCwd: '/newproj' })
+    const result = await initProject(host, { session: sessionFor('/newproj') })
     expect(result).toMatchObject({ ok: false, code: 'GIT_STATE_UNSUPPORTED' })
     expect(fs.contentOf('/newproj/research.json')).toBeUndefined()
     expect(mkdirs).toEqual([])
@@ -399,14 +535,14 @@ describe('initProject', () => {
 
   it('refuses when a project already exists above the cwd', async () => {
     const { host } = await setup({ '/proj/research.json': MANIFEST })
-    expect(await initProject(host, { sessionCwd: '/proj/deep' })).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
+    expect(await initProject(host, { session: sessionFor('/proj/deep') })).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
   })
 
   it('refuses a cwd inside a foreign repository', async () => {
     const fs = new FakeFs({})
     const git = healthyGit({ toplevel: '/other' })
     const host = deps(fs, git.port)
-    expect(await initProject(host, { sessionCwd: '/newproj' })).toMatchObject({ ok: false, code: 'PROJECT_REPOSITORY_MISMATCH' })
+    expect(await initProject(host, { session: sessionFor('/newproj') })).toMatchObject({ ok: false, code: 'PROJECT_REPOSITORY_MISMATCH' })
   })
 
   it('returns a structured failure when directory creation fails', async () => {
@@ -416,7 +552,7 @@ describe('initProject', () => {
       ...deps(fs, git.port),
       mkdirs: () => { throw new Error('permission denied') },
     }
-    expect(await initProject(host, { sessionCwd: '/newproj' })).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
+    expect(await initProject(host, { session: sessionFor('/newproj') })).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
     expect(fs.contentOf('/newproj/research.json')).toBeUndefined()
   })
 
@@ -424,6 +560,6 @@ describe('initProject', () => {
     const fs = new FakeFs({})
     const git = initGit({ identity: false })
     const host = deps(fs, git.port)
-    expect(await initProject(host, { sessionCwd: '/newproj' })).toMatchObject({ ok: false, code: 'GIT_UNAVAILABLE' })
+    expect(await initProject(host, { session: sessionFor('/newproj') })).toMatchObject({ ok: false, code: 'GIT_UNAVAILABLE' })
   })
 })

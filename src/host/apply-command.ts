@@ -6,7 +6,13 @@ import type { LoadedProject } from '../core/parser.js'
 import { planCommand, type ResearchCommand } from '../core/commands.js'
 import type { HashFn } from '../core/revision.js'
 import { MANIFEST_FILE, MANAGED_PATHS, type ResearchManifest } from '../core/schema.js'
-import type { FsPort, SubprocessPort } from './contracts.js'
+import type {
+  FsPort,
+  SandboxExecutionPolicy,
+  SandboxPolicyPort,
+  SessionPort,
+  SubprocessPort,
+} from './contracts.js'
 import {
   checkpointMessage,
   gitCheckpoint,
@@ -39,6 +45,7 @@ export type SciForkFailureCode =
   | 'INVALID_IMPORT_DRAFT'
   | 'STALE_REVISION'
   | 'STALE_TARGET'
+  | 'WRITE_DENIED'
   | 'READ_ONLY_CONFLICT'
   | 'GIT_UNAVAILABLE'
   | 'GIT_STATE_UNSUPPORTED'
@@ -57,6 +64,10 @@ export interface ResearchHostDeps {
   fs: FsPort
   subprocess: SubprocessPort
   hash: HashFn
+}
+
+export interface ResearchMutationDeps extends ResearchHostDeps {
+  sandboxPolicy: SandboxPolicyPort
 }
 
 export interface ProjectContext {
@@ -79,6 +90,48 @@ function fail(
   return entityId !== undefined
     ? { ok: false, code, message, recoverable, entityId }
     : { ok: false, code, message, recoverable }
+}
+
+const WRITE_DENIED_MESSAGE = 'the current DSH file policy does not permit this project mutation'
+
+type MutationPolicyResult =
+  | { ok: true; sessionCwd: string; policy: SandboxExecutionPolicy }
+  | SciForkFailure
+
+function resolveMutationPolicy(
+  deps: ResearchMutationDeps,
+  session: SessionPort | undefined,
+): MutationPolicyResult {
+  const sessionCwd = session?.header.cwd
+  if (session === undefined || typeof sessionCwd !== 'string' || sessionCwd.length === 0) {
+    return fail('SESSION_UNAVAILABLE', 'the session has no working directory', false)
+  }
+  let policy: SandboxExecutionPolicy
+  try {
+    policy = deps.sandboxPolicy.resolve({ session })
+  } catch {
+    return fail('WRITE_DENIED', 'the current DSH file policy could not be resolved', false)
+  }
+  if (policy.mode === 'read-only') return fail('WRITE_DENIED', WRITE_DENIED_MESSAGE)
+  return { ok: true, sessionCwd, policy }
+}
+
+async function authorizeProjectRoot(
+  fs: FsPort,
+  policy: SandboxExecutionPolicy,
+  projectRoot: string,
+  signal?: AbortSignal,
+): Promise<SciForkFailure | undefined> {
+  if (policy.mode !== 'workspace-write') return undefined
+  try {
+    const options = signal !== undefined ? { signal } : {}
+    const workspaceTarget = await fs.resolve(policy.workspaceRoot, options)
+    const projectTarget = await fs.resolve(projectRoot, options)
+    if (fs.contains(workspaceTarget, projectTarget)) return undefined
+  } catch {
+    // Resolution failures deny the mutation without exposing either path.
+  }
+  return fail('WRITE_DENIED', WRITE_DENIED_MESSAGE)
 }
 
 function sameManagedFiles(
@@ -133,7 +186,7 @@ export async function loadProjectState(
 }
 
 export interface ApplyCommandInput {
-  sessionCwd: string | undefined
+  session: SessionPort | undefined
   command: ResearchCommand
   expectedProjectRevision: string
   signal?: AbortSignal
@@ -145,15 +198,20 @@ export type ApplyOutcome =
 
 /** Apply one typed command: exactly one entity file mutation plus one checkpoint. */
 export async function applyCommand(
-  deps: ResearchHostDeps,
+  deps: ResearchMutationDeps,
   input: ApplyCommandInput,
 ): Promise<ApplyOutcome> {
+  const mutationPolicy = resolveMutationPolicy(deps, input.session)
+  if (!mutationPolicy.ok) return mutationPolicy
+
   const located = await locateProject(
     { fs: deps.fs, gitToplevel: (cwd, sig) => gitShowToplevel(deps.subprocess, cwd, sig) },
-    input.sessionCwd,
+    mutationPolicy.sessionCwd,
     input.signal,
   )
   if (!located.ok) return fail(located.code, located.message, false)
+  const denied = await authorizeProjectRoot(deps.fs, mutationPolicy.policy, located.root, input.signal)
+  if (denied !== undefined) return denied
 
   return queue.run(located.root, async (): Promise<ApplyOutcome> => {
     let snapshot
@@ -196,10 +254,14 @@ export async function applyCommand(
           plan.path,
           plan.content,
           plan.writeKind,
+          mutationPolicy.policy,
           input.signal,
           snapshot.versions.get(plan.path),
         )
     if (!mutated.ok) {
+      if (mutated.code === 'WRITE_DENIED') {
+        return fail('WRITE_DENIED', WRITE_DENIED_MESSAGE, true, plan.entityId)
+      }
       return fail(mutated.code, 'the target file changed or could not be removed; re-read the graph before applying', true, plan.entityId)
     }
 
@@ -269,13 +331,13 @@ export async function applyCommand(
   })
 }
 
-export interface InitProjectDeps extends ResearchHostDeps {
+export interface InitProjectDeps extends ResearchMutationDeps {
   /** Directory creation seam; defaults to node:fs mkdir for the four dirs. */
   mkdirs?(root: string): void
 }
 
 export interface InitProjectInput {
-  sessionCwd: string | undefined
+  session: SessionPort | undefined
   signal?: AbortSignal
 }
 
@@ -303,14 +365,19 @@ export async function initProject(
   deps: InitProjectDeps,
   input: InitProjectInput,
 ): Promise<InitOutcome> {
+  const mutationPolicy = resolveMutationPolicy(deps, input.session)
+  if (!mutationPolicy.ok) return mutationPolicy
+
   const check = await canInitProject(
     { fs: deps.fs, gitToplevel: (cwd, sig) => gitShowToplevel(deps.subprocess, cwd, sig) },
-    input.sessionCwd,
+    mutationPolicy.sessionCwd,
     input.signal,
   )
   if (!check.ok) return fail(check.code, check.message, false)
 
   const root = check.root
+  const denied = await authorizeProjectRoot(deps.fs, mutationPolicy.policy, root, input.signal)
+  if (denied !== undefined) return denied
   const topLevel = await gitShowToplevel(deps.subprocess, root, input.signal)
   if (topLevel === undefined && !(await gitInit(deps.subprocess, root, input.signal))) {
     return fail('GIT_UNAVAILABLE', 'git init failed', false)
@@ -339,9 +406,13 @@ export async function initProject(
     MANIFEST_FILE,
     manifestContent,
     'create',
+    mutationPolicy.policy,
     input.signal,
   )
-  if (!written.ok) return fail('INVALID_ENTITY', 'research.json could not be written', false)
+  if (!written.ok) {
+    if (written.code === 'WRITE_DENIED') return fail('WRITE_DENIED', WRITE_DENIED_MESSAGE)
+    return fail('INVALID_ENTITY', 'research.json could not be written', false)
+  }
 
   let initSnapshot
   try {

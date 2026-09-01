@@ -165,7 +165,34 @@ interface SubprocessSpawnSpec {
 `/scifork/api/spike` 的 200 结果证明真实 DSH subprocess 的
 resolve/spawn/collect 路径已被行使；响应不包含本地路径。
 
-### 7. 补充钉住（后续里程碑直接使用）
+### 7. Session-scoped filesystem policy
+
+`dsh-sandbox-policy/lib/types/index.d.ts`、
+`dsh-sandbox/lib/types/index.d.ts` 与
+`dsh-fs-sandbox/lib/types/index.d.ts`：
+
+```ts
+type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+interface SandboxExecutionPolicy {
+  mode: SandboxMode
+  workspaceRoot: string
+  sessionId?: SessionId
+}
+interface SandboxPolicyService {
+  resolve(request?: { session?: Session }): SandboxExecutionPolicy
+}
+writeText(target, content, expected?, signal?, sandboxPolicy?): Promise<FsWriteOutcome>
+```
+
+- 服务名为 `ctx.sandboxPolicy`；Host 把 `sandboxPolicy` 声明为硬依赖并通过
+  `ctx.get('sandboxPolicy')` 取得。
+- mutation 以实际调用 Session 执行 `resolve({ session })`，使该 Session 的 mode 与
+  immutable cwd 一起成为逐调用 policy；不带 policy 的 filesystem write 会回退到
+  DSH 进程 workspace。
+- 完整 policy 作为 `ctx.fs.writeText` 第五个参数传入。SciFork 不请求 escalation、
+  不追加 mode override，也不修改 Session 的 policy。
+
+### 8. 补充钉住（后续里程碑直接使用）
 
 - `dsh.client` 声明：`package.json#dsh.client` 接受 `platform`（必填 string）、
   `inject`/`external`（可选 string[]）、`immediately`（可选 boolean）；仅

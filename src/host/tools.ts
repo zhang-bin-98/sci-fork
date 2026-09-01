@@ -7,9 +7,10 @@ import {
   applyCommand,
   loadProjectState,
   type ResearchHostDeps,
+  type ResearchMutationDeps,
   type SciForkFailure,
 } from './apply-command.js'
-import type { ContentBlock, StorageDomain, ToolsPort, ToolDefinition, ToolRunContext } from './contracts.js'
+import type { ContentBlock, SessionPort, StorageDomain, ToolsPort, ToolDefinition, ToolRunContext } from './contracts.js'
 import { boundedLabel } from './labels.js'
 import { readFocus, writeFocus, type FocusRecord } from './ui-state.js'
 
@@ -20,19 +21,21 @@ import { readFocus, writeFocus, type FocusRecord } from './ui-state.js'
  * exec.signal and returns lossless JSON.
  */
 
-export interface ResearchToolsDeps extends ResearchHostDeps {
+export interface ResearchToolsDeps extends ResearchMutationDeps {
   tools: ToolsPort
   storage: StorageDomain
 }
 
 interface ToolExecInfo {
   sessionId: string | undefined
+  session: SessionPort | undefined
   sessionCwd: string | undefined
 }
 
 function execInfo(exec: ToolRunContext): ToolExecInfo {
   return {
     sessionId: exec.agent?.id,
+    session: exec.agent?.session,
     sessionCwd: exec.agent?.session?.header?.cwd,
   }
 }
@@ -525,7 +528,7 @@ const APPLY_PARAMETERS = {
 }
 
 async function executeApply(
-  deps: ResearchHostDeps,
+  deps: ResearchMutationDeps,
   args: Record<string, unknown>,
   exec: ToolRunContext,
 ): Promise<Record<string, unknown>> {
@@ -541,7 +544,7 @@ async function executeApply(
   }
   const expectedProjectRevision = typeof args['expectedProjectRevision'] === 'string' ? args['expectedProjectRevision'] : ''
   const result = await applyCommand(deps, {
-    sessionCwd: info.sessionCwd,
+    session: info.session,
     command: parsed.value,
     expectedProjectRevision,
     signal: exec.signal,
@@ -630,7 +633,7 @@ function readTool(deps: ResearchToolsDeps): ToolDefinition {
   }
 }
 
-function applyTool(deps: ResearchHostDeps): ToolDefinition {
+function applyTool(deps: ResearchMutationDeps): ToolDefinition {
   return {
     name: 'research_graph_apply',
     description:

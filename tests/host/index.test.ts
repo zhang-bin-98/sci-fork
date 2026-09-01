@@ -64,6 +64,9 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
   const storageDomain = new FakeStorageDomainPort()
   const tools = new FakeToolsPort()
   const commands = new FakeCommandsPort()
+  const sandboxPolicy = {
+    resolve: () => ({ mode: 'workspace-write' as const, workspaceRoot: '/proj', sessionId: 's1' }),
+  }
   const sessionsById = new Map<string, SessionPort>([
     ['s1', { id: 's1', header: { cwd: '/proj' } }],
   ])
@@ -83,6 +86,7 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
         if (key === 'tools') return tools
         if (key === 'commands') return commands
         if (key === 'sessions') return sessions
+        if (key === 'sandboxPolicy') return sandboxPolicy
         return undefined
       },
       on(name: string, listener: (session: SessionPort) => void) {
@@ -115,7 +119,7 @@ describe('host apply', () => {
     expect(name).toBe('scifork')
   })
 
-  it('declares the eight host services as hard dependencies', () => {
+  it('declares the nine host services as hard dependencies', () => {
     expect([...inject]).toEqual([
       'skills',
       'webServer',
@@ -125,6 +129,7 @@ describe('host apply', () => {
       'tools',
       'commands',
       'sessions',
+      'sandboxPolicy',
     ])
   })
 

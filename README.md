@@ -89,7 +89,7 @@ first-party bundle; it does not depend on another DSH plugin.
 - A loopback DSH Web server (`127.0.0.1`)
 
 Use the Web profile rather than a base-only profile: SciFork needs DSH's Web,
-filesystem, tools, storage, session, and subprocess services.
+filesystem, sandbox policy, tools, storage, session, and subprocess services.
 
 ### From a GitHub Release
 

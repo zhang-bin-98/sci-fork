@@ -74,7 +74,7 @@ DSH 插件。
 - 监听 `127.0.0.1` 的 loopback DSH Web 服务
 
 请使用 Web profile，而不是只有基础服务的 base-only profile；SciFork 需要 DSH 的
-Web、filesystem、tools、storage、session 和 subprocess 服务。
+Web、filesystem、sandbox policy、tools、storage、session 和 subprocess 服务。
 
 ### 安装 GitHub Release
 
