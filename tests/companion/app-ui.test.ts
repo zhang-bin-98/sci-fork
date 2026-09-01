@@ -5,6 +5,7 @@ import {
   CompanionApp,
   DetailsPane,
   EntityNodeCard,
+  EvidenceVisibilityControl,
   HeaderIdentity,
   ResearchExpansionRecoveryControls,
   copyEntityId,
@@ -263,7 +264,35 @@ describe('Companion graph UI', () => {
     expect(actionClasses).not.toContain('bg-sf-accent')
     expect(actionClasses).not.toContain('text-white')
     expect(actionClasses).not.toContain('shadow-sm')
-    expect(html).toContain('Show evidence')
+    expect(html).toContain('All evidence')
+  })
+
+  it('exposes hidden, focused-node, and all Evidence display modes', () => {
+    const html = renderToStaticMarkup(
+      createElement(EvidenceVisibilityControl, {
+        visibility: 'hidden',
+        focusedNodeId: ENTITY_ID,
+        onChange: () => undefined,
+      }),
+    )
+
+    expect(html).toContain('data-evidence-visibility-control="true"')
+    expect(html).toContain('data-evidence-visibility="hidden"')
+    expect(html).toContain('data-evidence-visibility="focused-node"')
+    expect(html).toContain('data-evidence-visibility="all"')
+    expect(html).toContain('aria-label="Focus evidence"')
+    expect(html).not.toContain('title="Focus a Node to show its evidence"')
+
+    const disabledHtml = renderToStaticMarkup(
+      createElement(EvidenceVisibilityControl, {
+        visibility: 'hidden',
+        focusedNodeId: undefined,
+        onChange: () => undefined,
+      }),
+    )
+    expect(disabledHtml).toContain('aria-label="Focus evidence"')
+    expect(disabledHtml).toContain('disabled=""')
+    expect(disabledHtml).toContain('title="Focus a Node to show its evidence"')
   })
 
   it('shows grouped machine-reviewed and retrieval-only literature in Node Details', () => {

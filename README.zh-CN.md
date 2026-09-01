@@ -142,8 +142,8 @@ dsh --profile web --dump-config
 2. 提出开放式问题。`scifork-research` 会将其记录为 Research Question，并保留
    明确的范围假设。
 3. 使用 `pubmed-search`（或其他检索/PDF Skill）取得真实来源材料，再加载
-   `scifork-research` 格式化并校验导入 Draft。
-4. 在 Companion 查看图谱。Evidence 默认隐藏，需要时打开 **Show evidence**。
+   `scifork-research` 格式化并校验导入 Draft。只有保存合格 Evidence 后才创建 Hypothesis。
+4. 在 Companion 查看图谱。Evidence 默认隐藏，可切换为当前 Focus Node 的 Evidence 或全部 Evidence。
 5. 选中问题或主张并点击 **Research & Expand**，执行一次有界的文献优先扩展。
    Chat 正在运行时请求会排队，空闲时会立即开始。多层探索必须在 DSH Chat 中明确
    请求 Progressive Research Run。
