@@ -81,7 +81,7 @@ export type ProjectionEntitySummary =
 export interface ProjectionEdgeSummary {
   from: string
   to: string
-  relation: Relation | 'addresses'
+  relation: Relation | 'frames'
   source: 'edge' | 'framing_link' | 'evidence_ref'
   id?: string
   basis?: EdgeBasis
@@ -128,7 +128,7 @@ export type EntityDocument =
       question: string
       scopeAssumptions: string[]
       body: string
-      addressedEntityIds: string[]
+      framedEntityIds: string[]
       publicationCount: number
       machineReviewedEvidenceCount: number
       humanReviewedEvidenceCount: number
@@ -138,7 +138,7 @@ export type EntityDocument =
       type: 'framing_link'
       from: string
       to: string
-      relation: 'addresses'
+      relation: 'frames'
     }
   | {
       id: string

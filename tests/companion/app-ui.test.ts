@@ -85,7 +85,7 @@ const questionEntity = {
   question: 'What drives treatment resistance?',
   scopeAssumptions: ['solid tumors'],
   body: 'Open framing note.',
-  addressedEntityIds: [ENTITY_ID],
+  framedEntityIds: [ENTITY_ID],
   publicationCount: 2,
   machineReviewedEvidenceCount: 1,
   humanReviewedEvidenceCount: 1,
@@ -315,7 +315,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain('DOI 10.1000/second')
   })
 
-  it('shows a Research Question scope, coverage, and addressed entity ids', () => {
+  it('shows a Research Question scope, coverage, and framed entity ids', () => {
     const html = renderToStaticMarkup(
       createElement(DetailsPane, {
         entity: questionEntity,
@@ -328,7 +328,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain('RESEARCH QUESTION')
     expect(html).toContain('What drives treatment resistance?')
     expect(html).toContain('solid tumors')
-    expect(html).toContain('Addressed by: 1')
+    expect(html).toContain('Frames: 1')
     expect(html).toContain(ENTITY_ID)
     expect(html).toContain('2 publications · 1 machine-reviewed · 1 human-reviewed')
   })

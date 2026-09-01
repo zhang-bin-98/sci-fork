@@ -84,12 +84,12 @@ relationship between the question and its candidate answers.
 ### Framing Link
 
 A Framing Link is a standalone `qlink_<uuid>` entity with the single relation
-`addresses`. Its source is a Hypothesis or Finding and its target is a Research
-Question. It carries no basis, evidence reference, confidence, provenance, or
+`frames`. Its source is a Research Question and its target is a Hypothesis or
+Finding. It carries no basis, evidence reference, confidence, provenance, or
 Evidence Gap and never participates in Finding support or publication counts.
 
-Predictions do not directly address a Question; they remain testable consequences
-of a Finding or Hypothesis. A Framing Link is deleted before deleting its source
+Predictions do not directly belong to a Question; they remain testable consequences
+of a Finding or Hypothesis. A Framing Link is deleted before deleting its target
 Hypothesis. Research Questions and Findings are not physically deleted by MVP
 commands.
 
@@ -169,7 +169,7 @@ Node and stored scientific Edge Details include a Literature section grouped by:
 
 Each Evidence row shows the Citation Snapshot, PMID/DOI, assertion, locator,
 direction, limitations, machine-review rationale when present, and review state.
-Question Details show scope assumptions, addressed Hypotheses/Findings, aggregate
+Question Details show scope assumptions, framed Hypotheses/Findings, aggregate
 publication coverage, and review-state counts; those aggregates do not imply that
 the Question itself is evidence-supported.
 
@@ -214,7 +214,7 @@ control and must be disclosed to the user.
 - `basis: literature` continues to require at least one human-reviewed Evidence
   Assertion; machine-reviewed Evidence remains on `ai_inference` Edges.
 - Framing Links are not included in directional scientific-neighbor reads unless
-  a Question is the requested Focus; Question reads return addressed entities
+  a Question is the requested Focus; Question reads return framed entities
   separately from scientific neighbors.
 - Companion and API remain same-origin, loopback-only, Page-Key scoped, and free
   of automatic external requests. PubMed links require a real user click.
@@ -228,7 +228,7 @@ control and must be disclosed to the user.
       Finding-threshold, evidence-visibility, and retention terminology.
 - [x] An open-ended inquiry can be persisted as a Research Question, selected as
       Focus, read through public tools, and used as the first expansion anchor.
-- [x] Hypotheses/Findings can address a Question through non-scientific Framing
+- [x] Questions can frame Hypotheses/Findings through non-scientific Framing
       Links; invalid endpoints, duplicate ids, and dependent deletion are guarded.
 - [x] Core parses, validates, projects, creates, updates, and checkpoints Question
       and Framing Link files without adding Node confidence or scientific basis.
@@ -267,7 +267,7 @@ control and must be disclosed to the user.
 - Exercise create/update/delete commands for Questions and Framing Links plus
   create/review Evidence transitions and single-entity path planning.
 - Verify projections distinguish Questions, Framing Links, scientific Edges, and
-  optional Evidence visibility without treating `addresses` as scientific.
+  optional Evidence visibility without treating `frames` as scientific.
 
 ### Host and Git
 
@@ -276,7 +276,7 @@ control and must be disclosed to the user.
   behavior.
 - Extend tool schemas and entity/neighborhood operations for Questions and
   Framing Links without adding public tool names.
-- Verify Question Focus and addressed-entity reads while preserving directional
+- Verify Question Focus and framed-entity reads while preserving directional
   scientific-neighbor behavior.
 
 ### Companion and Bridge
@@ -306,7 +306,7 @@ control and must be disclosed to the user.
    and run one `Research & Expand` step.
 2. Verify PubMed search/lookup precedes mutation, at least one real abstract-backed
    machine-reviewed Evidence Assertion precedes every retained Hypothesis, and
-   each branch addresses the Question.
+   each branch frames the Question's scope.
 3. Run a bounded multi-level Progressive Research Run without per-item review and
    verify no Finding is created from machine-reviewed Evidence.
 4. Accept one Evidence Assertion, reject another, delete one affected branch, and

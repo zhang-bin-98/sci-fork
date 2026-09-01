@@ -560,10 +560,10 @@ function QuestionDetails(props: { entity: Extract<EntityDocument, { type: 'quest
     <article className="m-0 grid gap-3 p-5 text-sm leading-6">
       <h1 className="m-0 text-xl font-semibold">{entity.question}</h1>
       {entity.scopeAssumptions.length === 0 ? null : <p className="m-0">Scope: {entity.scopeAssumptions.join('; ')}</p>}
-      <p className="m-0">Addressed by: {entity.addressedEntityIds.length}</p>
-      {entity.addressedEntityIds.length === 0 ? null : (
+      <p className="m-0">Frames: {entity.framedEntityIds.length}</p>
+      {entity.framedEntityIds.length === 0 ? null : (
         <ul className="m-0 pl-5">
-          {entity.addressedEntityIds.map((id) => <li key={id}><code>{id}</code></li>)}
+          {entity.framedEntityIds.map((id) => <li key={id}><code>{id}</code></li>)}
         </ul>
       )}
       <p className="m-0">{formatEvidenceCounts(entity.publicationCount, entity.machineReviewedEvidenceCount, entity.humanReviewedEvidenceCount)}</p>

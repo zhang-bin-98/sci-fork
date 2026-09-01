@@ -51,7 +51,7 @@ function questionFile(id: string): [string, string] {
 }
 
 function framingLinkFile(id: string, from: string, to: string): [string, string] {
-  return [`question-links/${id}.json`, JSON.stringify({ id, from, to, relation: 'addresses' })]
+  return [`question-links/${id}.json`, JSON.stringify({ id, from, to, relation: 'frames' })]
 }
 
 function nodeFile(id: string, kind: string, refs: string): [string, string] {
@@ -200,16 +200,16 @@ describe('validateProject', () => {
     const valid = build([
       questionFile(question),
       nodeFile(NODE, 'hypothesis', ''),
-      framingLinkFile(link, NODE, question),
+      framingLinkFile(link, question, NODE),
     ])
     expect(valid.diagnostics).toEqual([])
 
-    const invalidSource = build([
+    const invalidTarget = build([
       questionFile(question),
       nodeFile(NODE, 'prediction', ''),
-      framingLinkFile(link, NODE, question),
+      framingLinkFile(link, question, NODE),
     ])
-    expect(invalidSource.diagnostics.some((d) => d.code === 'invalid_framing_source')).toBe(true)
+    expect(invalidTarget.diagnostics.some((d) => d.code === 'invalid_framing_target')).toBe(true)
   })
 
   it('flags role/direction mismatches and context references', () => {

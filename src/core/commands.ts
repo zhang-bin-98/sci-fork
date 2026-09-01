@@ -160,8 +160,8 @@ export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('create_framing_link'),
       id: z.string().regex(FRAMING_LINK_ID_RE, 'must be a qlink_<uuid> id'),
-      from: z.string().regex(NODE_ID_RE, 'must be a node_<uuid> id'),
-      to: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
+      from: z.string().regex(QUESTION_ID_RE, 'must be a question_<uuid> id'),
+      to: z.string().regex(NODE_ID_RE, 'must be a node_<uuid> id'),
     })
     .strict(),
   z
@@ -559,7 +559,7 @@ function planCreateFramingLink(
     id: command.id,
     from: command.from,
     to: command.to,
-    relation: 'addresses',
+    relation: 'frames',
   }
   const parsed = FRAMING_LINK_FILE_SCHEMA.safeParse(data)
   if (!parsed.success) {
@@ -893,7 +893,7 @@ function planDeleteNode(
       ),
     )
   }
-  const framing = [...project.framingLinks.values()].filter((link) => link.from === command.id)
+  const framing = [...project.framingLinks.values()].filter((link) => link.to === command.id)
   if (framing.length > 0) {
     issues.push(
       commandIssue(

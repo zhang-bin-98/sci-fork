@@ -143,9 +143,9 @@ const QUESTION_FILE = [
 
 const FRAMING_LINK_FILE = JSON.stringify({
   id: FRAMING_LINK,
-  from: NODE,
-  to: QUESTION,
-  relation: 'addresses',
+  from: QUESTION,
+  to: NODE,
+  relation: 'frames',
 })
 
 function healthyGit(statusOutput = '') {
@@ -357,19 +357,19 @@ describe('research_graph_read', () => {
       entity: {
         type: 'question',
         question: 'What drives treatment resistance?',
-        addressedEntities: [{ linkId: FRAMING_LINK, entityId: NODE }],
+        framedEntities: [{ linkId: FRAMING_LINK, entityId: NODE }],
       },
       fileVersion: sha256(QUESTION_FILE),
     })
     const questionNeighbors = await read.execute(
-      { operation: 'neighbors', entityId: QUESTION, direction: 'incoming' },
+      { operation: 'neighbors', entityId: QUESTION, direction: 'outgoing' },
       execFor(),
     )
     expect(questionNeighbors).toMatchObject({
       ok: true,
       neighbors: [{
-        direction: 'incoming',
-        edge: { id: FRAMING_LINK, relation: 'addresses', source: 'framing_link' },
+        direction: 'outgoing',
+        edge: { id: FRAMING_LINK, relation: 'frames', source: 'framing_link' },
         entity: { id: NODE, type: 'node' },
       }],
     })
@@ -381,7 +381,7 @@ describe('research_graph_read', () => {
     expect(JSON.stringify(nodeNeighbors)).not.toContain(FRAMING_LINK)
     await expect(read.execute({ operation: 'entity', entityId: FRAMING_LINK }, execFor())).resolves.toMatchObject({
       ok: true,
-      entity: { type: 'framing_link', from: NODE, to: QUESTION, relation: 'addresses' },
+      entity: { type: 'framing_link', from: QUESTION, to: NODE, relation: 'frames' },
     })
   })
 

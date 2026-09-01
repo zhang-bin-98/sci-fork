@@ -110,8 +110,8 @@ function questionLiteratureInputs(project: LoadedProject, questionId: string): L
   const evidenceRefs: EvidenceRef[] = []
   const publicationRefs: PublicationReference[] = []
   for (const link of project.framingLinks.values()) {
-    if (link.to !== questionId) continue
-    const inputs = nodeLiteratureInputs(project, link.from)
+    if (link.from !== questionId) continue
+    const inputs = nodeLiteratureInputs(project, link.to)
     evidenceRefs.push(...inputs.evidenceRefs)
     publicationRefs.push(...inputs.publicationRefs)
   }
@@ -249,9 +249,9 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
   if (type === 'question') {
     const question = project.questions.get(entityId)
     if (question === undefined) return undefined
-    const addressedEntityIds = [...project.framingLinks.values()]
-      .filter((link) => link.to === entityId)
-      .map((link) => link.from)
+    const framedEntityIds = [...project.framingLinks.values()]
+      .filter((link) => link.from === entityId)
+      .map((link) => link.to)
       .sort()
     const counts = referenceCounts(project, questionLiteratureInputs(project, entityId))
     return {
@@ -260,7 +260,7 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
       question: question.question,
       scopeAssumptions: question.scope_assumptions ?? [],
       body: question.body,
-      addressedEntityIds,
+      framedEntityIds,
       publicationCount: counts.publicationCount,
       machineReviewedEvidenceCount: counts.machineReviewedEvidenceCount,
       humanReviewedEvidenceCount: counts.humanReviewedEvidenceCount,

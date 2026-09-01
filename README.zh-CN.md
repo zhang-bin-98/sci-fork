@@ -37,7 +37,7 @@ SciFork 在其旁边打开同源 Graph Companion，把普通 Research Project �
 
 ```text
 Research Question
-       | addresses（Framing Link）
+       | frames（Framing Link）
        v
 Hypothesis ---- supports / contradicts ----> Finding
        ^                                      ^
@@ -48,7 +48,7 @@ Prediction                                      ^
 ```
 
 开放式询问是 **Research Question**，不是未经验证的 Hypothesis。研究团队的观察是
-**Result**，与解释分开。**Framing Link** 只表示某个主张试图回答某个问题，不是
+**Result**，与解释分开。**Framing Link** 表示一个问题把主张纳入其研究范围，不是
 科学 Edge。Publication identity 直接保存在 Evidence 中，SciFork 不创建 Publication
 或 Source 节点。Machine-reviewed Evidence 仍是临时探索依据，不能满足 Finding 或
 文献 Edge 的门槛。完整术语见 [CONTEXT.md](CONTEXT.md)。

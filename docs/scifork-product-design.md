@@ -24,7 +24,7 @@ MVP 边界：
 - 页面只有一套响应式布局；窄窗口适合悬放，宽窗口适合系统分屏。
 - 浏览器不承诺系统级“始终置顶”，悬浮和并列由操作系统窗口管理。
 - SciFork 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件。
-- 开放式研究目标先保存为 Research Question，不伪装成 Hypothesis；Hypothesis 或 Finding 通过非科学关系的 Framing Link 表示它回答哪个 Question。
+- 开放式研究目标先保存为 Research Question，不伪装成 Hypothesis；Research Question 通过非科学关系的 Framing Link (`frames`) 连接其范围内的 Hypothesis 或 Finding。
 - 点击 `Research & Expand` 后，提示自动提交到对应 DSH Chat；Chat 空闲时立即开始，运行中则进入 Queue。一次真实点击只授权以当前 Focus 为锚点、先检索、自动提取 machine-reviewed Evidence、再保存的单层 Research Expansion Step，最多保留五条直接相连的低置信分支。
 - 多轮 Progressive Research Run 只能由用户在当前 DSH Chat 中明确请求；按钮、页面和已保存节点都不能自动递归。
 - SciFork 只保留一个统一的 `SciFork Research` Skill；PubMed 是独立、可替换的通用检索 Skill。
@@ -169,7 +169,7 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 → 从真实 abstract 或用户提供的有界 PDF 段落提取并自动审核 Evidence Assertion
 → 生成最多五条不重复、可解释且有 machine-reviewed Evidence 的直接扩展分支
 → 普通 Focus：以低置信 Hypothesis/Prediction + 明确科学 Edge 保存
-→ Question Focus：以低置信 Hypothesis + addresses Framing Link 保存，不伪造科学 Edge
+→ Question Focus：以低置信 Hypothesis + frames Framing Link 保存，不伪造科学 Edge
 ```
 
 自动运行只能由真实用户点击触发，不能由页面加载、轮询、模型输出或后台事件触发。
@@ -207,8 +207,8 @@ Companion 只读渲染受管 Markdown。禁用 raw HTML、脚本和自动远程�
 
 ### Framing Link
 
-从 Hypothesis 或 Finding 指向 Research Question 的独立 `addresses` 关系。它只表达某个
-主张试图回答哪个问题，不携带 basis、evidence、provenance、confidence 或 Evidence Gap，
+从 Research Question 指向 Hypothesis 或 Finding 的独立 `frames` 关系。它只表达某个
+问题把主张纳入其研究范围，不携带 basis、evidence、provenance、confidence 或 Evidence Gap，
 不参与 Finding 门槛或文献计数，也不是科学 Edge。
 
 ### Evidence Assertion
@@ -340,9 +340,9 @@ Framing Link：
 ```json
 {
   "id": "qlink_<uuid>",
-  "from": "node_<uuid>",
-  "to": "question_<uuid>",
-  "relation": "addresses"
+  "from": "question_<uuid>",
+  "to": "node_<uuid>",
+  "relation": "frames"
 }
 ```
 
@@ -462,7 +462,7 @@ MVP 只发布一个 SciFork 专用的 `SciFork Research` Skill：
 
 - **Retrieval guidance**：根据 Focus 建议检索式和需要补齐的信息。
 - **Import formatting**：把当前 Chat 中的检索或 PDF 解析结果格式化为 Research Import Draft。
-- **Question framing**：识别开放式输入，保存 Research Question，并用 Framing Link 连接其候选答案。
+- **Question framing**：识别开放式输入，保存 Research Question，并用 `frames` Framing Link 连接其候选答案。
 - **Research expansion step**：读取 Focus/方向邻居，先完成检索，从真实 abstract/PDF
   段落提取 machine-reviewed Evidence，再生成最多五条不重复的直接分支；普通 Focus
   保存低置信 Node + 科学 Edge，Question Focus 保存低置信 Hypothesis + Framing Link。
@@ -670,8 +670,8 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 - `Research & Expand` 使用暖白底、绿色文字的反色样式，而不是绿色实心按钮。
 - Graph、文件、Focus 和 DSH Chat context 一致。
 - 点击 Research & Expand 后对应 Chat 自动开始；运行中正确进入 Queue。
-- 开放式输入能保存为 Research Question；Hypothesis/Finding 通过独立 `addresses`
-  Framing Link 回答它，Question 不携带 confidence 且 Framing Link 不参与科学支持。
+- 开放式输入能保存为 Research Question；Question 通过独立 `frames` Framing Link
+连接 Hypothesis/Finding，Question 不携带 confidence 且 Framing Link 不参与科学支持。
 - 一次点击先检索真实 abstract/PDF 文字、保存 machine-reviewed Evidence，再最多保存五条
   直接低置信 Hypothesis/Prediction；普通 Focus 使用明确科学 Edge，Question Focus 使用
   Framing Link，不移动 Focus 且不会自动递归。

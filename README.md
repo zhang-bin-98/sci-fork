@@ -47,7 +47,7 @@ relationships easy to inspect:
 
 ```text
 Research Question
-       | addresses (framing link)
+       | frames (framing link)
        v
 Hypothesis ---- supports / contradicts ----> Finding
        ^                                      ^
@@ -60,7 +60,8 @@ Prediction                             reviewed Evidence
 
 An open inquiry is a **Research Question**, not an unqualified hypothesis.
 Research-team observations are **Results**, separate from their
-interpretation. A **Framing Link** says that a claim addresses a question; it is
+interpretation. A **Framing Link** says that a question frames a claim in its
+scope; it is
 not a scientific edge. Publication identity stays directly on Evidence; SciFork
 does not create a Publication or Source node. Machine-reviewed Evidence is
 provisional and cannot satisfy a Finding or literature-edge threshold. See
