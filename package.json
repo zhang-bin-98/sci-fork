@@ -15,6 +15,8 @@
     "skills/",
     "cordis.patch.yml",
     "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
     "SECURITY.md",
     "CONTEXT.md",
     "docs/scifork-product-design.md",
@@ -34,7 +36,7 @@
     "research-graph",
     "biomedicine"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },

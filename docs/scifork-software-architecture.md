@@ -82,6 +82,9 @@ DSH 仍是快速变化的预览接口。发布必须锁定精确 DSH commit 或 
 ```text
 SciFork/
 ├── .github/workflows/release.yml
+├── LICENSE
+├── README.md
+├── README.zh-CN.md
 ├── package.json
 ├── cordis.patch.yml
 ├── index.js
@@ -154,7 +157,7 @@ SciFork/
 
 这些目录是源码边界，不是独立 package。根 `package.json` 是唯一依赖图、构建入口和发布单元。
 
-Release 只交付一个预构建 `dsh-scifork-<version>.tgz` 及其 SHA-256 checksum。GitHub Actions 只接受默认分支提交上的精确 `v<package.json version>` tag，并在完整检查、dry-run 清单与真实 archive 内容验证通过后创建不可覆盖的 GitHub Release；GitHub 仓库必须另设 active `v*` tag ruleset，将 tag 创建、更新、删除和 bypass 限于 release maintainers，因为 tag-push workflow 来自 tagged commit，workflow 自身校验不能替代服务端权限边界。发布过程先创建 draft、上传两个资产，再发布；失败时只在 GitHub 明确返回仍为 draft 时尝试删除，而不删除 tag，未知或已发布状态保留供检查。它不修改版本、创建 tag、发布 npm 或隐式运行 DSH E2E。tarball 包含 Host、Bridge、Companion assets、`SciFork Research` 与 `pubmed-search` 两个 Skill、README 和许可证，不包含 `workspace:*` 或第三方 DSH 插件依赖。许可证未由项目所有者明确选择或许可证文件缺失时，发布必须失败。
+Release 只交付一个预构建 `dsh-scifork-<version>.tgz` 及其 SHA-256 checksum。GitHub Actions 只接受默认分支提交上的精确 `v<package.json version>` tag，并在完整检查、dry-run 清单与真实 archive 内容验证通过后创建不可覆盖的 GitHub Release；GitHub 仓库必须另设 active `v*` tag ruleset，将 tag 创建、更新、删除和 bypass 限于 release maintainers，因为 tag-push workflow 来自 tagged commit，workflow 自身校验不能替代服务端权限边界。发布过程先创建 draft、上传两个资产，再发布；失败时只在 GitHub 明确返回仍为 draft 时尝试删除，而不删除 tag，未知或已发布状态保留供检查。它不修改版本、创建 tag、发布 npm 或隐式运行 DSH E2E。tarball 包含 Host、Bridge、Companion assets、`SciFork Research` 与 `pubmed-search` 两个 Skill、英文和中文版 README 以及 MIT 许可证，不包含 `workspace:*` 或第三方 DSH 插件依赖。软件代码使用 MIT；Research Project 数据的所有权和共享许可由项目所有者决定。
 
 ## 5. Research Project 格式
 

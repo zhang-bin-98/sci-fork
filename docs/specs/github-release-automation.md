@@ -1,7 +1,6 @@
 # GitHub Release Automation
 
-> Status: implemented; public release remains blocked until the
-> project owner selects a license.
+> Status: implemented; the package license identifier is `MIT`.
 
 ## Problem
 
@@ -17,8 +16,8 @@ Goals:
 - Build and verify the package from a version tag on GitHub-hosted runners.
 - Require the tag to match `package.json#version` and originate from the default
   branch.
-- Refuse public release while the package is `UNLICENSED`, lacks a packaged
-  license file, or contains a `workspace:*` dependency specifier.
+- Require a selected license identifier, a packaged license file, and no
+  `workspace:*` dependency specifier before a public release.
 - Publish exactly one prebuilt `.tgz` plus its SHA-256 checksum to a GitHub
   Release using least-privilege repository permissions.
 - Generate release notes from GitHub history and mark SemVer prereleases as
@@ -26,7 +25,7 @@ Goals:
 
 Non-goals:
 
-- Selecting a project license.
+- Selecting a license for Research Project data.
 - Changing `package.json#version`, creating or pushing a tag, or pushing any
   branch.
 - Publishing to npm or another package registry.
@@ -41,7 +40,8 @@ rules that GitHub's glob syntax cannot express:
 
 1. The tag is exactly `v${package.json.version}` and the version is SemVer.
 2. The tagged commit is an ancestor of the repository's default branch.
-3. `package.json#license` is neither empty nor `UNLICENSED`.
+3. `package.json#license` is neither empty nor `UNLICENSED` (the current value
+   is `MIT`).
 4. A non-empty `LICENSE`, `LICENSE.md`, or `LICENSE.txt` exists at the package
    root.
 5. No dependency field contains a `workspace:*` specifier.
@@ -92,7 +92,7 @@ draft is an error and is never replaced automatically.
   dependencies, tags outside the default branch, and tags moved after packaging
   fail before publication.
 - The published `.tgz` passes the existing package-manifest gate and a check of
-  its real archive contents.
+  its real archive contents, including both language README files and `LICENSE`.
 - The checksum file names the tarball and contains its SHA-256 digest.
 - The GitHub Release contains one `.tgz` and its checksum and uses generated
   release notes.
@@ -107,8 +107,8 @@ draft is an error and is never replaced automatically.
   draft/upload/publish sequence.
 - Run `pnpm check`, `node --check index.js`, `pnpm verify:pack`, and
   `git diff --check` locally.
-- Exercise the current repository preflight and confirm it fails specifically
-  because the owner has not yet selected and added a license.
-- The first real GitHub execution is a version-tag release after the license
-  decision; the pinned DSH exercise remains a separate, explicitly approved
+- Exercise the current repository preflight and confirm that the selected MIT
+  metadata and non-empty `LICENSE` pass its license gate.
+- The first real GitHub execution is a version-tag release after the commit is
+  merged; the pinned DSH exercise remains a separate, explicitly approved
   release gate.

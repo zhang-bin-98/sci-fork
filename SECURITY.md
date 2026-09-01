@@ -35,7 +35,9 @@ branch, or remote operations.
 Review whether a project contains PHI, PII, or controlled-access data before
 committing. Git sharing, remote hosting, and repository permissions are the
 user's responsibility. SciFork never uploads research data automatically and
-does not choose a project license.
+does not choose a license for Research Project data. The SciFork software in
+this repository is distributed under the MIT License; project data may have
+separate ownership and sharing terms.
 
 ## Skills and model output
 
@@ -81,6 +83,8 @@ The bundle is pinned to the public DSH `0.1.1-rc.2` contracts recorded in the
 M0 compatibility spike. Install the released prebuilt tarball only after
 checking its file list and the sibling `.sha256` file. From a directory
 containing both downloads, run `sha256sum -c dsh-scifork-<version>.tgz.sha256`.
+On Windows PowerShell, compare the first field in that file with
+`(Get-FileHash dsh-scifork-<version>.tgz -Algorithm SHA256).Hash`.
 Before upgrading, keep a Git checkpoint and verify the Research Project with
 `/research validate`. Uninstalling the bundle leaves ordinary project files and
 DSH Sessions readable; history recovery remains a DSH/user operation.

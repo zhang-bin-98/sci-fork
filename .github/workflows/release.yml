@@ -99,6 +99,8 @@ jobs:
             package/index.js
             package/cordis.patch.yml
             package/README.md
+            package/README.zh-CN.md
+            package/LICENSE
             package/dist/host/index.js
             package/dist/client.js
             package/dist/companion/index.html
