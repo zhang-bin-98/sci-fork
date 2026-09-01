@@ -1,7 +1,7 @@
 import {
   initProject,
   loadProjectState,
-  type ResearchHostDeps,
+  type ResearchMutationDeps,
 } from './apply-command.js'
 import type { CommandInvocation, CommandResult, CommandsPort } from './contracts.js'
 
@@ -11,23 +11,20 @@ import type { CommandInvocation, CommandResult, CommandsPort } from './contracts
  * invoking session's cwd; results never include local absolute paths.
  */
 
-export interface ResearchCommandsDeps extends ResearchHostDeps {
+export interface ResearchCommandsDeps extends ResearchMutationDeps {
   commands: CommandsPort
   mkdirs?(root: string): void
 }
 
 const USAGE = 'usage: /research init | open | validate'
 
-function invocationCwd(invocation: CommandInvocation): string | undefined {
-  return invocation.agent?.session?.header?.cwd
-}
-
 async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation): Promise<CommandResult> {
   const subcommand = invocation.rawInput.trim()
-  const sessionCwd = invocationCwd(invocation)
+  const session = invocation.agent?.session
+  const sessionCwd = session?.header.cwd
 
   if (subcommand === 'init') {
-    const result = await initProject(deps, { sessionCwd, signal: invocation.signal })
+    const result = await initProject(deps, { session, signal: invocation.signal })
     if (!result.ok) {
       return { kind: 'error', text: `${result.code}: ${result.message}` }
     }

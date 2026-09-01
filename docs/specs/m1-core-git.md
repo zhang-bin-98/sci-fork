@@ -96,13 +96,19 @@ resolve(path, { cwd }?): Promise<FsTarget>     // targetKey 不透明；processP
 stat(target): Promise<FsInfo | undefined>       // { version, type: 'file'|'directory'|'other', size? }
 listDir(target): Promise<FsDirEntry[]>          // 稳定名称序，只读元数据
 readText(target): Promise<string>
-writeText(target, content, expected?: { kind:'createIfAbsent' } | { kind:'replaceIfVersion'; version }): Promise<FsWriteOutcome>
+writeText(target, content, expected?, signal?, sandboxPolicy?): Promise<FsWriteOutcome>
 contains(parent, child): boolean
 ```
 
 - 所有项目文件内容读写经 `ctx.fs`（受 DSH 观察/沙箱策略约束），不使用裸
   `node:fs` 读写文件内容；仅 init 时用 `node:fs` mkdir 物化四个空目录。
+- mutation 必须从当前公开 DSH Session 解析完整 `sandboxPolicy` 并作为逐调用参数
+  传给 `writeText`；`read-only` 或项目根位于 Session workspace root 之外时，必须在
+  任何文件、目录或 Git mutation 前返回 `WRITE_DENIED`。详见
+  [Session-scoped filesystem writes](session-scoped-filesystem-writes.md)。
 - `FsError` 码 `FS_STALE_VERSION`/`FS_NOT_OBSERVED` 映射为 `STALE_TARGET`。
+- `FS_SANDBOX_DENIED`/`FS_PERMISSION_DENIED` 映射为 `WRITE_DENIED`，不得误报为
+  `INVALID_ENTITY` 或泄露绝对路径。
 - 无 delete/rename 能力；M1 不据此引入 Git 补偿删除或恢复路径。后续经批准的
   [bounded simulation branches](simulation-branches.md) 只为 Core 派生的单个
   Edge/Hypothesis/Prediction 路径增加 argv-only `git rm`，不改变检查点失败时由
@@ -386,7 +392,10 @@ interface ProjectionEdge {
 ### Mutation 流水线（apply-command.ts，research_graph_apply 与 ImportDraftItem 共用）
 
 ```text
-定位项目（cwd 来自 exec.agent）
+从 exec.agent 的真实 Session 解析 sandbox policy；缺失 Session/cwd 或 read-only
+→ SESSION_UNAVAILABLE / WRITE_DENIED
+→ 定位项目（cwd 只来自 session.header.cwd）
+→ workspace-write 要求项目根位于 policy workspace root 内；越界 → WRITE_DENIED
 → 读取全部受管文件（ctx.fs listDir + readText）
 → parse + validate：诊断非空 → INVALID_ENTITY（只读）
 → expectedProjectRevision 校验 → STALE_REVISION
@@ -394,7 +403,7 @@ interface ProjectionEdge {
   全仓库 `ls-files -u` 无未合并、受管路径 status --porcelain 为空）
   → GIT_STATE_UNSUPPORTED / READ_ONLY_CONFLICT
 → Core parseCommand / planCommand → INVALID_ENTITY
-→ ctx.fs writeText（createIfAbsent / replaceIfVersion + fileVersion 双保险）
+→ ctx.fs writeText（createIfAbsent / replaceIfVersion + fileVersion 双保险 + per-call policy）
 → 重读全部受管文件并要求等于“初始快照 + plan.path 新内容”（不等则返回 STALE_REVISION 诊断，不做破坏性回滚）
 → create/update: git add -- <plan.path>; deletion: retain the exact-path git rm staging
 → git commit --only <plan.path> -m "scifork: <kind> <entityId>"
@@ -437,7 +446,7 @@ focus: key `<sessionId>:<projectId>` → { focusEntityId: string, pathIds: strin
 
 `PROJECT_NOT_INITIALIZED`、`PROJECT_REPOSITORY_MISMATCH`、
 `UNSUPPORTED_SCHEMA_VERSION`、`INVALID_ENTITY`、`INVALID_IMPORT_DRAFT`、
-`STALE_REVISION`、`STALE_TARGET`、`READ_ONLY_CONFLICT`、`GIT_UNAVAILABLE`、
+`STALE_REVISION`、`STALE_TARGET`、`WRITE_DENIED`、`READ_ONLY_CONFLICT`、`GIT_UNAVAILABLE`、
 `GIT_STATE_UNSUPPORTED`、`CHECKPOINT_FAILED`、`SESSION_UNAVAILABLE`。
 payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page Key、
 本地绝对路径或科研正文。

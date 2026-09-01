@@ -142,6 +142,18 @@ export type FsWriteIntent =
   | { kind: 'createIfAbsent' }
   | { kind: 'replaceIfVersion'; version: unknown }
 
+export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+export interface SandboxExecutionPolicy {
+  readonly mode: SandboxMode
+  readonly workspaceRoot: string
+  readonly sessionId?: string
+}
+
+export interface SandboxPolicyPort {
+  resolve(request?: { readonly session?: SessionPort }): SandboxExecutionPolicy
+}
+
 export interface FsWriteOutcome {
   readonly operation: 'create' | 'update'
   readonly version: unknown
@@ -160,6 +172,7 @@ export interface FsPort {
     content: string,
     expected?: FsWriteIntent,
     signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsWriteOutcome>
   contains(parent: FsTarget, child: FsTarget): boolean
 }
@@ -190,7 +203,7 @@ export interface ToolOutputDefinition {
 export interface ToolRunContext {
   readonly agent?: {
     readonly id?: string
-    readonly session?: { readonly header?: { readonly cwd?: string } }
+    readonly session?: SessionPort
   }
   readonly signal: AbortSignal
 }
@@ -250,7 +263,7 @@ export interface StorageDomainPort {
 export interface CommandInvocation {
   readonly agent?: {
     readonly id?: string
-    readonly session?: { readonly header?: { readonly cwd?: string } }
+    readonly session?: SessionPort
   }
   readonly rawInput: string
   readonly signal: AbortSignal

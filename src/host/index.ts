@@ -4,6 +4,7 @@ import { dirname } from 'node:path'
 import type {
   CommandsPort,
   FsPort,
+  SandboxPolicyPort,
   SessionLifecyclePort,
   SessionsPort,
   SkillsPort,
@@ -24,7 +25,7 @@ import { sciforkRoutes } from './web-routes.js'
 export const name = 'scifork'
 
 /**
- * Hard dependencies: Cordis waits for all eight services before applying the
+ * Hard dependencies: Cordis waits for all nine services before applying the
  * fiber (and re-applies after service updates). The SciFork bundle targets
  * the DSH Web profile, which provides all of them.
  */
@@ -37,6 +38,7 @@ export const inject = [
   'tools',
   'commands',
   'sessions',
+  'sandboxPolicy',
 ] as const
 
 const sha256 = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex')
@@ -47,7 +49,7 @@ const sha256 = (content: string): string => createHash('sha256').update(content,
  * its own effect disposer.
  */
 export async function apply(ctx: Context): Promise<void> {
-  // inject guarantees all eight services exist before activation.
+  // inject guarantees all nine services exist before activation.
   const skills = ctx.get('skills') as SkillsPort
   const webServer = ctx.get('webServer') as WebServerPort
   const subprocess = ctx.get('subprocess') as SubprocessPort
@@ -56,6 +58,7 @@ export async function apply(ctx: Context): Promise<void> {
   const tools = ctx.get('tools') as ToolsPort
   const commands = ctx.get('commands') as CommandsPort
   const sessions = ctx.get('sessions') as SessionsPort
+  const sandboxPolicy = ctx.get('sandboxPolicy') as SandboxPolicyPort
   if (webServer.host !== '127.0.0.1') {
     throw new Error('scifork: DSH Web must listen on 127.0.0.1')
   }
@@ -74,6 +77,7 @@ export async function apply(ctx: Context): Promise<void> {
   })
 
   const researchDeps = { fs, subprocess, hash: sha256 }
+  const researchMutationDeps = { ...researchDeps, sandboxPolicy }
   const pageKeys = new PageKeyStore()
   ctx.effect(() => () => pageKeys.clear())
   const sessionLifecycle = ctx as unknown as SessionLifecyclePort
@@ -86,6 +90,6 @@ export async function apply(ctx: Context): Promise<void> {
     ctx.effect(() => webServer.register(route))
   }
 
-  ctx.effect(() => registerResearchTools({ ...researchDeps, storage, tools }))
-  ctx.effect(() => registerResearchCommands({ ...researchDeps, commands }))
+  ctx.effect(() => registerResearchTools({ ...researchMutationDeps, storage, tools }))
+  ctx.effect(() => registerResearchCommands({ ...researchMutationDeps, commands }))
 }

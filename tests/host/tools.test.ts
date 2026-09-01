@@ -173,12 +173,13 @@ async function host(
     subprocess,
     storage: await storage.open(uiStateDomainSpec()),
     hash: sha256,
+    sandboxPolicy: { resolve: () => ({ mode: 'danger-full-access', workspaceRoot: '/' }) },
   }
 }
 
 function execFor(cwd = '/proj'): ToolRunContext {
   return {
-    agent: { id: 'session-1', session: { header: { cwd } } },
+    agent: { id: 'session-1', session: { id: 'session-1', header: { cwd } } },
     signal: new AbortController().signal,
   }
 }

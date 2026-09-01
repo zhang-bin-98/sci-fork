@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { registerResearchCommands } from '../../src/host/commands.js'
-import type { ResearchHostDeps } from '../../src/host/apply-command.js'
+import type { ResearchMutationDeps } from '../../src/host/apply-command.js'
 import { FakeCommandsPort, FakeFs, scriptedGit } from './fakes.js'
 import type { CommandInvocation } from '../../src/host/contracts.js'
 
@@ -30,11 +30,12 @@ function initGit() {
 async function registered(entries: Record<string, string> = {}) {
   const fs = new FakeFs(entries)
   const commands = new FakeCommandsPort()
-  const deps: ResearchHostDeps & { commands: FakeCommandsPort; mkdirs?: (root: string) => void } = {
+  const deps: ResearchMutationDeps & { commands: FakeCommandsPort; mkdirs?: (root: string) => void } = {
     fs,
     subprocess: initGit(),
     hash: sha256,
     commands,
+    sandboxPolicy: { resolve: () => ({ mode: 'danger-full-access', workspaceRoot: '/' }) },
   }
   const dispose = registerResearchCommands(deps)
   return { fs, commands, dispose, deps }
@@ -42,7 +43,7 @@ async function registered(entries: Record<string, string> = {}) {
 
 function invocation(cwd: string | undefined, rawInput: string): CommandInvocation {
   return {
-    ...(cwd !== undefined ? { agent: { id: 's', session: { header: { cwd } } } } : {}),
+    ...(cwd !== undefined ? { agent: { id: 's', session: { id: 's', header: { cwd } } } } : {}),
     rawInput,
     signal: new AbortController().signal,
   }

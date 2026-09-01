@@ -1,5 +1,11 @@
 import { MANIFEST_FILE, MANAGED_PATHS } from '../core/schema.js'
-import { isFsStaleError, type FsDirEntry, type FsPort, type FsTarget } from './contracts.js'
+import {
+  isFsStaleError,
+  type FsDirEntry,
+  type FsPort,
+  type FsTarget,
+  type SandboxExecutionPolicy,
+} from './contracts.js'
 
 /** Managed-file access through the DSH filesystem service. */
 
@@ -15,6 +21,11 @@ function errorCode(error: unknown): unknown {
 function isNotFoundError(error: unknown): boolean {
   const code = errorCode(error)
   return code === 'FS_NOT_FOUND' || code === 'ENOENT' || code === 'NOT_FOUND'
+}
+
+function isFsWriteDeniedError(error: unknown): boolean {
+  const code = errorCode(error)
+  return code === 'FS_SANDBOX_DENIED' || code === 'FS_PERMISSION_DENIED'
 }
 
 function managedPathError(message: string): Error {
@@ -75,7 +86,7 @@ export async function readManagedFileSnapshot(fs: FsPort, root: string, signal?:
 }
 
 export interface WriteManagedResult { ok: true }
-export interface WriteManagedFailure { ok: false; code: 'STALE_TARGET' | 'INVALID_ENTITY' }
+export interface WriteManagedFailure { ok: false; code: 'STALE_TARGET' | 'WRITE_DENIED' | 'INVALID_ENTITY' }
 
 const NO_EXPECTED_VERSION = Symbol('no expected filesystem version')
 
@@ -85,6 +96,7 @@ export async function writeManagedFile(
   relativePath: string,
   content: string,
   writeKind: 'create' | 'update',
+  sandboxPolicy: SandboxExecutionPolicy,
   signal?: AbortSignal,
   expectedVersion: unknown = NO_EXPECTED_VERSION,
 ): Promise<WriteManagedResult | WriteManagedFailure> {
@@ -94,15 +106,16 @@ export async function writeManagedFile(
     if (!fs.contains(rootTarget, fileTarget)) return { ok: false, code: 'INVALID_ENTITY' }
     if (writeKind === 'create') {
       if (await fs.stat(fileTarget, signal) !== undefined) return { ok: false, code: 'STALE_TARGET' }
-      await fs.writeText(fileTarget, content, { kind: 'createIfAbsent' }, signal)
+      await fs.writeText(fileTarget, content, { kind: 'createIfAbsent' }, signal, sandboxPolicy)
       return { ok: true }
     }
     const version = expectedVersion === NO_EXPECTED_VERSION ? (await fs.stat(fileTarget, signal))?.version : expectedVersion
     if (version === undefined) return { ok: false, code: 'STALE_TARGET' }
-    await fs.writeText(fileTarget, content, { kind: 'replaceIfVersion', version }, signal)
+    await fs.writeText(fileTarget, content, { kind: 'replaceIfVersion', version }, signal, sandboxPolicy)
     return { ok: true }
   } catch (error) {
     if (isFsStaleError(error)) return { ok: false, code: 'STALE_TARGET' }
+    if (isFsWriteDeniedError(error)) return { ok: false, code: 'WRITE_DENIED' }
     return { ok: false, code: 'INVALID_ENTITY' }
   }
 }

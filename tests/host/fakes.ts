@@ -135,8 +135,15 @@ export class FakeFs implements FsPort {
     target: FsTarget,
     content: string,
     expected?: FsWriteIntent,
+    _signal?: AbortSignal,
+    sandboxPolicy?: unknown,
   ): Promise<FsWriteOutcome> {
+    this.writeCalls.push({ path: target.displayPath, sandboxPolicy })
     this.onBeforeWrite?.(target.displayPath)
+    const failureCode = this.failWriteCodes.get(target.displayPath)
+    if (failureCode !== undefined) {
+      return Promise.reject(Object.assign(new Error('guarded write failed'), { code: failureCode }))
+    }
     const existing = this.files.get(target.displayPath)
     if (expected?.kind === 'createIfAbsent' && existing !== undefined) {
       return Promise.reject(Object.assign(new Error('already exists'), { code: 'FS_NOT_OBSERVED' }))
@@ -154,6 +161,12 @@ export class FakeFs implements FsPort {
 
   /** Hook run synchronously before every guarded write (race simulation). */
   onBeforeWrite?: (path: string) => void
+
+  /** Per-call sandbox policies observed by guarded writes. */
+  readonly writeCalls: Array<{ path: string; sandboxPolicy: unknown }> = []
+
+  /** Paths whose guarded write should fail with the configured filesystem code. */
+  readonly failWriteCodes = new Map<string, string>()
 
   /** Hook run before a read, used to model an external edit during a pipeline. */
   onBeforeReadText?: (path: string) => void
