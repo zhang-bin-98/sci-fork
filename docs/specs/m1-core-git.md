@@ -7,7 +7,7 @@
 
 ## Problem
 
-M0 只证明了 bundle 可装载、路由可注册、两个 Skill 可发现、Simulate 可走公开
+M0 只证明了 bundle 可装载、路由可注册、两个 Skill 可发现、用户点击可走公开
 input 事务，以及 argv-only Git probe 可用。Core 目录仍然为空，SciFork 还不
 存在任何科研实体、文件格式、校验规则或检查点行为。M1 必须实现架构 §5/§6/§7/§11
 的 Core 与 Git 层，并钉住实现所需的 DSH 契约（tools、storageDomain、fs、
@@ -26,7 +26,7 @@ commands），使 M2 Companion 与 M3 Research 可以直接消费。
 
 ## Non-goals
 
-- 不实现 Companion 页面、Page Key、Companion API、Simulate BroadcastChannel
+- 不实现 Companion 页面、Page Key、Companion API、Research Expansion BroadcastChannel
   （M2）。
 - 不实现 `SciFork Research` / `pubmed-search` 的 Draft 格式化与检索逻辑（M3）。
 - 不实现 import 的预览 UI；M1 只实现 `ImportDraftItem` 命令与校验。
@@ -109,8 +109,7 @@ contains(parent, child): boolean
 - `FsError` 码 `FS_STALE_VERSION`/`FS_NOT_OBSERVED` 映射为 `STALE_TARGET`。
 - `FS_SANDBOX_DENIED`/`FS_PERMISSION_DENIED` 映射为 `WRITE_DENIED`，不得误报为
   `INVALID_ENTITY` 或泄露绝对路径。
-- 无 delete/rename 能力；M1 不据此引入 Git 补偿删除或恢复路径。后续经批准的
-  [bounded simulation branches](simulation-branches.md) 只为 Core 派生的单个
+- 无 delete/rename 能力；研究扩展只为 Core 派生的单个
   Edge/Hypothesis/Prediction 路径增加 argv-only `git rm`，不改变检查点失败时由
   DSH Chat 或用户处理的恢复边界。
 
@@ -167,12 +166,12 @@ locator:                    # 二选一
   # 或 kind: pdf; page?: 1..99999; section?: 1..500 字符（二者至少其一）
 assertion: "<1..4000 字符>"
 direction: supports | contradicts | context
-review_status: candidate | machine_reviewed | reviewed | rejected
+review_status: machine_reviewed | reviewed | rejected
 limitations:               # 可选，≤20 条，每条 ≤500 字符
 ```
 
 - 正文可选；`assertion` 即人类可读断言。
-- 新建路径统一落为 `machine_reviewed`；`candidate` 仅兼容已有项目。状态机：candidate → machine_reviewed | reviewed | rejected；machine_reviewed → reviewed | rejected；reviewed → rejected；rejected 终态。
+- 新建路径统一落为 `machine_reviewed`。状态机：machine_reviewed → reviewed | rejected；reviewed → rejected；rejected 终态。
 
 ### Node（nodes/node_<uuid>.md，front matter + 必填正文）
 
@@ -284,8 +283,8 @@ interface ResearchProject {
 
 | kind | 载荷（必填/可选） | 规则 |
 | --- | --- | --- |
-| `create_evidence_assertion` | id、publicationRef?、locator、assertion、direction、citation、machineReviewRationale、limitations?、body? | 落盘 `review_status` 强制 machine_reviewed；id 不存在 |
-| `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: machine_reviewed\|reviewed\|rejected、limitations? | 按状态机转移 |
+| `create_evidence_assertion` | id、publicationRef?、locator、assertion、direction、citation、machineReviewRationale、limitations?、body? | 落盘 `review_status` 强制 machine_reviewed；命令不接受 reviewStatus；id 不存在 |
+| `review_evidence_assertion` | id、expectedFileVersion、reviewStatus: reviewed\|rejected、limitations? | 按状态机转移 |
 | `create_node` | id、nodeKind、confidence、evidenceRefs?、body | 创建 finding 须满足门槛 |
 | `update_node` | id、expectedFileVersion、nodeKind?、confidence?、evidenceRefs?、body?（至少一项） | 结果态满足门槛 |
 | `create_edge` | id、from、to、relation、basis、evidenceRefs?、publicationRefs?、provenance?、evidenceGap? | 端点存在；basis 规则 |
@@ -299,8 +298,7 @@ interface ResearchProject {
 - Create*：目标 id 必须不存在；文件写入用 `createIfAbsent` intent。
 - Update*/review：必须携带 `expectedFileVersion`（目标文件当前 SHA-256），
   不符 → `STALE_TARGET`。
-- Delete*：同样验证 `expectedFileVersion`，并只计划一个由 id 派生的现有路径；
-  Host 删除边界见 [simulation branches spec](simulation-branches.md)。
+- Delete*：同样验证 `expectedFileVersion`，并只计划一个由 id 派生的现有路径。
 - `planCommand(project, command)` 为 create/update 输出 `{ path, content }`，
   为 delete 输出 `{ path, writeKind: 'delete' }`；相对路径都由 Core 从实体 id
   构造（绝不接受调用方路径）。
@@ -376,7 +374,7 @@ interface ProjectionEdge {
 
 | 工具 | 参数 | 行为 |
 | --- | --- | --- |
-| `research_graph_read` | operation: summary\|focus\|entity\|neighborhood\|find\|checkpoint、entityId?、query?、limit?（1..50） | 只读；返回投影/实体/邻域（一层）/焦点/当前 Git 状态 |
+| `research_graph_read` | operation: summary\|focus\|entity\|neighbors\|find\|checkpoint、entityId?、direction?、query?、limit?（1..50） | 只读；返回投影/实体/方向邻居/焦点/当前 Git 状态 |
 | `research_graph_apply` | command（判别联合 JSON Schema 描述 + Core 校验）、expectedProjectRevision | mutation 流水线（见下） |
 | `research_graph_focus` | focusEntityId?: string \| null、pathIds?: string[]（≤32 项，每项必须存在） | 只写 focus sidecar，不写科研文件/Git |
 

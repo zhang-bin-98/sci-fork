@@ -1,7 +1,7 @@
-# SciFork 产品设计 v0.19
+# SciFork 产品设计 v0.20
 
 > 状态：Implemented（MVP baseline）
-> 日期：2026-08-31
+> 日期：2026-09-03
 
 ## 1. 产品结论
 
@@ -113,7 +113,7 @@ Hypothesis 为琥珀色、Prediction 为紫色、Evidence Assertion 显示为 `E
 颜色不是唯一语义载体。Node 卡片显示去重的 Publication 数，并分别显示
 machine-reviewed 与人工 reviewed Evidence 数；Framing Link 和 Question 本身不贡献文献
 计数。相关 Node 和已保存科学 Edge 的 Details 按人工 reviewed、machine-reviewed、
-candidate、rejected 以及仅检索引用分组展示文献来源，rejected 默认收起。
+rejected 以及仅检索引用分组展示文献来源，rejected 默认收起。
 
 Node 与 Result 的正文采用统一的 Markdown 摘要约定：正文第一段必须只有一句加粗的
 主张或观察摘要（`**一句摘要**`），后续段落再写解释、方法、限制、假设和证据细节。
@@ -244,8 +244,8 @@ rejected is terminal
 
 普通导入、一次获授权的 Research Expansion Step 与 Progressive Research Run 都从真实
 abstract/PDF 段落创建 `machine_reviewed` Evidence，并保存 title 与可选 journal/year 的
-Citation Snapshot 及机器审核理由。已有 `candidate` 仍可读取和审核，但正常创建与导入不再
-产生新 candidate。只有用户明确接受后才成为 `reviewed`；拒绝前必须先移除其活动引用，
+Citation Snapshot 及机器审核理由。`candidate` 只表示 Research Import Draft 中尚未持久化的
+Evidence Candidate，不是 Evidence review state。只有用户明确接受后才成为 `reviewed`；拒绝前必须先移除其活动引用，
 rejected Evidence 保留作审计记录。
 
 ### Result

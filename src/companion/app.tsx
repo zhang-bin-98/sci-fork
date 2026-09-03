@@ -103,10 +103,6 @@ function entityTypeClass(entity: EntityTypeCarrier): EntityVisualType {
   return entity.type === 'node' ? entity.kind : entity.type
 }
 
-export function formatReferenceCounts(referenceCount: number, reviewedCount: number): string {
-  return `${referenceCount} ${referenceCount === 1 ? 'ref' : 'refs'} (${reviewedCount} reviewed)`
-}
-
 export function formatEvidenceCounts(
   publicationCount: number,
   machineReviewedCount: number,
@@ -121,9 +117,9 @@ function entityMeta(entity: ProjectionEntitySummary): string {
       entity.confidence +
       ' confidence · ' +
       formatEvidenceCounts(
-        entity.publicationCount ?? entity.referenceCount,
-        entity.machineReviewedEvidenceCount ?? 0,
-        entity.humanReviewedEvidenceCount ?? entity.reviewedEvidenceCount,
+        entity.publicationCount,
+        entity.machineReviewedEvidenceCount,
+        entity.humanReviewedEvidenceCount,
       )
     )
   }
@@ -512,7 +508,6 @@ function LiteratureDetails(props: { literature: LiteratureProjection }): React.R
   const groups: Array<[string, LiteratureEvidenceItem[]]> = [
     ['Human-reviewed Evidence', props.literature.humanReviewed],
     ['Machine-reviewed Evidence', props.literature.machineReviewed],
-    ['Candidate Evidence', props.literature.candidate],
   ]
   return (
     <section className="grid gap-3" aria-label="Literature">
@@ -598,9 +593,9 @@ function entityEvidenceCountLabel(entity: EntityDocument): string | undefined {
   }
   if (entity.type !== 'node') return undefined
   return formatEvidenceCounts(
-    entity.publicationCount ?? entity.referenceCount,
-    entity.machineReviewedEvidenceCount ?? 0,
-    entity.humanReviewedEvidenceCount ?? entity.reviewedEvidenceCount,
+    entity.publicationCount,
+    entity.machineReviewedEvidenceCount,
+    entity.humanReviewedEvidenceCount,
   )
 }
 

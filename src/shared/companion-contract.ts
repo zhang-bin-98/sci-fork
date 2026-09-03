@@ -54,10 +54,6 @@ export type ProjectionEntitySummary =
       type: 'node'
       kind: NodeKind
       confidence: ConfidenceBand
-      /** @deprecated Use publicationCount. Retained for first-party bundle reload compatibility. */
-      referenceCount: number
-      /** @deprecated Use humanReviewedEvidenceCount. Retained for first-party bundle reload compatibility. */
-      reviewedEvidenceCount: number
       publicationCount: number
       machineReviewedEvidenceCount: number
       humanReviewedEvidenceCount: number
@@ -116,7 +112,6 @@ export interface LiteratureEvidenceItem {
 export interface LiteratureProjection {
   humanReviewed: LiteratureEvidenceItem[]
   machineReviewed: LiteratureEvidenceItem[]
-  candidate: LiteratureEvidenceItem[]
   rejected: LiteratureEvidenceItem[]
   retrievalOnly: PublicationReference[]
 }
@@ -146,13 +141,9 @@ export type EntityDocument =
       kind: NodeKind
       confidence: ConfidenceBand
       evidenceRefs: EvidenceRef[]
-      /** @deprecated Use publicationCount. Retained for first-party bundle reload compatibility. */
-      referenceCount: number
-      /** @deprecated Use humanReviewedEvidenceCount. Retained for first-party bundle reload compatibility. */
-      reviewedEvidenceCount: number
-      publicationCount?: number
-      machineReviewedEvidenceCount?: number
-      humanReviewedEvidenceCount?: number
+      publicationCount: number
+      machineReviewedEvidenceCount: number
+      humanReviewedEvidenceCount: number
       literature?: LiteratureProjection
       body: string
     }
@@ -210,9 +201,8 @@ export type SnapshotResponse = SnapshotSuccess | CompanionFailure
 export type EntityResponse = EntitySuccess | CompanionFailure
 export type FocusResponse = FocusSuccess | CompanionFailure
 
-/** Legacy v1 wire literals retained across first-party bundle reloads. */
-export const RESEARCH_EXPANSION_REQUEST_WIRE_TYPE = 'simulate' as const
-export const RESEARCH_EXPANSION_REJECTED_WIRE_CODE = 'SIMULATE_REJECTED' as const
+export const RESEARCH_EXPANSION_REQUEST_WIRE_TYPE = 'research_expansion' as const
+export const RESEARCH_EXPANSION_REJECTED_WIRE_CODE = 'RESEARCH_EXPANSION_REJECTED' as const
 
 export interface ResearchExpansionRequestMessage {
   type: typeof RESEARCH_EXPANSION_REQUEST_WIRE_TYPE

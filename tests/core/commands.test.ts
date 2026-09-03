@@ -156,6 +156,23 @@ describe('parseCommand', () => {
       kind: 'create_node', id: NODE, nodeKind: 'hypothesis', confidence: 'moderate', body: 'x', extra: 1,
     }).ok).toBe(false)
     expect(parseCommand({ kind: 'create_node', id: NODE, nodeKind: 'hypothesis', confidence: 'moderate' }).ok).toBe(false)
+    expect(parseCommand({
+      kind: 'create_evidence_assertion',
+      id: EV,
+      publicationRef: { pmid: '12345678' },
+      locator: { kind: 'pubmed_abstract' },
+      assertion: 'Claim.',
+      direction: 'supports',
+      reviewStatus: 'machine_reviewed',
+      citation: { title: 'A source article' },
+      machineReviewRationale: 'Checked.',
+    }).ok).toBe(false)
+    expect(parseCommand({
+      kind: 'review_evidence_assertion',
+      id: EV,
+      expectedFileVersion: 'a'.repeat(64),
+      reviewStatus: 'machine_reviewed',
+    }).ok).toBe(false)
   })
 
   it('rejects update commands without any change', () => {
@@ -232,7 +249,7 @@ describe('planCommand: create_evidence_assertion', () => {
   })
 
   it('rejects duplicate ids and missing publication refs', () => {
-    const project = build([evidenceFile(EV, 'candidate', 'supports')])
+    const project = build([evidenceFile(EV, 'reviewed', 'supports')])
     const duplicate = planCommand(project, {
       kind: 'create_evidence_assertion',
       id: EV,
@@ -262,7 +279,6 @@ describe('planCommand: create_evidence_assertion', () => {
       locator: { kind: 'pubmed_abstract' },
       assertion: 'The abstract directly supports the bounded claim.',
       direction: 'supports',
-      reviewStatus: 'machine_reviewed',
       citation: { title: 'A source article', journal: 'Bone', year: 2025 },
       machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
     }
@@ -279,10 +295,10 @@ describe('planCommand: create_evidence_assertion', () => {
 })
 
 describe('planCommand: review_evidence_assertion', () => {
-  const reviewed = () => build([evidenceFile(EV, 'candidate', 'supports')])
+  const machineReviewed = () => build([evidenceFile(EV, 'machine_reviewed', 'supports')])
 
   it('renders the reviewed state and enforces the state machine', () => {
-    const project = reviewed()
+    const project = machineReviewed()
     const version = versionOf(project.files, EV, 'evidence')
     const plan = planCommand(project, {
       kind: 'review_evidence_assertion',
@@ -309,7 +325,7 @@ describe('planCommand: review_evidence_assertion', () => {
   })
 
   it('rejects a stale expectedFileVersion', () => {
-    const project = reviewed()
+    const project = machineReviewed()
     const plan = planCommand(project, {
       kind: 'review_evidence_assertion',
       id: EV,
@@ -437,9 +453,9 @@ describe('planCommand: nodes', () => {
     expect(findingWithSupport.ok).toBe(true)
   })
 
-  it('rejects references to unreviewed evidence', () => {
+  it('rejects references to rejected evidence', () => {
     const project = build([
-      evidenceFile(EV, 'candidate', 'supports'),
+      evidenceFile(EV, 'rejected', 'supports'),
       nodeFile(NODE, 'hypothesis'),
     ])
     const plan = planCommand(project, {
@@ -906,7 +922,7 @@ describe('planCommand: import_draft_item', () => {
   })
 
   it('rejects duplicate target ids', () => {
-    const project = build([evidenceFile(EV, 'candidate', 'supports')])
+    const project = build([evidenceFile(EV, 'reviewed', 'supports')])
     const plan = planCommand(project, {
       kind: 'import_draft_item',
       id: EV,

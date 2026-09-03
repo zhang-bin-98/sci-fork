@@ -23,8 +23,6 @@ const summary = {
   type: 'node',
   kind: 'hypothesis',
   confidence: 'low',
-  referenceCount: 2,
-  reviewedEvidenceCount: 1,
   publicationCount: 2,
   machineReviewedEvidenceCount: 0,
   humanReviewedEvidenceCount: 1,
@@ -39,8 +37,6 @@ const entity = {
 
 const singularSummary = {
   ...summary,
-  referenceCount: 1,
-  reviewedEvidenceCount: 0,
   publicationCount: 1,
   machineReviewedEvidenceCount: 1,
   humanReviewedEvidenceCount: 0,
@@ -48,8 +44,6 @@ const singularSummary = {
 
 const singularEntity = {
   ...entity,
-  referenceCount: 1,
-  reviewedEvidenceCount: 0,
   publicationCount: 1,
   machineReviewedEvidenceCount: 1,
   humanReviewedEvidenceCount: 0,
@@ -74,7 +68,6 @@ const literatureEntity = {
       machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
       reviewStatus: 'machine_reviewed',
     }],
-    candidate: [],
     rejected: [],
     retrievalOnly: [{ doi: '10.1000/second' }],
   },

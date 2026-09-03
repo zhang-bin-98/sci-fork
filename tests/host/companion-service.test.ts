@@ -277,13 +277,15 @@ describe('CompanionService reads', () => {
     })
     if (!result.ok || result.graph === undefined) throw new Error('snapshot failed')
     expect(result.graph.entities).toHaveLength(3)
-    expect(result.graph.entities.find((entity) => entity.id === NODE)).toMatchObject({
+    const nodeSummary = result.graph.entities.find((entity) => entity.id === NODE)
+    expect(nodeSummary).toMatchObject({
       id: NODE,
       type: 'node',
       kind: 'hypothesis',
       label: 'STAT3 sustains resistant-cell proliferation',
-      referenceCount: 2,
-      reviewedEvidenceCount: 1,
+      publicationCount: 2,
+      machineReviewedEvidenceCount: 0,
+      humanReviewedEvidenceCount: 1,
     })
     expect(result.graph.edges.find((edge) => edge.id === EDGE)).toMatchObject({
       relation: 'supports',
@@ -341,8 +343,9 @@ describe('CompanionService reads', () => {
       entity: {
         id: NODE,
         type: 'node',
-        referenceCount: 2,
-        reviewedEvidenceCount: 1,
+        publicationCount: 2,
+        machineReviewedEvidenceCount: 0,
+        humanReviewedEvidenceCount: 1,
         body: expect.stringContaining('provisional'),
       },
     })

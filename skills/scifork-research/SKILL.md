@@ -163,7 +163,7 @@ When actual results are absent, stop without graph mutation.
    relationship. A title-only or metadata-only record never qualifies. Do not
    recurse. Focus remains unchanged.
 4. Before creating each dependent branch, call
-   `create_evidence_assertion` with `reviewStatus: machine_reviewed`. Supply the
+   `create_evidence_assertion`. Supply the
    exact PMID or normalized DOI, a precise entailed assertion, a
    `pubmed_abstract` or bounded PDF page/section locator, direction, preserved
    limitations, a minimal Citation Snapshot containing title and optional
@@ -264,7 +264,7 @@ When the user rejects a research expansion branch:
    first call `research_graph_read` with `operation: focus`. Use only the returned
    `focusEntityId`; if Focus is absent or `entityExists` is false, stop and ask the
    user to select a valid entity. Never infer an id from a visible label.
-2. Report the resolved target id, then read that entity, its neighborhood, and
+2. Report the resolved target id, then read that entity, its directional `neighbors`, and
    current Focus. Resolve the exact Node/Edge set the request names; do not
    silently include an ambiguous descendant.
 3. If an entity to remove is Focus or appears in its path, clear or move Focus

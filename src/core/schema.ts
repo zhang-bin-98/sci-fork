@@ -89,7 +89,7 @@ export const NON_EMPTY_BODY_SCHEMA = BODY_SCHEMA.refine((value) => value.trim().
 
 export type NodeKind = 'finding' | 'hypothesis' | 'prediction'
 export type ConfidenceBand = 'low' | 'moderate' | 'high'
-export type EvidenceReview = 'candidate' | 'machine_reviewed' | 'reviewed' | 'rejected'
+export type EvidenceReview = 'machine_reviewed' | 'reviewed' | 'rejected'
 export type ResultStatus = 'draft' | 'validated' | 'superseded'
 export type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with' | 'predicts'
 export type EdgeBasis = 'literature' | 'experiment' | 'ai_inference'
@@ -222,7 +222,7 @@ export const EVIDENCE_DATA_SCHEMA = z
     locator: LOCATOR_SCHEMA,
     assertion: z.string().min(1).max(ASSERTION_MAX),
     direction: z.enum(['supports', 'contradicts', 'context']),
-    review_status: z.enum(['candidate', 'machine_reviewed', 'reviewed', 'rejected']),
+    review_status: z.enum(['machine_reviewed', 'reviewed', 'rejected']),
     citation: CITATION_SNAPSHOT_SCHEMA.optional(),
     machine_review_rationale: z.string().min(1).max(MACHINE_REVIEW_RATIONALE_MAX).optional(),
     limitations: z

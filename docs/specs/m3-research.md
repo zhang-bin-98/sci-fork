@@ -1,10 +1,9 @@
 # SciFork M3: Research Skills and PubMed helper
 
-> Status: v0.0.1 implemented; release E2E passed on 2026-08-30
+> Status: v0.0.1 implemented; release E2E passed on 2026-08-30; interface cleanup updated on 2026-09-03
 > Parent design: [product design v0.11](../scifork-product-design.md) sections 7-9; [software architecture v0.12](../scifork-software-architecture.md) sections 10 and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
-> Expansion semantics: the historical bounded-simulation sections below are
-> superseded by [literature-grounded research expansion](progressive-research-expansion.md).
+> Expansion semantics: [literature-grounded research expansion](progressive-research-expansion.md).
 
 ## Problem
 
@@ -18,7 +17,7 @@ to bypass the Research Import Draft and automatic machine-review boundaries.
 1. Provide a deterministic PubMed helper for paged metadata search and PMID/DOI
    lookup using NCBI's JSON E-utilities.
 2. Publish complete `pubmed-search` and `scifork-research` Skill instructions
-   covering retrieval, Draft formatting, simulation, and critique.
+   covering retrieval, Draft formatting, Research Expansion, and critique.
 3. Keep retrieval results in Chat context and require the formatter Skill to
    produce the existing Core-validated `ResearchImportDraft`.
 4. Document loopback security, sensitive-data handling, compatibility, and the
@@ -106,17 +105,17 @@ when formatting or reasoning is needed. Skills never call each other. If
 `scifork-research` is loaded before real retrieval output exists, it waits for
 that context and does not fabricate a Draft.
 
-`scifork-research` may produce a `ResearchImportDraft` for automatic review, execute the
-approved [bounded simulation branch workflow](simulation-branches.md), or
+`scifork-research` may produce a `ResearchImportDraft` for automatic review, execute a
+bounded Research Expansion Step, or
 produce a critique. A Draft must use `formatterSkill:
 "scifork-research"`, preserve the actual retrieval Skill name, include a
 locator, Citation Snapshot, and machine-review rationale for every importable
 candidate, and never claim `review_status` or directly create a Finding, Edge,
 or Result. SciFork Core validates the complete Draft before qualifying items are
 persisted one at a time as `machine_reviewed`.
-The Draft restriction does not prevent a real `Simulate & Save` click from
-authorizing low-confidence Hypothesis/Prediction plus Edge commands under the
-separate bounded simulation contract.
+The Draft restriction does not prevent a real `Research & Expand` click from
+authorizing one bounded expansion step using low-confidence Hypothesis/Prediction
+plus typed relationship commands.
 
 ## Constraints and interfaces
 
@@ -140,7 +139,7 @@ separate bounded simulation contract.
       metadata batches over 200 IDs.
 - [x] PMID and DOI lookup normalize identifiers, return canonical URLs, and
       report not-found without fabricated data.
-- [x] Both packaged Skills contain complete retrieval/Draft/simulation/critique
+- [x] Both packaged Skills contain complete retrieval/Draft/Research Expansion/critique
       instructions and preserve the Core import boundary.
 - [x] Only `pubmed-search` exposes its package-owned directory as
       `resourceBase`; `helper.mjs` resolves from it without filesystem search or
@@ -208,5 +207,5 @@ no temporary absolute path or request artifact was written into the project.
   typed import command; identifier-free PDF candidates remain non-importable.
 - Disposable pinned DSH E2E is never run implicitly. The approved v0.0.1 release
   exercise covers Skill discovery/loading, real PubMed retrieval and lookup,
-  ordered Draft formatting/import, typed mutation, Focus, Simulate, restart,
+  ordered Draft formatting/import, typed mutation, Focus, Research Expansion, restart,
   and uninstall in an isolated profile and disposable Research Project.

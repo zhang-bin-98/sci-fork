@@ -6,27 +6,23 @@
 > Evidence layout, action completion, and the single progressive continuation
 > are refined by [Evidence layout, research lifecycle, and linear progression](evidence-layout-research-lifecycle-and-linear-progression.md).
 
-> Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31
+> Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31; interface cleanup updated on 2026-09-03
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.19](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
 > Historical baseline: the parent versions above describe the design snapshot
 > used for this expansion; current umbrella behavior is defined by product
-> design v0.19 and software architecture v0.20.
-> Refines: [bounded simulation branches](simulation-branches.md) and [ADR-0001](../adr/0001-llm-orchestrated-simulation-branches.md)
+> design v0.20 and software architecture v0.21.
 > Decision: [ADR-0002](../adr/0002-separate-step-expansion-from-progressive-research.md)
 
 ## Problem
 
-The implemented `Simulate & Save` action reasons from a prebuilt, depth-one Focus
-neighborhood and may save plausible branches without first retrieving related
-literature. That makes the action convenient but gives the model too little control
-over context selection and makes a speculative simulation look more authoritative
-than it is. It also conflates two different user intents: taking one deliberate
-step from the visible Focus and asking Chat to conduct a progressive, multi-round
-research investigation.
+Research expansion needs to choose current graph context and retrieve literature
+before it persists a branch. The product must also distinguish two user intents:
+taking one deliberate step from the visible Focus and asking Chat to conduct a
+progressive, multi-round research investigation.
 
 ## Goals
 
-1. Replace `Simulate & Save` with a predictable `Research & Expand` action that
+1. Provide a predictable `Research & Expand` action that
    performs one literature-grounded, one-hop Research Expansion Step.
 2. Let the model select fresh graph context through primitive directional-neighbor
    reads instead of embedding a fixed neighborhood body in the Companion prompt.
@@ -175,8 +171,7 @@ Node/Result endpoint. `direction` defaults to `both`. The result identifies the
 requested entity and returns each matching incident Edge together with a compact
 adjacent-entity card and whether that neighbor is incoming or outgoing. It does
 not inline adjacent entity bodies; the model uses the existing `entity` operation
-when full content is relevant. The existing `neighborhood` operation remains
-compatible, and `find` remains available for duplicate checks outside the
+when full content is relevant. `find` remains available for duplicate checks outside the
 traversed component.
 
 The interface uses incoming/outgoing rather than parent/child because Research
@@ -205,7 +200,7 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
 ## Acceptance criteria
 
 - [x] Product and architecture documents distinguish Research Expansion Step from
-      Progressive Research Run and no longer describe the button as simulation.
+      Progressive Research Run and describe the button only as Research Expansion.
 - [x] `CONTEXT.md` defines both terms without treating parent/child as a scientific
       relationship.
 - [x] The Companion action reads `Research & Expand` and its real click submits one
@@ -229,27 +224,6 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
 - [x] A disposable pinned-DSH E2E verifies one button step and one explicit
       Chat-authorized progressive run before release.
 
-### Historical verification record (2026-08-31)
-
-The counts below describe this feature checkpoint, not the current repository
-test inventory; current release gates come from `package.json` and `README.md`.
-
-- Automated Red/Green covered the prompt replacement, directional neighbors,
-  packaged Skill catalog/content, and empty-Focus lossless JSON regression.
-- At this feature checkpoint, final post-fix `pnpm check` passed 31 test files
-  and 318 tests.
-- The pinned disposable DSH `0.1.1-rc.2` profile reset the graph Edge-first,
-  preserved the legacy candidate Evidence Assertion, and verified an empty Focus as
-  lossless `{ "ok": true }`.
-- One real `Research & Expand` click returned `Started`, completed PubMed search
-  then PMID lookup, loaded `scifork-research`, read `neighbors` with direction
-  `both`, and retained three direct Node+Edge branches while Focus stayed unchanged.
-- One explicit two-level Progressive Research Run in the historical baseline
-  maintained `frontier` and `visited`, completed a fresh retrieval phase per
-  level, retained one connected branch per level, and stopped at the declared depth. Final state: seven Nodes,
-  six stored Edges, one legacy candidate Evidence Assertion, zero Results, and
-  unchanged Focus.
-
 ## Test plan
 
 ### Host/tool tests
@@ -261,7 +235,6 @@ test inventory; current release gates come from `package.json` and `README.md`.
 
 ### Companion/Bridge tests
 
-- Observe Red for the old label and neighborhood-heavy simulation prompt.
 - Verify the new label, Focus id/summary, literature-first objective, single-step
   authorization, zero-to-five direct branches, unchanged Focus, and no recursion.
 - Preserve idle, queued, nonce, Retry/Copy, and wrong-channel coverage.

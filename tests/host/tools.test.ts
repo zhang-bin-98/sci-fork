@@ -330,7 +330,7 @@ describe('research_graph_read', () => {
     expect(checkpoint).toEqual(JSON.parse(JSON.stringify(checkpoint)))
   })
 
-  it('returns entities and neighborhoods', async () => {
+  it('returns entities', async () => {
     const { byName } = await registered({
       '/proj/research.json': MANIFEST,
       [`/proj/nodes/${NODE}.md`]: NODE_FILE,
@@ -345,11 +345,6 @@ describe('research_graph_read', () => {
     })
     const missing = await read.execute({ operation: 'entity', entityId: `node_${UUID_B.replace('b', 'c')}` }, execFor())
     expect(missing).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
-    const neighborhood = await read.execute({ operation: 'neighborhood', entityId: NODE }, execFor())
-    expect(neighborhood).toMatchObject({ ok: true })
-    const edges = (neighborhood as { edges: unknown[] }).edges
-    expect(edges).toHaveLength(1)
-    expect(edges[0]).toMatchObject({ from: EV, to: NODE, source: 'evidence_ref' })
   })
 
   it('reads open Questions and keeps framing out of scientific Node neighborhoods', async () => {

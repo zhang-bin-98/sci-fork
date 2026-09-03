@@ -1,7 +1,7 @@
 # SciFork contextual Evidence view and question intake
 
 > Status: implemented on 2026-09-02
-> Parent design: product design v0.19 and software architecture v0.20
+> Parent design: product design v0.20 and software architecture v0.21
 
 ## Problem
 

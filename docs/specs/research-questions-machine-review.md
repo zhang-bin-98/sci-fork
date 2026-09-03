@@ -1,8 +1,8 @@
 # SciFork Research Questions and machine-reviewed evidence
 
-> Status: implemented on 2026-08-31
-> Parent design: [product design v0.19](../scifork-product-design.md) and
-> [software architecture v0.20](../scifork-software-architecture.md)
+> Status: implemented on 2026-08-31; interface cleanup updated on 2026-09-03
+> Parent design: [product design v0.20](../scifork-product-design.md) and
+> [software architecture v0.21](../scifork-software-architecture.md)
 > Refines: [literature-grounded research expansion](progressive-research-expansion.md)
 
 ## Problem
@@ -122,9 +122,9 @@ reviewed ---------------------------------> rejected
 rejected is terminal
 ```
 
-Existing `candidate` records remain readable and may still transition to
-`machine_reviewed`, `reviewed`, or `rejected`, but no normal creation or import
-path persists a new `candidate` record.
+`candidate` names a transient Evidence Candidate in a Research Import Draft and
+is not a persisted Evidence review state. Creation and import persist qualifying
+Evidence directly as `machine_reviewed`.
 
 `reviewed` continues to mean explicit human acceptance. `machine_reviewed`
 Evidence can ground low-confidence Hypotheses, Predictions, and `ai_inference`
@@ -163,7 +163,6 @@ Node and stored scientific Edge Details include a Literature section grouped by:
 
 - human-reviewed Evidence;
 - machine-reviewed Evidence;
-- candidate Evidence;
 - rejected Evidence, collapsed by default; and
 - retrieval-only Publication References that have no Evidence Assertion.
 
@@ -206,8 +205,8 @@ control and must be disclosed to the user.
   by Core and never supplied as filesystem paths.
 - Existing `reviewed` Evidence retains its meaning and remains valid; the
   additive `machine_reviewed` state does not require rewriting existing files.
-- Citation Snapshot fields are optional for existing/imported Evidence but are
-  required for newly created `machine_reviewed` Evidence.
+- Citation Snapshot and machine-review rationale are required when Evidence enters
+  the project as `machine_reviewed`; later review transitions preserve them.
 - Scientific `evidence_refs` may target `machine_reviewed` or `reviewed` Evidence
   for Hypothesis/Prediction and `ai_inference` workflows. A Finding's support
   threshold still considers only human `reviewed` supporting Evidence.
@@ -274,7 +273,7 @@ control and must be disclosed to the user.
 - Include both new managed directories in project initialization, reads,
   containment, project revision, exact-path Git staging, diagnostics, and package
   behavior.
-- Extend tool schemas and entity/neighborhood operations for Questions and
+- Extend tool schemas and entity/directional-neighbor operations for Questions and
   Framing Links without adding public tool names.
 - Verify Question Focus and framed-entity reads while preserving directional
   scientific-neighbor behavior.
@@ -284,7 +283,7 @@ control and must be disclosed to the user.
 - Verify Question cards, Focus, Details, and first-step prompt semantics.
 - Verify Evidence is hidden by default, the toggle restores it, and Node/Edge
   Literature Details render minimum citation snapshots without remote fetches.
-- Verify publication/machine/human counts and rejected/candidate grouping.
+- Verify publication/machine/human counts and rejected grouping.
 - Preserve one-click, nonce, idle/queued, Retry/Copy, responsive, and Page-Key
   behavior.
 

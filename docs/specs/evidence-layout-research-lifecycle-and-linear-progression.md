@@ -1,8 +1,8 @@
 # Evidence layout, research lifecycle, and linear progression
 
 > Status: implemented; automated verification passed on 2026-09-03
-> Parent design: [product design v0.19](../scifork-product-design.md) and
-> [software architecture v0.20](../scifork-software-architecture.md)
+> Parent design: [product design v0.20](../scifork-product-design.md) and
+> [software architecture v0.21](../scifork-software-architecture.md)
 > Refines: [literature-grounded research expansion](progressive-research-expansion.md)
 
 ## Problem

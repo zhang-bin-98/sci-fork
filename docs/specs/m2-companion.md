@@ -1,21 +1,19 @@
 # SciFork M2 Companion
 
 > Status: Implemented; automated and default-breakpoint browser verification passed on 2026-09-01
-> Date: 2026-08-31
+> Date: 2026-09-03
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.19](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
-> Action semantics: the historical `Simulate & Save` contract below is superseded
-> by [literature-grounded research expansion](progressive-research-expansion.md).
-> Historical baseline: parent-version references and the superseded wire section
-> record M2 as implemented at that time; current behavior is defined by the
-> linked refinements and the v0.19/v0.20 umbrella documents.
+> Action semantics are defined by
+> [literature-grounded research expansion](progressive-research-expansion.md) and
+> the current v0.20/v0.21 umbrella documents.
 
 ## Problem
 
 M1 provides the rebuildable projection, project locator, Focus sidecar, and
 current-branch Git behavior, but `/scifork` is not yet a usable Companion.
-The M0 client still opens an unauthenticated placeholder and exposes a direct
-spike Simulate button. M2 must add the standalone graph experience without
+The M0 client still opens an unauthenticated placeholder and exposes only a
+direct submit spike. M2 must add the standalone graph experience without
 creating another backend, trusting browser-supplied paths, or sending a prompt
 to a different DSH Session.
 
@@ -31,7 +29,7 @@ to a different DSH Session.
    highlights after Host acknowledgement.
 5. Poll only while the page is visible and detect project, branch, HEAD, Focus,
    and validation changes through fresh Host reads.
-6. Submit a bounded simulation prompt to the exact originating Session through
+6. Submit a bounded Research Expansion prompt to the exact originating Session through
    a scoped BroadcastChannel and the public `setDraft + submit` transaction.
 
 ## Non-goals
@@ -212,8 +210,8 @@ entity becomes the final Focus instead of being silently dropped.
 
 Focus does not define graph membership. Path changes, entity clicks, polling,
 and restored Focus state never remove unrelated entities or Edges from the
-Companion. The bounded one-hop selection remains an internal simulation-prompt
-context only.
+Companion. Focus path state is visualization-only and is not a second graph or
+Research Expansion context source.
 
 ### Details Safety
 
@@ -256,12 +254,10 @@ ellipsized before metadata wraps. Drawer chevrons use left/right semantics besid
 the graph and up/down semantics below it. `Research & Expand` uses a warm-white
 action surface with accent-green text instead of a filled green CTA.
 
-The original M2 projection summaries exposed `referenceCount` and
-`reviewedEvidenceCount`.
-The Host deduplicates total references from the Node and incident stored Edges by
-canonical PMID, otherwise normalized DOI. Reviewed count only includes publications
-behind reviewed Evidence Assertions. Cards and Details format this as
-`1 ref (M reviewed)` for a singular total and `N refs (M reviewed)` otherwise.
+The Host deduplicates publications from the Node and incident stored Edges by
+canonical PMID, otherwise normalized DOI. Snapshot and entity responses expose
+required `publicationCount`, `machineReviewedEvidenceCount`, and
+`humanReviewedEvidenceCount` fields.
 
 Tailwind theme tokens and utilities own the general Companion visual system:
 app shell, header, controls, banners, cards, Details, typography, spacing,
@@ -286,23 +282,14 @@ The Companion performs one snapshot read on mount when visible, repeats every
 while hidden, and refreshes immediately when visibility returns. It has at most
 one snapshot request in flight and disposes timers/listeners on unmount.
 
-### Historical: Simulate & Save (superseded)
+### Research Expansion channel
 
-This subsection records the M2 wire baseline only. The visible action and prompt
-behavior are replaced by `Research & Expand`; only the documented v1 wire
-literals remain for an already-open first-party Companion during bundle reload.
+The visible `Research & Expand` action builds the bounded prompt defined by the
+current Research Expansion specification. The encoded prompt is at most 12 KiB;
+the Bridge rejects messages above 16 KiB.
 
-`buildSimulationPrompt` runs only from the `Simulate & Save` click path and uses the
-latest snapshot. It includes the Focus id and summary, bounded-neighborhood support and
-contradiction summaries, stored Evidence Gaps, and a clear simulation/critique
-task. It preserves Result versus Interpretation and instructs the model not to
-promote hypotheses, predictions, or `ai_inference` to Findings. The v0.0.1
-[bounded simulation extension](simulation-branches.md) also makes that real
-click the explicit authorization to save every valid branch from a single-layer,
-zero-to-five branch run, with a low-confidence Node and an Edge for each. The encoded
-prompt is at most 12 KiB; the Bridge rejects messages above 16 KiB.
-
-The page sends `{ type: 'simulate', nonce, prompt }` on the key-derived channel.
+The page sends `{ type: 'research_expansion', nonce, prompt }` on the
+`scifork:research-expansion:v1:<page-key>` channel.
 Each retry is another real click and uses a new 128-bit nonce while retaining
 the exact prompt. The Bridge accepts only its own channel, the exact message
 shape, bounded fields, a live originating Session, and a nonce not previously
@@ -374,7 +361,7 @@ channels and nonce state close on bundle unload.
 - [x] Hidden pages issue no polling requests and refresh immediately when shown.
 - [x] Details executes no raw HTML/script and performs no automatic remote or
       uncontained resource load.
-- [x] A real Simulate click submits once to the originating Session; idle and
+- [x] A real `Research & Expand` click submits once to the originating Session; idle and
       busy acknowledgements are Started and Queued, wrong channels/sessions do
       not submit, and duplicates do not resubmit.
 - [x] Ack failure retains the bounded prompt and offers working Retry and Copy.
@@ -409,7 +396,7 @@ card rendering, and drawer placement.
   launch failure notification, key-derived channel, idle/busy submit, exact
   ordering, wrong shape/session, duplicate nonce, prompt limit, and disposal.
 - Companion unit: fragment consumption/storage clearing, API error mapping,
-  global graph membership, bounded prompt-neighborhood selection, Focus center
+  global graph membership, bounded Research Expansion prompt, Focus center
   resolution, serialized latest-click selection, layout determinism, visible-only
   polling, safe link and image rendering, Details two-row id-text copy/type/reference/drawer semantics,
   prompt content/byte cap, ack timeout/retry nonce behavior.
@@ -420,4 +407,4 @@ card rendering, and drawer placement.
   restrained body heading scale, drawer and internal scroll.
 - DSH smoke (separate explicit approval): disposable pinned `0.1.1-rc.2`
   profile, one package install, `/research init`, Open action, snapshot/entity/
-  Focus, idle and busy Simulate, reload, unload, and project readability.
+  Focus, idle and busy Research Expansion, reload, unload, and project readability.

@@ -36,8 +36,9 @@ const promptInput = {
       type: 'node' as const,
       kind: 'hypothesis' as const,
       confidence: 'low' as const,
-      referenceCount: 0,
-      reviewedEvidenceCount: 0,
+      publicationCount: 0,
+      machineReviewedEvidenceCount: 0,
+      humanReviewedEvidenceCount: 0,
       label: 'Blocking IL-6 may reduce the inflammatory phenotype.',
     },
     {
@@ -195,7 +196,7 @@ describe('research expansion acknowledgement channel', () => {
 
     researchExpansion.submit(prompt)
     expect(channel.posted).toEqual([
-      { type: 'simulate', nonce: firstNonce, prompt },
+      { type: 'research_expansion', nonce: firstNonce, prompt },
     ])
     expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
@@ -215,8 +216,8 @@ describe('research expansion acknowledgement channel', () => {
 
     researchExpansion.retry()
     expect(channel.posted).toEqual([
-      { type: 'simulate', nonce: firstNonce, prompt },
-      { type: 'simulate', nonce: secondNonce, prompt },
+      { type: 'research_expansion', nonce: firstNonce, prompt },
+      { type: 'research_expansion', nonce: secondNonce, prompt },
     ])
     expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',

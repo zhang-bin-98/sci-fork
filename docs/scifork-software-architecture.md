@@ -1,8 +1,8 @@
-# SciFork 软件架构与实现设计 v0.20
+# SciFork 软件架构与实现设计 v0.21
 
 > 状态：Implemented（MVP baseline）
-> 日期：2026-08-31
-> 上位设计：[SciFork 产品设计 v0.19](./scifork-product-design.md)
+> 日期：2026-09-03
+> 上位设计：[SciFork 产品设计 v0.20](./scifork-product-design.md)
 
 ## 1. 架构结论
 
@@ -199,7 +199,7 @@ interface ResearchManifest {
 ```ts
 type NodeKind = 'finding' | 'hypothesis' | 'prediction'
 type ConfidenceBand = 'low' | 'moderate' | 'high'
-type EvidenceReview = 'candidate' | 'machine_reviewed' | 'reviewed' | 'rejected'
+type EvidenceReview = 'machine_reviewed' | 'reviewed' | 'rejected'
 type ResultStatus = 'draft' | 'validated' | 'superseded'
 type Relation = 'supports' | 'contradicts' | 'causes' | 'associated_with' | 'predicts'
 type EdgeBasis = 'literature' | 'experiment' | 'ai_inference'
@@ -242,7 +242,7 @@ interface FramingLink {
 - 不建立 publication/Source entity；同一文献可以对应多条 Evidence Assertion。
 - Hypothesis/Prediction 和 `ai_inference` Edge 可正向引用 `machine_reviewed` 或人工
   `reviewed` Evidence；Finding 支持与 `basis: literature` 只接受人工 `reviewed` Evidence。
-- `candidate`/`rejected` Evidence 不得被活动 Node 或 Edge 引用；拒绝 Evidence 前必须
+- `rejected` Evidence 不得被活动 Node 或 Edge 引用；拒绝 Evidence 前必须
   先删除所有活动引用，`rejected` 为终态。
 - 新建 `machine_reviewed` Evidence 必须有 Citation Snapshot、非空机器审核理由、有效
   Publication Reference 与 abstract/PDF locator；title-only 或 metadata-only 记录不得通过。
@@ -309,7 +309,8 @@ type ResearchCommand =
 
 每条命令只创建、修改或删除一个实体。`ImportDraftItem` 只能转换已经通过整体校验与机器审核字段校验的一个 Evidence Candidate。
 `CreateEvidenceAssertion` 与 `ImportDraftItem` 均创建 `machine_reviewed`；命令必须满足
-Citation Snapshot/审核理由/locator 约束。`candidate` 仅为已有项目的兼容读取状态，不再由正常创建或导入路径产生。
+Citation Snapshot/审核理由/locator 约束。`CreateEvidenceAssertion` 不接受 review state，
+因为创建后的唯一合法状态就是 `machine_reviewed`。
 `ReviewEvidenceAssertion` 实现规范中的单向状态机；在活动引用仍存在时拒绝转为
 `rejected`。`DeleteFramingLink`、`DeleteEdge` 和 `DeleteNode` 都需要目标
 `expectedFileVersion`；`DeleteNode` 只接受无关联科学 Edge 和 Framing Link 的
@@ -402,12 +403,12 @@ research_graph_apply
 research_graph_focus
 ```
 
-`research_graph_read` 支持 summary、focus、entity、neighborhood、neighbors、find 和简短
+`research_graph_read` 支持 summary、focus、entity、neighbors、find 和简短
 checkpoint 状态；entity 读取同时返回目标文件的 `fileVersion`，供 update/delete 使用。
 `neighbors` 按 incoming/outgoing/both 返回 incident scientific Edge 与紧凑相邻实体
 卡片，不内联相邻正文；模型按需再用 entity 读取完整内容。它接受 Node、Result 或投影
 中的 Evidence endpoint；Edge Focus 先用 entity 读取 from/to，再对选定 endpoint 调用
-neighbors。Question 的 entity/neighborhood 读取单独返回 `framedEntities` 和 Framing
+neighbors。Question 的 entity 读取单独返回 `framedEntities` 和 Framing
 Links，不把 `frames` 混入科学方向邻居；Framing Link entity 返回 Question 与 framed claim。
 
 `research_graph_apply` 只接受 discriminated typed command；模型不能提供任意路径、文件正文或 Git argv。
@@ -556,13 +557,11 @@ Evidence 状态计数使用无歧义英语标签。
 Assertion 混成一个审核动作。Question Details 通过 framed entities 聚合文献覆盖与
 状态计数，但不暗示 Question 本身被证据支持。
 
-Companion v1 wire 曾使用 `referenceCount` 和 `reviewedEvidenceCount`。当前 Host 在同一个
-first-party bundle 内暂时把它们分别作为 `publicationCount` 和
-`humanReviewedEvidenceCount` 的 deprecated aliases 返回，供已打开页面跨 bundle reload
-兼容；新代码和产品文案只使用后三个无歧义字段，不把 alias 当成第二套计数模型。
+Companion wire 只返回 `publicationCount`、`machineReviewedEvidenceCount` 和
+`humanReviewedEvidenceCount` 三个无歧义字段；三者均为必填，不保留旧计数字段或回退路径。
 
 Host entity response 为 Node 和已保存科学 Edge 增加只读 `literature` 投影，按人工
-reviewed、machine-reviewed、candidate、rejected 和 retrieval-only Publication
+reviewed、machine-reviewed、rejected 和 retrieval-only Publication
 References 分组。每个 Evidence item 只返回项目中已持久化的 Citation Snapshot、
 PMID/DOI、assertion、locator、direction、limitations、机器审核理由和 review state；
 Companion 不从浏览器远程补全元信息。rejected 组默认收起。
@@ -846,12 +845,11 @@ GIT_STATE_UNSUPPORTED
 CHECKPOINT_FAILED
 PAGE_KEY_INVALID
 SESSION_UNAVAILABLE
-SIMULATE_REJECTED
+RESEARCH_EXPANSION_REJECTED
 ```
 
-`SIMULATE_REJECTED` 与 `scifork:simulate:v1` 是为已打开 Companion 跨
-first-party bundle reload 保留的 v1 wire literals；当前领域、模块和 UI 统一使用
-Research Expansion，不把 legacy wire 名称暴露为产品概念。
+Research Expansion channel 使用 `scifork:research-expansion:v1:` 前缀，请求类型为
+`research_expansion`；Bridge 拒绝提交时返回 `RESEARCH_EXPANSION_REJECTED`。
 
 错误 payload：
 

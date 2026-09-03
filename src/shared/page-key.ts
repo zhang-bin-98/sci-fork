@@ -1,6 +1,5 @@
 export const PAGE_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/
-/** Legacy v1 wire value retained so an already-open Companion survives bundle reloads. */
-export const RESEARCH_EXPANSION_CHANNEL_PREFIX = 'scifork:simulate:v1:'
+export const RESEARCH_EXPANSION_CHANNEL_PREFIX = 'scifork:research-expansion:v1:'
 
 export function isPageKey(value: unknown): value is string {
   return typeof value === 'string' && PAGE_KEY_PATTERN.test(value)

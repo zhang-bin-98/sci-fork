@@ -9,10 +9,10 @@ import {
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
 const entities = [
-  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', referenceCount: 1, reviewedEvidenceCount: 1, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'A' },
-  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', referenceCount: 2, reviewedEvidenceCount: 0, publicationCount: 2, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'B' },
-  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 0, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'C' },
-  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 1, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'D' },
+  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'A' },
+  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', publicationCount: 2, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'B' },
+  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'C' },
+  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'D' },
   {
     id: 'node_e',
     type: 'result',
@@ -219,8 +219,6 @@ describe('Companion graph', () => {
           type: 'node' as const,
           kind: 'hypothesis' as const,
           confidence: 'low' as const,
-          referenceCount: 0,
-          reviewedEvidenceCount: 0,
           publicationCount: 0,
           machineReviewedEvidenceCount: 0,
           humanReviewedEvidenceCount: 0,

@@ -95,7 +95,6 @@ const CREATE_EVIDENCE_COMMAND_SCHEMA = z
     locator: LOCATOR_SCHEMA,
     assertion: z.string().min(1).max(ASSERTION_MAX),
     direction: DIRECTION_SCHEMA,
-    reviewStatus: z.literal('machine_reviewed').optional(),
     citation: CITATION_SNAPSHOT_SCHEMA.optional(),
     machineReviewRationale: z.string().min(1).max(MACHINE_REVIEW_RATIONALE_MAX).optional(),
     limitations: LIMITATIONS_SCHEMA.optional(),
@@ -116,21 +115,12 @@ const REVIEW_EVIDENCE_COMMAND_SCHEMA = z
     kind: z.literal('review_evidence_assertion'),
     id: z.string().regex(EVIDENCE_ID_RE, 'must be an ev_<uuid> id'),
     expectedFileVersion: HASH_SCHEMA,
-    reviewStatus: z.enum(['machine_reviewed', 'reviewed', 'rejected']),
+    reviewStatus: z.enum(['reviewed', 'rejected']),
     citation: CITATION_SNAPSHOT_SCHEMA.optional(),
     machineReviewRationale: z.string().min(1).max(MACHINE_REVIEW_RATIONALE_MAX).optional(),
     limitations: LIMITATIONS_SCHEMA.optional(),
   })
   .strict()
-  .superRefine((command, context) => {
-    if (command.reviewStatus !== 'machine_reviewed') return
-    if (command.citation === undefined) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ['citation'], message: 'machine_reviewed evidence requires citation' })
-    }
-    if (command.machineReviewRationale === undefined) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ['machineReviewRationale'], message: 'machine_reviewed evidence requires rationale' })
-    }
-  })
 
 export const RESEARCH_COMMAND_SCHEMA = z.discriminatedUnion('kind', [
   z
@@ -421,7 +411,6 @@ function normalizeCommandPublicationRef(
 }
 
 const REVIEW_TRANSITIONS: Record<EvidenceReview, readonly EvidenceReview[]> = {
-  candidate: ['machine_reviewed', 'reviewed', 'rejected'],
   machine_reviewed: ['reviewed', 'rejected'],
   reviewed: ['rejected'],
   rejected: [],
