@@ -518,6 +518,8 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
   待确认 Focus 时，才能进入 Evidence。锚点在进入时锁定；点击 Evidence 可更新 Focus
   和 Details，但不改变视图成员。返回 Main 通过串行 Focus queue 恢复锚点，确认前禁用
   新选择；失败时停留 Evidence，锚点已消失时直接返回 Main。
+- 视图切换使用一个显示目标视图的上下文按钮：Main 中显示 `Evidence`，Evidence 中显示
+  `Main`；不可进入或恢复期间保持 disabled，并通过 `aria-busy` 暴露恢复状态。
 - Main 和 Evidence 子图共享通用确定性 Dagre LR/TB 布局，不保留混合图专用的
   Evidence barrier、rank 或合成关系。
 - 初始视口适配当前 Main 或 Evidence 图；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
@@ -1010,7 +1012,7 @@ fresh DSH profile
 
 - Page Key 和同源 API。
 - 默认排除 Evidence 的 Main 主图、锁定锚点的 Evidence 子图、Question/Framing Link、
-  Focus 居中高亮、`Main / Evidence` 分段控件、
+  Focus 居中高亮、单一上下文视图切换按钮、
   分组 Literature Details、响应式布局和安全渲染。
 - visible-only polling。
 - Research Expansion BroadcastChannel 与单步自动 Chat submit。

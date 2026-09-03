@@ -286,7 +286,7 @@ describe('Companion graph UI', () => {
     expect(html).not.toContain('Research &amp; Expand')
   })
 
-  it('exposes mutually exclusive Main and Evidence views with entry gating', () => {
+  it('offers one contextual button for the other graph view with entry gating', () => {
     const html = renderToStaticMarkup(
       createElement(GraphViewControl, {
         view: 'main',
@@ -297,10 +297,10 @@ describe('Companion graph UI', () => {
     )
 
     expect(html).toContain('data-graph-view-control="true"')
-    expect(html).toContain('data-graph-view="main"')
     expect(html).toContain('data-graph-view="evidence"')
-    expect(html).toContain('aria-label="Main view"')
     expect(html).toContain('aria-label="Evidence view"')
+    expect(html.match(/<button/g)).toHaveLength(1)
+    expect(html).not.toContain('data-graph-view="main"')
     expect(html).not.toContain('data-evidence-visibility')
     expect(html).not.toContain('Hide evidence')
     expect(html).not.toContain('All evidence')
@@ -317,6 +317,20 @@ describe('Companion graph UI', () => {
     expect(disabledHtml).toContain('disabled=""')
     expect(disabledHtml).toContain('title="Focus an entity with direct Evidence to enter Evidence view"')
 
+    const evidenceHtml = renderToStaticMarkup(
+      createElement(GraphViewControl, {
+        view: 'evidence',
+        canEnterEvidence: false,
+        transitioning: false,
+        onChange: () => undefined,
+      }),
+    )
+    expect(evidenceHtml.match(/<button/g)).toHaveLength(1)
+    expect(evidenceHtml).toContain('data-graph-view="main"')
+    expect(evidenceHtml).toContain('aria-label="Main view"')
+    expect(evidenceHtml).not.toContain('data-graph-view="evidence"')
+    expect(evidenceHtml).not.toContain('disabled=""')
+
     const transitioningHtml = renderToStaticMarkup(
       createElement(GraphViewControl, {
         view: 'evidence',
@@ -326,8 +340,8 @@ describe('Companion graph UI', () => {
       }),
     )
     expect(transitioningHtml).toContain('aria-busy="true"')
-    expect(transitioningHtml.match(/disabled=""/g)).toHaveLength(2)
-    expect(transitioningHtml).toContain('data-graph-view="evidence"')
+    expect(transitioningHtml.match(/disabled=""/g)).toHaveLength(1)
+    expect(transitioningHtml).toContain('data-graph-view="main"')
   })
 
   it('restores the exact Evidence anchor before returning to Main', async () => {

@@ -289,50 +289,30 @@ export function GraphViewControl(props: {
   transitioning: boolean
   onChange(view: GraphViewMode): void
 }): React.ReactElement {
-  const options: Array<{ value: GraphViewMode; label: string }> = [
-    { value: 'main', label: 'Main view' },
-    { value: 'evidence', label: 'Evidence view' },
-  ]
+  const targetView: GraphViewMode = props.view === 'main' ? 'evidence' : 'main'
+  const label = targetView === 'main' ? 'Main view' : 'Evidence view'
+  const disabled =
+    props.transitioning || (targetView === 'evidence' && !props.canEnterEvidence)
+  const title =
+    props.transitioning
+      ? 'Restoring Main view'
+      : targetView === 'evidence' && disabled
+        ? 'Focus an entity with direct Evidence to enter Evidence view'
+        : label
   return (
-    <div
-      className="flex min-w-0 items-center gap-0.5"
-      role="group"
-      aria-label="Graph view"
+    <button
+      type="button"
+      className={BUTTON_HEADER + ' h-9 px-2 text-xs sm:px-2.5'}
+      aria-label={label}
       aria-busy={props.transitioning}
+      title={title}
+      disabled={disabled}
       data-graph-view-control="true"
+      data-graph-view={targetView}
+      onClick={() => props.onChange(targetView)}
     >
-      {options.map((option) => {
-        const disabled =
-          props.transitioning ||
-          (option.value === 'evidence' &&
-            props.view === 'main' &&
-            !props.canEnterEvidence)
-        const title =
-          props.transitioning
-            ? 'Restoring Main view'
-            : option.value === 'evidence' && disabled
-              ? 'Focus an entity with direct Evidence to enter Evidence view'
-              : option.label
-        return (
-          <button
-            key={option.value}
-            type="button"
-            className={
-              BUTTON_HEADER +
-              ' h-9 px-2 text-xs aria-pressed:border-sf-header-foreground aria-pressed:bg-sf-header-foreground aria-pressed:text-sf-header sm:px-2.5'
-            }
-            aria-pressed={props.view === option.value}
-            aria-label={option.label}
-            title={title}
-            disabled={disabled}
-            data-graph-view={option.value}
-            onClick={() => props.onChange(option.value)}
-          >
-            {option.value === 'main' ? 'Main' : 'Evidence'}
-          </button>
-        )
-      })}
-    </div>
+      {targetView === 'main' ? 'Main' : 'Evidence'}
+    </button>
   )
 }
 

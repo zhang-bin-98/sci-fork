@@ -81,7 +81,7 @@ DSH 或用户。
 ```text
 ┌──────────────────────────────┐  ┌──────────────────────────────┐
 │ DeepSeek Harness Web         │  │ SciFork Graph Companion      │
-│ Sessions / Chat / Tools      │  │ Main / Evidence + Details    │
+│ Sessions / Chat / Tools      │  │ View toggle + Details        │
 │                              │  │                              │
 │ ...                          │  │ Research & Expand  Details   │
 │ [Graph] Research Graph       │  │                              │
@@ -96,7 +96,8 @@ DSH 或用户。
 用户可以通过抽屉拉手收起或重新打开。页面提供 `Research & Expand`、`Details`
 两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心。在 Main 中，只有当前
 Focus 是至少一条有效 `evidence_ref` 的非 Evidence 实体且没有待确认 Focus 时，
-才能进入 Evidence。进入后的 Evidence 点击可更新 Focus 和 Details，但不替换锁定锚点。
+才能进入 Evidence。视图切换只有一个按钮：Main 中显示 `Evidence`，Evidence 中显示
+`Main`。进入后的 Evidence 点击可更新 Focus 和 Details，但不替换锁定锚点。
 返回 Main 时恢复锚点 Focus；Host 确认前保持 Evidence 视图并禁用新选择，恢复失败则
 停留并显示现有错误。若锚点已从投影消失，则直接返回 Main。Git 历史恢复通过对应
 DSH Chat 完成。
@@ -678,8 +679,8 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
-- Companion 默认显示完整非 Evidence 主图；`Main / Evidence` 控件只允许从有直接 Evidence
-  的 Host-confirmed Focus 进入锁定锚点证据视图，并可直接返回 Main。
+- Companion 默认显示完整非 Evidence 主图；单一视图按钮在 Main 中显示 `Evidence`、
+  在 Evidence 中显示 `Main`，且只允许从有直接 Evidence 的 Host-confirmed Focus 进入。
 - Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID
   可见，ID 本身支持点击/键盘复制和轻量状态反馈。
 - Details 默认打开且可收起；`<xl` 时位于 Graph 下方，`xl` 及以上与 Graph 并列，两行

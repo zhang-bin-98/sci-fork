@@ -66,6 +66,8 @@ anchor with at least one direct `evidence_ref` whose source Evidence entity
 exists, and no Focus selection is pending. Current schemas produce these direct
 references only for Finding, Hypothesis, and Prediction Nodes; this view does
 not extend schemas for Question, Result, or stored scientific Edge Evidence.
+The control is one contextual button labelled with its destination: `Evidence`
+in Main view and `Main` in Evidence view.
 
 Entering Evidence locks the current Focus id as the anchor. Later clicks on its
 Evidence update Focus and Details but do not change view membership. Returning
@@ -126,6 +128,7 @@ tool use after message submission, not a new pre-submit host event.
 - [x] Evidence can be entered only from an eligible Host-confirmed Focus and
       contains exactly its locked anchor, existing direct Evidence, and matching
       `evidence_ref` relationships.
+- [x] One contextual view button shows `Evidence` in Main and `Main` in Evidence.
 - [x] Evidence Focus changes do not replace the anchor; returning to Main
       restores the anchor after exact Host confirmation and stays in Evidence on
       failure.
@@ -145,7 +148,7 @@ tool use after message submission, not a new pre-submit host event.
 
 - Companion graph unit tests for Main membership, locked-anchor Evidence
   membership, invalid/dangling anchors, and deterministic `TB`/`LR` coordinates.
-- Companion UI and Focus-queue tests for the two-state control, entry gating,
+- Companion UI and Focus-queue tests for the single contextual control, entry gating,
   stable anchor, exact restore completion, rapid clicks, and restore failure.
 - Skill-content tests for the ordered Question -> retrieval -> Evidence ->
   Hypothesis/Framing Link workflow and the no-source-text stop condition.
@@ -162,6 +165,6 @@ did not change membership. Finding, Hypothesis, and Prediction each entered
 their own Evidence view; a Result without direct Evidence remained ineligible.
 The `320/639/640/767/768/1279/1280/1440` viewport matrix showed no horizontal
 overflow, non-overlapping panes/nodes, and nonblank Main/Evidence graphs. At
-return, both view controls and the graph were busy/disabled until the exact anchor
+return, the view control and graph were busy/disabled until the exact anchor
 Focus was confirmed. Key screenshots were captured at 320px Main, 768px Evidence,
 and 1280px Main.
