@@ -24,9 +24,10 @@ to a different DSH Session.
    Key that never enters a query, repository, log, or Chat command result.
 3. Expose bounded snapshot, entity, and Focus POST APIs over the existing DSH
    Web origin.
-4. Render the complete Research Graph, graph-highlighted Focus path, and safe read-only,
-   collapsible Details in one responsive React layout; Focus only recenters and
-   highlights after Host acknowledgement.
+4. Retain the complete Research Graph snapshot while rendering either its
+   non-Evidence Main graph or one locked-anchor Evidence subgraph, together with
+   graph-highlighted Focus and safe, collapsible Details in one responsive React
+   layout; Focus only recenters and highlights after Host acknowledgement.
 5. Poll only while the page is visible and detect project, branch, HEAD, Focus,
    and validation changes through fresh Host reads.
 6. Submit a bounded Research Expansion prompt to the exact originating Session through
@@ -177,12 +178,14 @@ may omit graph entities and edges but still returns current Focus, diagnostics,
 and read-only state so a Focus-only change is observable. The browser retains
 the last graph until a changed revision arrives.
 
-The client always renders the complete body-free projection returned by the
-snapshot. Without a Focus, the initial viewport fits that complete graph. With
-a Focus, the entity or stored Edge remains part of the same complete graph and
-is highlighted; a Focus change preserves the current zoom and moves the entity
-center or Edge midpoint to the viewport center. An empty project has an explicit
-empty state. The layout is rebuilt deterministically and is never persisted.
+The client retains the complete body-free projection returned by the snapshot
+and derives one local view. Main is the default and contains every non-Evidence
+entity and relationship whose endpoints remain visible. Evidence view contains
+one locked eligible anchor, its existing direct Evidence entities, and matching
+`evidence_ref` relationships. The current view fits its graph; a visible Focus
+change preserves zoom and moves the entity center or Edge midpoint to the
+viewport center. An empty view has an explicit state. Layout and view state are
+never persisted.
 
 ### Entity and Focus
 
@@ -208,10 +211,12 @@ only solid selection highlight and Details target. While one request is in
 flight, later clicks are retained and processed serially so the last clicked
 entity becomes the final Focus instead of being silently dropped.
 
-Focus does not define graph membership. Path changes, entity clicks, polling,
-and restored Focus state never remove unrelated entities or Edges from the
-Companion. Focus path state is visualization-only and is not a second graph or
-Research Expansion context source.
+Focus does not directly filter graph membership. In Main, an eligible confirmed
+Focus enables entry to Evidence and becomes its locked anchor. Later Evidence
+Focus changes do not replace that anchor. Returning to Main restores the anchor
+through the serialized Focus queue before changing views. Focus path state is
+visualization-only and is not a second graph or Research Expansion context
+source.
 
 ### Details Safety
 
@@ -332,9 +337,9 @@ channels and nonce state close on bundle unload.
       loopback, JSON type, body size, strict body, and allowlist boundaries.
 - [x] Snapshot and Details stay consistent with M1 parsing, projection,
       diagnostics, Focus, branch, and HEAD behavior.
-- [x] The Companion always renders the complete projection; changing a Node,
-      Result, Evidence Assertion, or stored Edge Focus preserves graph membership and
-      current zoom while centering the focused entity or Edge midpoint.
+- [x] The Companion retains the complete snapshot while rendering either the
+      complete non-Evidence Main graph or one locked-anchor Evidence subgraph;
+      visible Focus changes preserve current zoom and center the target.
 - [x] The same React tree works at narrow and wide viewports; graph, path,
       selected Details, loading, empty, read-only, and invalid-key states fit
       without overlap.
@@ -370,7 +375,7 @@ channels and nonce state close on bundle unload.
 - [x] Desktop and default-breakpoint browser checks cover nonblank rendering,
       stable graph sizing, responsive Details, and no incoherent overlap.
 
-### Browser verification record (2026-09-01)
+### Browser verification record (2026-09-01; Evidence interaction superseded)
 
 The built Companion was served from a loopback fixture with a bounded snapshot
 containing Question, Hypothesis, Prediction, Result, and Evidence entities. At
@@ -380,10 +385,14 @@ incoherent overlap. Graph direction changed from TB to LR at `md=768px` and
 Details changed from a bottom drawer to a side drawer at `xl=1280px`. The
 single-row header and Details primary row remained non-overlapping; Details body
 content remained in its internal scroll region. At 320px the icon-only actions
-retained accessible labels, Evidence toggling revealed the fifth node, and the
+retained accessible labels, the then-current Evidence control revealed the fifth node, and the
 Details close/open controls preserved the graph without overlap. Screenshots at
 320px, 768px, and 1280px confirmed nonblank graph pixels, stable node sizing,
 card rendering, and drawer placement.
+
+This record predates the mutually exclusive Main/Evidence contract. Its
+responsive layout observations remain valid; the replacement interaction is
+verified separately after implementation.
 
 ## Test Plan
 
@@ -396,7 +405,7 @@ card rendering, and drawer placement.
   launch failure notification, key-derived channel, idle/busy submit, exact
   ordering, wrong shape/session, duplicate nonce, prompt limit, and disposal.
 - Companion unit: fragment consumption/storage clearing, API error mapping,
-  global graph membership, bounded Research Expansion prompt, Focus center
+  Main/Evidence graph membership, bounded Research Expansion prompt, Focus center
   resolution, serialized latest-click selection, layout determinism, visible-only
   polling, safe link and image rendering, Details two-row id-text copy/type/reference/drawer semantics,
   prompt content/byte cap, ack timeout/retry nonce behavior.

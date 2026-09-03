@@ -26,9 +26,9 @@ import { CompanionApiClient, CompanionApiError } from './api.js'
 import { DetailsMarkdown } from './details.js'
 import { FocusSelectionQueue } from './focus-selection.js'
 import {
-  type EvidenceVisibility,
+  type GraphView,
+  evidenceAnchorForFocus,
   focusViewportCenter,
-  evidenceVisibilityGraph,
   graphDirectionForViewport,
   layoutGraph,
   selectGraphView,
@@ -262,6 +262,7 @@ interface GraphPaneProps {
   focusEntityId: string | undefined
   pendingEntityId: string | undefined
   pathIds: readonly string[]
+  interactionDisabled: boolean
   onSelect(entityId: string): void
 }
 
@@ -280,49 +281,57 @@ function useWideGraphLayout(): boolean {
   return wide
 }
 
-export function EvidenceVisibilityControl(props: {
-  visibility: EvidenceVisibility
-  focusedNodeId: string | undefined
-  onChange(visibility: EvidenceVisibility): void
+export type GraphViewMode = GraphView['mode']
+
+export function GraphViewControl(props: {
+  view: GraphViewMode
+  canEnterEvidence: boolean
+  transitioning: boolean
+  onChange(view: GraphViewMode): void
 }): React.ReactElement {
-  const options: Array<{
-    value: EvidenceVisibility
-    label: string
-    compactLabel: string
-    disabled?: boolean
-  }> = [
-    { value: 'hidden', label: 'Hide evidence', compactLabel: 'Hide' },
-    {
-      value: 'focused-node',
-      label: 'Focus evidence',
-      compactLabel: 'Focus',
-      disabled: props.focusedNodeId === undefined,
-    },
-    { value: 'all', label: 'All evidence', compactLabel: 'All' },
+  const options: Array<{ value: GraphViewMode; label: string }> = [
+    { value: 'main', label: 'Main view' },
+    { value: 'evidence', label: 'Evidence view' },
   ]
   return (
     <div
-      className="flex min-w-0 items-center gap-1"
+      className="flex min-w-0 items-center gap-0.5"
       role="group"
-      aria-label="Evidence display"
-      data-evidence-visibility-control="true"
+      aria-label="Graph view"
+      aria-busy={props.transitioning}
+      data-graph-view-control="true"
     >
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className={BUTTON_HEADER + ' size-9 px-0 sm:size-auto sm:px-2.5'}
-          aria-pressed={props.visibility === option.value}
-          aria-label={option.label}
-          title={option.disabled ? 'Focus a Node to show its evidence' : option.label}
-          disabled={option.disabled}
-          data-evidence-visibility={option.value}
-          onClick={() => props.onChange(option.value)}
-        >
-          <span className="sm:hidden">{option.compactLabel}</span>
-          <span className="hidden sm:inline">{option.label}</span>
-        </button>
-      ))}
+      {options.map((option) => {
+        const disabled =
+          props.transitioning ||
+          (option.value === 'evidence' &&
+            props.view === 'main' &&
+            !props.canEnterEvidence)
+        const title =
+          props.transitioning
+            ? 'Restoring Main view'
+            : option.value === 'evidence' && disabled
+              ? 'Focus an entity with direct Evidence to enter Evidence view'
+              : option.label
+        return (
+          <button
+            key={option.value}
+            type="button"
+            className={
+              BUTTON_HEADER +
+              ' h-9 px-2 text-xs aria-pressed:border-sf-header-foreground aria-pressed:bg-sf-header-foreground aria-pressed:text-sf-header sm:px-2.5'
+            }
+            aria-pressed={props.view === option.value}
+            aria-label={option.label}
+            title={title}
+            disabled={disabled}
+            data-graph-view={option.value}
+            onClick={() => props.onChange(option.value)}
+          >
+            {option.value === 'main' ? 'Main' : 'Evidence'}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -407,6 +416,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
       ref={paneRef}
       className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted xl:border-r xl:border-b-0"
       aria-label="Research Graph"
+      aria-busy={props.interactionDisabled}
     >
       <ReactFlow<EntityFlowNode, RelationFlowEdge>
         key={layoutKey}
@@ -421,8 +431,13 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
         minZoom={0.25}
         maxZoom={1.6}
         onInit={setFlow}
-        onNodeClick={(_event, node) => props.onSelect(node.id)}
+        nodesFocusable={!props.interactionDisabled}
+        edgesFocusable={!props.interactionDisabled}
+        onNodeClick={(_event, node) => {
+          if (!props.interactionDisabled) props.onSelect(node.id)
+        }}
         onEdgeClick={(_event, edge) => {
+          if (props.interactionDisabled) return
           const edgeId = edge.data?.edge.id
           if (edgeId !== undefined) props.onSelect(edgeId)
         }}
@@ -905,6 +920,23 @@ export function ResearchExpansionAction(props: {
   )
 }
 
+export async function restoreMainView(inputs: {
+  graph: SnapshotGraph
+  anchorId: string
+  focusEntityId: string | undefined
+  pendingFocusId?: string | undefined
+  selectFocus(entityId: string): Promise<boolean>
+}): Promise<'restored' | 'anchor-missing' | 'failed'> {
+  const anchorExists = inputs.graph.entities.some(
+    (entity) => entity.id === inputs.anchorId && entity.type === 'node',
+  )
+  if (!anchorExists) return 'anchor-missing'
+  if (inputs.focusEntityId === inputs.anchorId && inputs.pendingFocusId === undefined) {
+    return 'restored'
+  }
+  return (await inputs.selectFocus(inputs.anchorId)) ? 'restored' : 'failed'
+}
+
 export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const [invalidKey, setInvalidKey] = React.useState(false)
   const [snapshot, setSnapshot] = React.useState<SnapshotSuccess>()
@@ -912,8 +944,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string>()
   const [details, setDetails] = React.useState<EntityDocument>()
   const [detailsOpen, setDetailsOpen] = React.useState(true)
-  const [evidenceVisibility, setEvidenceVisibility] =
-    React.useState<EvidenceVisibility>('hidden')
+  const [graphView, setGraphView] = React.useState<GraphView>({ mode: 'main' })
+  const [viewTransitioning, setViewTransitioning] = React.useState(false)
   const [error, setError] = React.useState<string>()
   const [pendingFocusId, setPendingFocusId] = React.useState<string>()
   const [researchExpansionState, setResearchExpansionState] =
@@ -927,6 +959,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const detailsRequestRef = React.useRef(0)
   const focusQueueRef = React.useRef<FocusSelectionQueue<FocusSuccess> | undefined>(undefined)
   const snapshotInFlightRef = React.useRef(false)
+  const viewTransitioningRef = React.useRef(false)
   const researchExpansionRef =
     React.useRef<ResearchExpansionChannel | undefined>(undefined)
 
@@ -970,6 +1003,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   React.useEffect(() => {
     const queue = new FocusSelectionQueue<FocusSuccess>({
       setFocus: (entityId) => api.setFocus(entityId),
+      isConfirmed: (entityId, response) => response.focus.focusEntityId === entityId,
       onConfirmed: (entityId, response) => {
         if (!mountedRef.current) return
         setError(undefined)
@@ -1105,24 +1139,62 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   }, [invalidKey, props.pageKey])
 
   const selectEntity = React.useCallback((entityId: string): void => {
+    if (viewTransitioningRef.current) return
     setError(undefined)
-    focusQueueRef.current?.select(entityId)
+    void focusQueueRef.current?.select(entityId)
   }, [])
 
-  const focusedNodeId = React.useMemo(() => {
-    const focusEntityId = snapshot?.focus?.focusEntityId
-    if (focusEntityId === undefined) return undefined
-    const focusedEntity = graph?.entities.find((entity) => entity.id === focusEntityId)
-    return focusedEntity?.type === 'node' ? focusedEntity.id : undefined
-  }, [graph, snapshot?.focus?.focusEntityId])
-
-  const graphView = React.useMemo(
+  const eligibleEvidenceAnchor = React.useMemo(
     () =>
-      selectGraphView(
-        evidenceVisibilityGraph(graph ?? EMPTY_GRAPH, evidenceVisibility, focusedNodeId),
-      ),
-    [graph, evidenceVisibility, focusedNodeId],
+      pendingFocusId === undefined
+        ? evidenceAnchorForFocus(graph ?? EMPTY_GRAPH, snapshot?.focus?.focusEntityId)
+        : undefined,
+    [graph, pendingFocusId, snapshot?.focus?.focusEntityId],
   )
+  const visibleGraph = React.useMemo(
+    () => selectGraphView(graph ?? EMPTY_GRAPH, graphView),
+    [graph, graphView],
+  )
+
+  React.useEffect(() => {
+    if (graph === undefined || graphView.mode !== 'evidence') return
+    const anchorExists = graph.entities.some(
+      (entity) => entity.id === graphView.anchorId && entity.type === 'node',
+    )
+    if (anchorExists) return
+    viewTransitioningRef.current = false
+    setViewTransitioning(false)
+    setGraphView({ mode: 'main' })
+  }, [graph, graphView])
+
+  const changeGraphView = (nextView: GraphViewMode): void => {
+    if (viewTransitioningRef.current || nextView === graphView.mode) return
+    if (nextView === 'evidence') {
+      if (eligibleEvidenceAnchor === undefined) return
+      setGraphView({ mode: 'evidence', anchorId: eligibleEvidenceAnchor })
+      return
+    }
+    if (graphView.mode !== 'evidence') return
+
+    const latestGraph = graphRef.current
+    if (latestGraph === undefined) return
+    viewTransitioningRef.current = true
+    setViewTransitioning(true)
+    const anchorId = graphView.anchorId
+    void restoreMainView({
+      graph: latestGraph,
+      anchorId,
+      focusEntityId: snapshotRef.current?.focus?.focusEntityId,
+      pendingFocusId: focusQueueRef.current?.pendingEntityId,
+      selectFocus: (entityId) =>
+        focusQueueRef.current?.select(entityId) ?? Promise.resolve(false),
+    }).then((result) => {
+      if (!mountedRef.current) return
+      if (result !== 'failed') setGraphView({ mode: 'main' })
+      viewTransitioningRef.current = false
+      setViewTransitioning(false)
+    })
+  }
 
   const submitResearchExpansion = (): void => {
     const focusEntityId = snapshotRef.current?.focus?.focusEntityId
@@ -1152,10 +1224,11 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           {...(project?.head === undefined ? {} : { head: project.head })}
         />
         <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
-          <EvidenceVisibilityControl
-            visibility={evidenceVisibility}
-            focusedNodeId={focusedNodeId}
-            onChange={setEvidenceVisibility}
+          <GraphViewControl
+            view={graphView.mode}
+            canEnterEvidence={eligibleEvidenceAnchor !== undefined}
+            transitioning={viewTransitioning}
+            onChange={changeGraphView}
           />
           {researchExpansionState.phase === 'failed' ? (
             <ResearchExpansionRecoveryControls
@@ -1221,17 +1294,18 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
             </>
           )}
         </section>
-      ) : graphView.entities.length === 0 ? (
+      ) : visibleGraph.entities.length === 0 ? (
         <section className="flex min-h-0 flex-1 items-center justify-center gap-3 bg-sf-surface-muted text-sf-muted">
           <span>No research entities</span>
         </section>
       ) : (
         <div className={WORKSPACE_BASE + ' ' + (detailsOpen ? WORKSPACE_OPEN : WORKSPACE_CLOSED)}>
           <GraphPane
-            graph={graphView}
+            graph={visibleGraph}
             focusEntityId={focus?.focusEntityId}
             pendingEntityId={pendingFocusId}
             pathIds={focus?.pathIds ?? []}
+            interactionDisabled={viewTransitioning}
             onSelect={selectEntity}
           />
           <DetailsPane

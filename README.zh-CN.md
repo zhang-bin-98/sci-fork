@@ -145,8 +145,8 @@ dsh --profile web --dump-config
    明确的范围假设。
 3. 使用 `pubmed-search`（或其他检索/PDF Skill）取得真实来源材料，再加载
    `scifork-research` 格式化并校验导入 Draft。只有保存合格 Evidence 后才创建 Hypothesis。
-4. 在 Companion 查看图谱。Evidence 默认隐藏，可切换为当前 Focus Node 的 Evidence 或全部
-   Evidence；可见 Evidence 独占其目标 Node 上游的一列或一行。
+4. 在 Companion 默认的 **Main** 视图查看图谱。选中有直接 Evidence 的实体后，
+   可切换到锁定该实体的 **Evidence** 视图查看其断言，再返回 Main。
 5. 选中问题或主张并点击 **Research & Expand**，执行一次有界的文献优先扩展。
    Chat 正在运行时请求会排队，空闲时会立即开始；禁用的转圈按钮会在该 Session 恢复
    空闲时复位。多层探索必须在 DSH Chat 中明确请求 Progressive Research Run；每层保留

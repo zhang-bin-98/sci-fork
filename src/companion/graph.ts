@@ -28,7 +28,9 @@ export interface GraphLayout {
   edges: LayoutEdge[]
 }
 
-export type EvidenceVisibility = 'hidden' | 'focused-node' | 'all'
+export type GraphView =
+  | { mode: 'main' }
+  | { mode: 'evidence'; anchorId: string }
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
@@ -50,37 +52,64 @@ function sortEdges(edges: readonly ProjectionEdgeSummary[]): ProjectionEdgeSumma
   )
 }
 
-export function selectGraphView(input: SnapshotGraph): SnapshotGraph {
-  return {
-    entities: sortEntities(input.entities),
-    edges: sortEdges(input.edges),
+export function evidenceAnchorForFocus(
+  input: SnapshotGraph,
+  focusEntityId?: string,
+): string | undefined {
+  if (focusEntityId === undefined) return undefined
+  const entityTypes = new Map(input.entities.map((entity) => [entity.id, entity.type]))
+  if (entityTypes.get(focusEntityId) !== 'node') {
+    return undefined
   }
+  const hasExistingEvidence = input.edges.some(
+    (edge) =>
+      edge.source === 'evidence_ref' &&
+      edge.to === focusEntityId &&
+      entityTypes.get(edge.from) === 'evidence',
+  )
+  return hasExistingEvidence ? focusEntityId : undefined
 }
 
-export function evidenceVisibilityGraph(
+export function selectGraphView(
   input: SnapshotGraph,
-  visibility: EvidenceVisibility,
-  focusEntityId?: string,
+  view: GraphView,
 ): SnapshotGraph {
-  if (visibility === 'all') return input
-  const visibleEvidenceIds = new Set<string>()
-  if (visibility === 'focused-node' && focusEntityId !== undefined) {
-    for (const edge of input.edges) {
-      if (edge.source === 'evidence_ref' && edge.to === focusEntityId) {
-        visibleEvidenceIds.add(edge.from)
-      }
+  if (view.mode === 'main') {
+    const entities = input.entities.filter((entity) => entity.type !== 'evidence')
+    const entityIds = new Set(entities.map((entity) => entity.id))
+    return {
+      entities: sortEntities(entities),
+      edges: sortEdges(
+        input.edges.filter(
+          (edge) =>
+            edge.source !== 'evidence_ref' &&
+            entityIds.has(edge.from) &&
+            entityIds.has(edge.to),
+        ),
+      ),
     }
   }
-  const retainedEntityIds = new Set(
-    input.entities
-      .filter((entity) => entity.type !== 'evidence' || visibleEvidenceIds.has(entity.id))
-      .map((entity) => entity.id),
+
+  const anchor = input.entities.find(
+    (entity) => entity.id === view.anchorId && entity.type === 'node',
   )
+  if (anchor === undefined) return { entities: [], edges: [] }
+
+  const entityTypes = new Map(input.entities.map((entity) => [entity.id, entity.type]))
+  const edges = input.edges.filter(
+    (edge) =>
+      edge.source === 'evidence_ref' &&
+      edge.to === view.anchorId &&
+      entityTypes.get(edge.from) === 'evidence',
+  )
+  const evidenceIds = new Set(edges.map((edge) => edge.from))
   return {
-    entities: input.entities.filter((entity) => retainedEntityIds.has(entity.id)),
-    edges: input.edges.filter(
-      (edge) => retainedEntityIds.has(edge.from) && retainedEntityIds.has(edge.to),
+    entities: sortEntities(
+      input.entities.filter(
+        (entity) => entity.id === view.anchorId || evidenceIds.has(entity.id),
+      ),
     ),
+    edges: sortEdges(edges),
   }
 }
 
@@ -93,18 +122,9 @@ function stableCoordinate(value: number): number {
   return Object.is(rounded, -0) ? 0 : rounded
 }
 
-interface LayoutConstraint {
-  from: string
-  to: string
-  id: string
-  minlen?: number
-}
-
 function layoutDagre(
   entities: readonly ProjectionEntitySummary[],
   edges: readonly ProjectionEdgeSummary[],
-  constraints: readonly LayoutConstraint[],
-  barrierIds: readonly string[],
   direction: 'LR' | 'TB',
 ): Graph {
   const dagre = new Graph({ directed: true, multigraph: true })
@@ -119,33 +139,14 @@ function layoutDagre(
   })
   dagre.setDefaultEdgeLabel(() => ({}))
 
-  const evidenceTargets = new Set(
-    edges.filter(({ source }) => source === 'evidence_ref').map(({ to }) => to),
-  )
   for (const entity of entities) {
     dagre.setNode(entity.id, {
       width: GRAPH_NODE_WIDTH,
       height: GRAPH_NODE_HEIGHT,
     })
   }
-  for (const id of barrierIds) dagre.setNode(id, { width: 0, height: 0 })
   for (const edge of edges) {
-    const spansEvidenceLayer =
-      edge.source !== 'evidence_ref' && evidenceTargets.has(edge.to)
-    dagre.setEdge(
-      edge.from,
-      edge.to,
-      spansEvidenceLayer ? { minlen: 2 } : {},
-      graphEdgeId(edge),
-    )
-  }
-  for (const constraint of constraints) {
-    dagre.setEdge(
-      constraint.from,
-      constraint.to,
-      constraint.minlen === undefined ? {} : { minlen: constraint.minlen },
-      constraint.id,
-    )
+    dagre.setEdge(edge.from, edge.to, {}, graphEdgeId(edge))
   }
   layout(dagre)
   return dagre
@@ -157,50 +158,7 @@ export function layoutGraph(
 ): GraphLayout {
   const entities = sortEntities(graph.entities)
   const edges = sortEdges(graph.edges)
-  const evidenceIds = new Set(
-    entities.filter(({ type }) => type === 'evidence').map(({ id }) => id),
-  )
-  let dagre = layoutDagre(entities, edges, [], [], direction)
-  const rankGroups = new Map<number, { evidence: string[]; other: string[] }>()
-  for (const entity of entities) {
-    const rank = dagre.node(entity.id)?.rank
-    if (rank === undefined) continue
-    const group = rankGroups.get(rank) ?? { evidence: [], other: [] }
-    if (evidenceIds.has(entity.id)) group.evidence.push(entity.id)
-    else group.other.push(entity.id)
-    rankGroups.set(rank, group)
-  }
-
-  const barriers: string[] = []
-  const constraints: LayoutConstraint[] = []
-  const entityIds = new Set(entities.map(({ id }) => id))
-  for (const [rank, group] of rankGroups) {
-    if (group.evidence.length === 0 || group.other.length === 0) continue
-    let barrier = `__scifork_evidence_layer__:${rank}`
-    let suffix = 1
-    while (entityIds.has(barrier) || barriers.includes(barrier)) {
-      barrier = `__scifork_evidence_layer__:${rank}:${suffix}`
-      suffix += 1
-    }
-    barriers.push(barrier)
-    for (const other of group.other) {
-      constraints.push({
-        from: other,
-        to: barrier,
-        id: `${barrier}:from:${other}`,
-        minlen: 1,
-      })
-    }
-    for (const evidence of group.evidence) {
-      constraints.push({
-        from: barrier,
-        to: evidence,
-        id: `${barrier}:to:${evidence}`,
-        minlen: 1,
-      })
-    }
-  }
-  if (constraints.length > 0) dagre = layoutDagre(entities, edges, constraints, barriers, direction)
+  const dagre = layoutDagre(entities, edges, direction)
 
   return {
     nodes: entities.map((entity) => {

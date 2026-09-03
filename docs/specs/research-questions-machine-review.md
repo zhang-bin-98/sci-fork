@@ -154,10 +154,11 @@ request.
 
 ### Companion evidence presentation
 
-The Companion snapshot remains a rebuildable projection, but the Evidence layer
-is collapsed by default. A local Evidence control can keep it hidden, reveal
-only the Evidence referenced by the current Focus Node, or reveal all Evidence
-nodes and their projected relationships without changing project state.
+The Companion snapshot remains a complete rebuildable projection. Its local
+Main view excludes Evidence. From an eligible Host-confirmed Focus, the user can
+enter a locked Evidence view containing only that anchor, its existing direct
+Evidence, and the corresponding projection relationships, without changing
+project state.
 
 Node and stored scientific Edge Details include a Literature section grouped by:
 
@@ -224,7 +225,7 @@ control and must be disclosed to the user.
 
 - [x] `CONTEXT.md`, product design, architecture, README, packaged Skills, and
       this specification use the same Question, Framing Link, machine-review,
-      Finding-threshold, evidence-visibility, and retention terminology.
+      Finding-threshold, Main/Evidence-view, and retention terminology.
 - [x] An open-ended inquiry can be persisted as a Research Question, selected as
       Focus, read through public tools, and used as the first expansion anchor.
 - [x] Questions can frame Hypotheses/Findings through non-scientific Framing
@@ -240,8 +241,8 @@ control and must be disclosed to the user.
 - [x] Research Expansion, Progressive Research, and ordinary Draft import apply
       the same machine-review requirements and persist qualifying Evidence as
       `machine_reviewed` while retaining exact ids.
-- [x] Evidence nodes are hidden by default, can be limited to the current Focus
-      Node or revealed in full, and related Node/Edge Details identify
+- [x] Main excludes Evidence by default; an eligible confirmed Focus opens one
+      locked-anchor Evidence view, and related Node/Edge Details identify
       publications and all review states.
 - [x] UI counts distinguish unique publications, machine-reviewed Evidence, and
       human-reviewed Evidence; Framing Links are excluded.
@@ -266,7 +267,7 @@ control and must be disclosed to the user.
 - Exercise create/update/delete commands for Questions and Framing Links plus
   create/review Evidence transitions and single-entity path planning.
 - Verify projections distinguish Questions, Framing Links, scientific Edges, and
-  optional Evidence visibility without treating `frames` as scientific.
+  Evidence relationships without treating `frames` as scientific.
 
 ### Host and Git
 
@@ -281,8 +282,9 @@ control and must be disclosed to the user.
 ### Companion and Bridge
 
 - Verify Question cards, Focus, Details, and first-step prompt semantics.
-- Verify Evidence is hidden by default, the toggle restores it, and Node/Edge
-  Literature Details render minimum citation snapshots without remote fetches.
+- Verify Main excludes Evidence by default, eligible entities enter a locked
+  Evidence view, and Node/Edge Literature Details render minimum citation
+  snapshots without remote fetches.
 - Verify publication/machine/human counts and rejected grouping.
 - Preserve one-click, nonce, idle/queued, Retry/Copy, responsive, and Page-Key
   behavior.
@@ -310,6 +312,6 @@ control and must be disclosed to the user.
    verify no Finding is created from machine-reviewed Evidence.
 4. Accept one Evidence Assertion, reject another, delete one affected branch, and
    verify exact audit state and Git checkpoints.
-5. Verify the default graph hides Evidence, Details identify source articles, the
-   Evidence toggle works, and no project file contains abstract/full-text/PDF or
-   complete provider output.
+5. Verify Main excludes Evidence, the locked-anchor Evidence view and Details
+   identify source articles, and no project file contains abstract/full-text/PDF
+   or complete provider output.

@@ -165,9 +165,9 @@ the generated `dist/` assets.
 3. Use `pubmed-search` (or another retrieval/PDF Skill) to obtain real source
    material, then load `scifork-research` to format and validate an import
    draft. Hypotheses are created only after qualifying Evidence is saved.
-4. Review the graph in the Companion. Evidence is hidden by default; switch to
-   the current Focus Node's Evidence or all Evidence when you need the citation
-   layer. Visible Evidence occupies its own upstream column or row.
+4. Review the graph in the Companion's default **Main** view. After focusing an
+   entity with direct Evidence, switch to its locked **Evidence** view to inspect
+   that entity and its assertions, then return to Main.
 5. Select a question or claim and click **Research & Expand** for one bounded
    literature-first step. A running Chat queues the request; an idle Chat
    starts it, and the disabled spinner resets when that Session becomes idle.

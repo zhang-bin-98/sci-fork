@@ -510,14 +510,17 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
 - `Research & Expand` 使用 semantic warm-surface 背景与 accent-green 文字，不使用填充
   accent 背景；hover、focus 和 disabled 状态仍由 Tailwind theme tokens 表达。
 - 不渲染独立 Focus 面包屑栏；Focus path 仍用于图内路径高亮。
-- snapshot 始终包含完整投影；Companion 默认只过滤 Evidence entity/投影关系，显示完整
-  Question/主张/Result 主图。Evidence 显示状态提供隐藏、当前 Focus Node Evidence 和全部
-  Evidence 三种选项，只存在于当前 React tree，不写 storage 或项目；Focus 只有在选择当前
-  Focus Node Evidence 时才决定临时 Evidence 子集。
-- 可见 Evidence 保持 `Evidence → Node` 投影边并独占目标 Node 的上一布局 rank：LR 插入
-  一列，TB 插入一行，普通入边跨过该 rank。该约束只进入 Dagre 布局，不生成合成边；
-  Evidence 隐藏时不保留空 rank。
-- 初始视口适配完整图谱；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
+- snapshot 始终包含完整投影；Companion 只在当前 React tree 中派生互斥的 `main | evidence`
+  视图，不写 storage 或项目。Main 保留所有非 Evidence entity 及端点均可见的关系；
+  Evidence 只保留锁定锚点、其直接引用且实际存在的 Evidence entity，以及对应
+  `evidence_ref`。科学 Edge Details 中的 `evidenceRefs` 不参与该子图。
+- 只有当前 Host-confirmed Focus 是至少一条有效 `evidence_ref` 的非 Evidence 实体且没有
+  待确认 Focus 时，才能进入 Evidence。锚点在进入时锁定；点击 Evidence 可更新 Focus
+  和 Details，但不改变视图成员。返回 Main 通过串行 Focus queue 恢复锚点，确认前禁用
+  新选择；失败时停留 Evidence，锚点已消失时直接返回 Main。
+- Main 和 Evidence 子图共享通用确定性 Dagre LR/TB 布局，不保留混合图专用的
+  Evidence barrier、rank 或合成关系。
+- 初始视口适配当前 Main 或 Evidence 图；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
   移到视图中心并更新高亮与 Details。
 - React Flow 临时 `selected` 状态不代表 Focus。只有 Host `setFocus` 成功后才显示正式
   Focus 高亮；请求期间显示独立 pending 反馈，连续点击串行收敛到最后一次目标。
@@ -928,8 +931,9 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
   两行固定头部突出精确类型并合并引用/Focus 元数据；
   卡片 hover/focus 本体展开完整标签并保持全图布局稳定。
 - 精确实体类型用文字和颜色圆点共同显示；Question 使用中性卡片，Framing Link 与科学 Edge 可区分。
-- Evidence 默认隐藏，可切换为当前 Focus Node Evidence 或全部 Evidence；Node 卡片与 Details
-  的 publication、machine-reviewed、human-reviewed 计数和结构化引用一致。
+- 默认 Main 隐藏全部 Evidence；只有有效锚点可进入锁定的 Evidence 子图，返回 Main
+  恢复锚点 Focus。Node 卡片与 Details 的 publication、machine-reviewed、human-reviewed
+  计数和结构化引用一致。
 - Node/Edge Literature Details 按审核状态及 retrieval-only 分组显示最小 citation 字段，
   rejected 默认收起且不触发远程请求。
 - Tailwind utilities 覆盖页面骨架、顶栏、按钮、通知、卡片、Details、排版和响应式布局，
@@ -954,7 +958,7 @@ fresh DSH profile
 → /research init on current branch
 → open standalone Companion
 → persist and focus an open Research Question
-→ verify Evidence is hidden by default
+→ verify Main view excludes Evidence by default
 → model loads pubmed-search
 → full PubMed query with paged metadata
 → PMID/DOI lookup
@@ -968,7 +972,7 @@ fresh DSH profile
 → verify every retained node is connected, no machine Evidence creates a Finding, and the run stops
 → accept one Evidence item and reject another after unlinking active references
 → select a rejected branch, ask Chat to delete the current Focus, verify the reported id, then delete Framing Link/Edge before Node
-→ switch Evidence view to all and verify citation Details without remote fetch
+→ focus an entity with direct Evidence, enter its locked Evidence view, and verify citation Details without remote fetch
 → repeat with one alternative retrieval/PDF Skill
 → separately format Research Import Draft and import a qualifying machine-reviewed item through the ordinary flow
 → load scifork-research and import one formatted Draft item
@@ -1005,7 +1009,8 @@ fresh DSH profile
 ### M2：Companion
 
 - Page Key 和同源 API。
-- 默认隐藏 Evidence 的全局主图、Question/Framing Link、Focus 居中高亮、Evidence toggle、
+- 默认排除 Evidence 的 Main 主图、锁定锚点的 Evidence 子图、Question/Framing Link、
+  Focus 居中高亮、`Main / Evidence` 分段控件、
   分组 Literature Details、响应式布局和安全渲染。
 - visible-only polling。
 - Research Expansion BroadcastChannel 与单步自动 Chat submit。
@@ -1044,7 +1049,8 @@ fresh DSH profile
 - 单 package 构建为一个可安装 tarball。
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面在窄窗和宽窗下使用同一响应式布局。
-- Companion snapshot 保留完整投影，页面默认隐藏 Evidence 层并可显式显示；Focus 只改变视图中心、高亮与 Details。
+- Companion snapshot 保留完整投影，页面默认显示非 Evidence Main，并可从有效 Focus
+  进入锁定锚点的 Evidence 子图；Focus 继续决定视图中心、高亮与 Details。
 - Graph、文件、Focus 和 Chat context 一致。
 - Research & Expand 点击后自动提交到对应 Chat；idle 启动、busy 排队，并在先完成
   PubMed 检索和 machine Evidence 后默认保存最多五条有科学 Edge 或 Framing Link 的

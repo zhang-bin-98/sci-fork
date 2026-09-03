@@ -1,15 +1,16 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   CompanionApp,
   DetailsPane,
   EntityNodeCard,
-  EvidenceVisibilityControl,
+  GraphViewControl,
   HeaderIdentity,
   ResearchExpansionAction,
   ResearchExpansionRecoveryControls,
   copyEntityId,
+  restoreMainView,
   settleEntityIdCopyFeedback,
 } from '../../src/companion/app.js'
 import type { EntityDocument, ProjectionEntitySummary } from '../../src/shared/companion-contract.js'
@@ -258,7 +259,7 @@ describe('Companion graph UI', () => {
     expect(actionClasses).not.toContain('bg-sf-accent')
     expect(actionClasses).not.toContain('text-white')
     expect(actionClasses).not.toContain('shadow-sm')
-    expect(html).toContain('All evidence')
+    expect(html).toContain('Evidence view')
   })
 
   it('shows only a disabled spinner while research is running', () => {
@@ -285,32 +286,114 @@ describe('Companion graph UI', () => {
     expect(html).not.toContain('Research &amp; Expand')
   })
 
-  it('exposes hidden, focused-node, and all Evidence display modes', () => {
+  it('exposes mutually exclusive Main and Evidence views with entry gating', () => {
     const html = renderToStaticMarkup(
-      createElement(EvidenceVisibilityControl, {
-        visibility: 'hidden',
-        focusedNodeId: ENTITY_ID,
+      createElement(GraphViewControl, {
+        view: 'main',
+        canEnterEvidence: true,
+        transitioning: false,
         onChange: () => undefined,
       }),
     )
 
-    expect(html).toContain('data-evidence-visibility-control="true"')
-    expect(html).toContain('data-evidence-visibility="hidden"')
-    expect(html).toContain('data-evidence-visibility="focused-node"')
-    expect(html).toContain('data-evidence-visibility="all"')
-    expect(html).toContain('aria-label="Focus evidence"')
-    expect(html).not.toContain('title="Focus a Node to show its evidence"')
+    expect(html).toContain('data-graph-view-control="true"')
+    expect(html).toContain('data-graph-view="main"')
+    expect(html).toContain('data-graph-view="evidence"')
+    expect(html).toContain('aria-label="Main view"')
+    expect(html).toContain('aria-label="Evidence view"')
+    expect(html).not.toContain('data-evidence-visibility')
+    expect(html).not.toContain('Hide evidence')
+    expect(html).not.toContain('All evidence')
 
     const disabledHtml = renderToStaticMarkup(
-      createElement(EvidenceVisibilityControl, {
-        visibility: 'hidden',
-        focusedNodeId: undefined,
+      createElement(GraphViewControl, {
+        view: 'main',
+        canEnterEvidence: false,
+        transitioning: false,
         onChange: () => undefined,
       }),
     )
-    expect(disabledHtml).toContain('aria-label="Focus evidence"')
+    expect(disabledHtml).toContain('aria-label="Evidence view"')
     expect(disabledHtml).toContain('disabled=""')
-    expect(disabledHtml).toContain('title="Focus a Node to show its evidence"')
+    expect(disabledHtml).toContain('title="Focus an entity with direct Evidence to enter Evidence view"')
+
+    const transitioningHtml = renderToStaticMarkup(
+      createElement(GraphViewControl, {
+        view: 'evidence',
+        canEnterEvidence: false,
+        transitioning: true,
+        onChange: () => undefined,
+      }),
+    )
+    expect(transitioningHtml).toContain('aria-busy="true"')
+    expect(transitioningHtml.match(/disabled=""/g)).toHaveLength(2)
+    expect(transitioningHtml).toContain('data-graph-view="evidence"')
+  })
+
+  it('restores the exact Evidence anchor before returning to Main', async () => {
+    const graph = { entities: [summary], edges: [] }
+    const selectFocus = vi.fn<(entityId: string) => Promise<boolean>>()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: 'ev_cccccccc-3333-4333-8333-333333333333',
+        selectFocus,
+      }),
+    ).resolves.toBe('restored')
+    expect(selectFocus).toHaveBeenNthCalledWith(1, ENTITY_ID)
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: 'ev_dddddddd-4444-4444-8444-444444444444',
+        selectFocus,
+      }),
+    ).resolves.toBe('failed')
+    expect(selectFocus).toHaveBeenNthCalledWith(2, ENTITY_ID)
+  })
+
+  it('waits for queued Focus work before treating Main restoration as complete', async () => {
+    const graph = { entities: [summary], edges: [] }
+    const selectFocus = vi.fn<(entityId: string) => Promise<boolean>>().mockResolvedValue(true)
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: ENTITY_ID,
+        pendingFocusId: 'ev_pending',
+        selectFocus,
+      }),
+    ).resolves.toBe('restored')
+    expect(selectFocus).toHaveBeenCalledWith(ENTITY_ID)
+  })
+
+  it('returns directly when the anchor is already focused or no longer exists', async () => {
+    const graph = { entities: [summary], edges: [] }
+    const selectFocus = vi.fn<(entityId: string) => Promise<boolean>>()
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: ENTITY_ID,
+        selectFocus,
+      }),
+    ).resolves.toBe('restored')
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: 'node_missing',
+        focusEntityId: undefined,
+        selectFocus,
+      }),
+    ).resolves.toBe('anchor-missing')
+    expect(selectFocus).not.toHaveBeenCalled()
   })
 
   it('shows grouped machine-reviewed and retrieval-only literature in Node Details', () => {

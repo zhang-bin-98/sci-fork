@@ -81,7 +81,7 @@ DSH 或用户。
 ```text
 ┌──────────────────────────────┐  ┌──────────────────────────────┐
 │ DeepSeek Harness Web         │  │ SciFork Graph Companion      │
-│ Sessions / Chat / Tools      │  │ Global graph + Details       │
+│ Sessions / Chat / Tools      │  │ Main / Evidence + Details    │
 │                              │  │                              │
 │ ...                          │  │ Research & Expand  Details   │
 │ [Graph] Research Graph       │  │                              │
@@ -89,17 +89,17 @@ DSH 或用户。
 └──────────────────────────────┘  └──────────────────────────────┘
 ```
 
-页面默认显示不含 Evidence 层的完整主张、Result、Question 与关系投影，并高亮当前 Focus
-路径；Evidence 显示控件提供隐藏、仅显示当前 Focus Node 的 Evidence、显示全部 Evidence 三种
-临时状态，不改变项目文件。只读 Details 默认打开，
+页面在两个互斥的本地视图之间切换。`Main` 是默认视图，显示完整的非 Evidence
+实体及其关系；`Evidence` 视图只显示进入时锁定的一个锚点实体、该实体直接引用且
+实际存在的 Evidence Assertion，以及对应的 `evidence_ref`。视图状态不持久化，不改变
+项目文件。只读 Details 默认打开，
 用户可以通过抽屉拉手收起或重新打开。页面提供 `Research & Expand`、`Details`
-两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心，不改变图谱内容；
-用户可以在保持全局上下文的同时沿关系思考。Git 历史恢复通过对应 DSH Chat 完成。
-
-Evidence 可见时保持 `Evidence → Node` 的上游语义并使用独立布局层：宽屏 LR 在被引用
-Node 前插入一列，窄屏 TB 在被引用 Node 前插入一行，普通上游关系跨过该层。多个指向
-同一 Node 的 Evidence 共享该层；Evidence 隐藏时不保留空列或空行，也不创建或渲染
-普通父节点到 Evidence 的合成关系。
+两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心。在 Main 中，只有当前
+Focus 是至少一条有效 `evidence_ref` 的非 Evidence 实体且没有待确认 Focus 时，
+才能进入 Evidence。进入后的 Evidence 点击可更新 Focus 和 Details，但不替换锁定锚点。
+返回 Main 时恢复锚点 Focus；Host 确认前保持 Evidence 视图并禁用新选择，恢复失败则
+停留并显示现有错误。若锚点已从投影消失，则直接返回 Main。Git 历史恢复通过对应
+DSH Chat 完成。
 
 实体点击期间显示独立的 pending 状态；连续点击按顺序完成并以最后一次点击为最终
 Focus，不把 React Flow 的临时选择态伪装成已持久的 Focus。Details 显示所选 Research
@@ -304,8 +304,9 @@ basis: literature | experiment | ai_inference
 ### Focus
 
 用户当前讨论的 Research Question、Node、Result、Evidence Assertion、Framing Link 或
-Edge，也是 Research Graph 中的视觉中心。Focus 影响视口位置、高亮、Details 和 Chat context；
-当用户选择“当前 Focus Node 的 Evidence”时，它也决定临时显示的 Evidence 子集，但不修改科研文件。
+Edge，也是 Research Graph 中的视觉中心。Focus 影响视口位置、高亮、Details 和 Chat context。
+Main 中 Host 已确认的 Focus 只决定能否以它为锚点进入 Evidence 视图；进入后的视图成员
+由锁定锚点决定，不跟随后续 Evidence Focus 变化。
 
 ### Confidence Band
 
@@ -469,7 +470,8 @@ research_graph_focus
 
 点击实体更新 Focus 并在保持当前缩放的前提下把该实体或关系移动到视图中心；只有
 Host 确认后的 Focus 使用正式高亮，连续点击不会被静默丢弃。
-默认主张图内容保持不变，Evidence 的显示开关只影响当前页面投影。点击
+默认 Main 保持完整非 Evidence 上下文，Evidence 视图只保留锁定锚点及其直接 Evidence。切换
+只影响当前页面投影。点击
 `Research & Expand` 后，Companion 生成只包含 Focus
 ID/摘要、当前 Chat 研究目的约束、单步任务和明确保存授权的提示，并自动提交到启动
 该页面的 DSH Session。提示不预装邻域正文；大模型使用 `research_graph_read` 的
@@ -657,7 +659,7 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 1. 用户在 DSH 打开研究目录并执行 /research init
 2. 点击 Open Research Graph
 3. 用户给出开放式目标时，大模型先创建 Research Question 并设为 Focus
-4. Companion 默认隐藏 Evidence 层；可切换为当前 Focus Node Evidence 或全部 Evidence，Details 可查看来源分组
+4. Companion 默认显示 Main；选中有直接 Evidence 的实体后可进入只含该锚点及其 Evidence 的视图
 5. 用户点击 Research & Expand
 6. 对应 DSH Chat 自动开始或进入 Queue
 7. 大模型读取最新 Question/方向邻居并选择 PubMed Search 或其他检索/PDF Skill
@@ -676,8 +678,8 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
-- Companion 默认显示完整的 Question/主张/Result 主图并隐藏 Evidence 层；Evidence 控件可切换
-  隐藏、当前 Focus Node Evidence 或全部 Evidence，Focus 仍改变高亮、Details 和视图中心。
+- Companion 默认显示完整非 Evidence 主图；`Main / Evidence` 控件只允许从有直接 Evidence
+  的 Host-confirmed Focus 进入锁定锚点证据视图，并可直接返回 Main。
 - Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID
   可见，ID 本身支持点击/键盘复制和轻量状态反馈。
 - Details 默认打开且可收起；`<xl` 时位于 Graph 下方，`xl` 及以上与 Graph 并列，两行

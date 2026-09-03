@@ -7,9 +7,8 @@
 
 ## Problem
 
-Visible Evidence Assertions currently share a Dagre rank with other incoming
-claim nodes, so Evidence can appear beside rather than immediately upstream of
-the claim it supports or contradicts. The `Research & Expand` action reports only
+Evidence Assertions need a focused inspection surface without disrupting the
+complete non-Evidence graph. The `Research & Expand` action reports only
 submission acknowledgement and remains labelled `Started` or `Queued`, without
 representing the corresponding Session's running lifecycle. Progressive Research
 also permits a branching frontier without defining the single continuation path
@@ -19,8 +18,8 @@ expected for depth-oriented investigation.
 
 Goals:
 
-1. Give visible Evidence its own upstream layout layer immediately before its
-   referenced claim: one column in LR layout and one row in TB layout.
+1. Present a selected entity and its direct Evidence in a dedicated view, using
+   the same deterministic LR/TB layout as the Main graph.
 2. Keep `Research & Expand` disabled with an indeterminate spinner from submit
    until the originating Session becomes idle again, then restore the action.
 3. Make a Progressive Research Run reuse the same bounded one-layer expansion as
@@ -30,7 +29,7 @@ Goals:
 Non-goals:
 
 - Do not change Evidence, scientific Edge, or Framing Link direction or storage.
-- Do not reserve an empty Evidence layer while Evidence is hidden.
+- Do not retain mixed-graph Evidence ranks, barriers, or synthetic relationships.
 - Do not add a backend, persisted run state, per-turn identifier, cancellation,
   background work, or a new DSH dependency.
 - Do not make the Companion button recursive or let a Prediction continue a run.
@@ -40,17 +39,11 @@ Non-goals:
 
 ### Evidence layout
 
-Evidence projection remains `Evidence -> Node`. When at least one Evidence
-Assertion is visible, layout assigns each referenced Node an Evidence layer
-immediately upstream of that Node. Non-Evidence incoming relationships span that
-inserted layer. Consequently an ordinary parent, visible Evidence, and referenced
-Node occupy successive LR columns or TB rows. Multiple visible Evidence
-Assertions for the same Node share its inserted layer, while no visible Evidence
-entity shares its column or row with a non-Evidence entity. Hidden Evidence does
-not alter the ordinary graph layout.
-
-This is a presentation constraint only. No synthetic relationship is rendered or
-persisted between the ordinary parent and Evidence.
+Evidence projection remains `Evidence -> Node`. Main excludes Evidence, while
+Evidence view contains one locked anchor and only its direct Evidence projection
+relationships. The generic deterministic layout therefore places Evidence
+upstream of the anchor in LR and TB without a special barrier, inserted rank, or
+synthetic relationship.
 
 ### Research action lifecycle
 
@@ -109,9 +102,9 @@ branching frontier to persist.
 
 ## Acceptance criteria
 
-- [x] With Evidence visible, a parent, its referenced claim's Evidence, and that
-      claim occupy three ordered LR columns and three ordered TB rows.
-- [x] With Evidence hidden, no empty Evidence column or row is introduced.
+- [x] Main and locked-anchor Evidence subgraphs use the same deterministic LR/TB
+      layout, with Evidence upstream of its anchor.
+- [x] No mixed-graph Evidence barrier, inserted rank, or synthetic edge remains.
 - [x] Research submission and accepted execution show one disabled spinner-only
       action; `Started`, `Queued`, and `Study` are not displayed.
 - [x] The action returns to idle only after the originating Session is observed
@@ -130,9 +123,8 @@ branching frontier to persist.
 
 ## Test plan
 
-- Add graph-layout tests covering the inserted Evidence rank in LR and TB and
-  keeping unrelated non-Evidence entities out of that layer; existing
-  hidden-Evidence coverage proves the absence of an empty layer.
+- Add graph-layout tests covering the dedicated Evidence subgraph in LR and TB;
+  Main-view membership tests prove unrelated entities and Evidence are absent.
 - Extend the existing channel and Bridge tests with one accepted-running-to-idle
   lifecycle case and the completion wire shape.
 - Adjust the existing Companion render assertion for the disabled spinner-only
