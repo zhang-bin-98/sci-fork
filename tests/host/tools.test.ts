@@ -241,6 +241,16 @@ describe('registerResearchTools', () => {
       expect(branch.properties['relation']?.enum).toContain('predicts')
       expect(branch.properties).toHaveProperty('publicationRefs')
     }
+    const nodeBranches = command.oneOf as Array<{
+      properties: { kind?: { const?: string }; body?: { description?: string } }
+    }>
+    for (const branch of nodeBranches.filter(({ properties }) => {
+      const kind = properties.kind?.const
+      return kind === 'create_node' || kind === 'update_node'
+    })) {
+      expect(branch.properties.body?.description).toContain('first non-empty paragraph')
+      expect(branch.properties.body?.description).toContain('bold summary sentence')
+    }
     const focus = tools.definitions.find((d) => d.name === 'research_graph_focus')!
     expect(focus.output.schema).toEqual({})
     dispose()

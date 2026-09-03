@@ -429,7 +429,10 @@ const APPLY_COMMAND_SCHEMA = {
         nodeKind: { type: 'string', enum: ['finding', 'hypothesis', 'prediction'] },
         confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
         evidenceRefs: EVIDENCE_REFS,
-        body: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold summary sentence; put details in later paragraphs.',
+        },
       },
       ['id', 'nodeKind', 'confidence', 'body'],
     ),
@@ -441,7 +444,10 @@ const APPLY_COMMAND_SCHEMA = {
         nodeKind: { type: 'string', enum: ['finding', 'hypothesis', 'prediction'] },
         confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
         evidenceRefs: EVIDENCE_REFS,
-        body: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold summary sentence; put details in later paragraphs.',
+        },
       },
       ['id', 'expectedFileVersion'],
     ),
@@ -476,7 +482,14 @@ const APPLY_COMMAND_SCHEMA = {
     ),
     commandBranch(
       'create_result',
-      { id: ID, observedAt: { type: 'string' }, body: { type: 'string' } },
+      {
+        id: ID,
+        observedAt: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold observation sentence; put details in later paragraphs.',
+        },
+      },
       ['id', 'observedAt', 'body'],
     ),
     commandBranch(
@@ -486,7 +499,10 @@ const APPLY_COMMAND_SCHEMA = {
         expectedFileVersion: VERSION,
         status: { type: 'string', enum: ['draft', 'validated', 'superseded'] },
         observedAt: { type: 'string' },
-        body: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold observation sentence; put details in later paragraphs.',
+        },
       },
       ['id', 'expectedFileVersion'],
     ),

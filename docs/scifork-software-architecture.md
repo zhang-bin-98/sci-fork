@@ -20,7 +20,7 @@ MVP 采用以下决策：
    undo/redo 或历史恢复状态。
 10. MVP 发布一个 SciFork 专用的 `SciFork Research` Skill，以及一个通用的 `pubmed-search` 检索 Skill。
 11. 大模型先完成检索 Skill，再使用 `SciFork Research` 格式化 Draft；普通导入与获授权扩展使用同一套自动 Evidence 审核规则，扩展在审核后继续保存明确关系；Skill 之间不互相调用。
-12. Companion 按钮只执行一个文献支撑的 Research Expansion Step；Progressive Research Run 只能由用户在当前 Chat 中明确请求，并由大模型逐轮编排，二者均不逐条等待证据确认。
+12. Companion 按钮只执行一个文献支撑的 Research Expansion Step；Progressive Research Run 只能由用户在当前 Chat 中明确请求，并由大模型每层保存全部合格分支、自动选择一个新 Hypothesis 作为唯一下一层，二者均不逐条等待证据确认。
 13. 开放式目标保存为 Research Question；Question 通过非科学 `frames` Framing Link 连接 Hypothesis/Finding。
 14. 文献 Evidence 直接保存 PMID/DOI 和最小 Citation Snapshot，不建立 Source 实体；完整元信息、abstract、全文、PDF 和原始响应不进入 SciFork 持久化或缓存。
 15. `machine_reviewed` 与人工 `reviewed` 分开；前者可支持低置信探索但不能满足 Finding 或 `basis: literature`。
@@ -513,6 +513,9 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
   Question/主张/Result 主图。Evidence 显示状态提供隐藏、当前 Focus Node Evidence 和全部
   Evidence 三种选项，只存在于当前 React tree，不写 storage 或项目；Focus 只有在选择当前
   Focus Node Evidence 时才决定临时 Evidence 子集。
+- 可见 Evidence 保持 `Evidence → Node` 投影边并独占目标 Node 的上一布局 rank：LR 插入
+  一列，TB 插入一行，普通入边跨过该 rank。该约束只进入 Dagre 布局，不生成合成边；
+  Evidence 隐藏时不保留空 rank。
 - 初始视口适配完整图谱；Focus 变化时保持当前缩放，把对应实体中心或 Edge 中点
   移到视图中心并更新高亮与 Details。
 - React Flow 临时 `selected` 状态不代表 Focus。只有 Host `setFocus` 成功后才显示正式
@@ -576,6 +579,8 @@ Companion `Research & Expand` user click
 → conversation.input.for(scope).setDraft(prompt)
 → conversation.input.for(scope).submit()
 → Bridge returns acknowledgement
+→ Bridge observes the captured Session running and then idle
+→ Bridge returns completion
 ```
 
 约束：
@@ -595,6 +600,10 @@ Companion `Research & Expand` user click
 - nonce 在页面内只使用一次，重复消息被丢弃。
 - Session 空闲时 submit 启动；运行中使用 DSH 默认 Queue，不执行 steer 或 cancel。
 - Bridge ack 只表示已交给 DSH input transaction；发送拒绝由 DSH 在对应 composer 中显示并保留 draft。
+- 从发送到完成期间 Companion 只显示禁用的无文字转圈按钮，不显示 Started/Queued/Study。
+  Bridge 只轮询其捕获的原始 Session；预提交已 running 或提交后观察到 running 后，首次
+  观察到 `running=false` 即发送 completion 并使按钮复位。DSH 没有 per-turn 完成事件，
+  因此同一 Session 的其他 Queue 工作可以延迟这一 Session 级完成信号。
 - Companion 未收到 Bridge ack 时显示 `Retry` 和 `Copy`。
 - 不再使用 DraftRequest、bridge secret、Host claim 或把科研正文存入 Host 临时队列。
 - Bridge 只负责提交；检索、分支数量/类型/关系、上下文选择和错误恢复由对应 Chat
@@ -630,8 +639,9 @@ Skill 不直接调用另一个 Skill，也不共享 provider 生命周期或私�
 
 同一自动审核顺序用于研究扩展。按钮提交只授权一次
 “检索阶段 → Evidence 自动审核 → 图谱阶段”；用户在 Chat
-中明确请求 Progressive Research Run 时，大模型才维护 frontier/visited state 并重复
-该顺序。每个检索阶段必须完成并把真实结果留在当前 Chat context，随后才加载
+中明确请求 Progressive Research Run 时，大模型才维护一个当前 continuation 和
+visited state 并重复该顺序。每层保存全部合格分支，但只选择一个新 Hypothesis 继续。
+每个检索阶段必须完成并把真实结果留在当前 Chat context，随后才加载
 `scifork-research` 判断可保存关系。按钮、Skill 或已保存节点不能自行触发下一轮。
 
 ### 10.2 SciFork Research Skill
@@ -665,7 +675,7 @@ read current Chat objective + Focus
 → extract and create one or more machine-reviewed Evidence Assertions per retained branch
 → propose at most five direct low-confidence Hypothesis/Prediction branches
 → Question: create Hypothesis, then create Question → Hypothesis frames Framing Link
-→ other anchors: create Node, then immediately create scientific Edge
+→ other anchors: create Node, then immediately create an Edge from the existing Node/Result anchor to the new Node
 → use predicts for Finding/Hypothesis → Prediction; otherwise choose the narrowest valid relation
 → on relationship failure, re-read/retry or delete the orphan Node after its relations are clear
 → re-read and report the exact persisted ids
@@ -680,11 +690,14 @@ Skill 不创建孤立分支。自动扩展不得创建 Finding，所有新 Node 
 `machine_reviewed`；只有用户事后接受才能成为人工 `reviewed`。
 
 Progressive Research Run 工作流只接受当前 Chat 中的明确用户请求。模型先陈述用户
-目标和有界计划，维护 frontier/visited state，按“读取 Question/方向邻居 → 完成一个检索 Skill
-→ 读取高价值来源文字 → 加载 `scifork-research` → machine-review Evidence → 保存明确连接 → 选择下一 frontier”
-逐轮执行。默认检索 provider 是 packaged PubMed Skill，也允许用户指定其他数据库、
-PDF Skill 或已有可靠 Chat 材料。模型达到用户范围、没有新关系、耗尽计划、遇到
-不可恢复错误或需要改变目标时停止并汇报；不得转为后台任务或静默扩大目标。
+目标和有界计划，维护一个 current continuation 与 visited state，按“读取当前
+Question/Hypothesis 和方向邻居 → 完成一个检索 Skill → 读取高价值来源文字 → 加载
+`scifork-research` → machine-review Evidence → 保存本层全部合格连接 → 自动选择一个
+新 Hypothesis 作为唯一下一层”逐轮执行。未选择的 Hypothesis 与全部 Prediction 保留为
+本次运行的终止旁支；不存在可继续的新 Hypothesis 时停止。默认检索 provider 是
+packaged PubMed Skill，也允许用户指定其他数据库、PDF Skill 或已有可靠 Chat 材料。
+模型达到用户范围、耗尽计划、遇到不可恢复错误或需要改变目标时停止并汇报；不逐层
+请求确认，不得转为后台任务或静默扩大目标。
 
 Evidence 拒绝工作流先读取引用它的 Node/Edge，逐条移除活动引用并报告受影响分支，
 再执行 guarded review transition。删除分支工作流先读取目标、Focus 和关系，必要时清理
@@ -696,7 +709,7 @@ Focus，再逐条 `delete_framing_link` 与 `delete_edge`，最后按叶到根�
 
 Bundle 同时贡献通用 `pubmed-search` Skill。Host 只为它注册 directory `resourceBase`，精确指向 package-owned `skills/pubmed-search` 目录；`SKILL.md` 显式引用相对资源 `helper.mjs`，DSH 在模型加载 Skill 时提供基目录并要求按需解析，不列举目录。模型不得扫描安装目录、猜测包位置、把 helper 复制进 Research Project，或创建中间请求文件。
 
-它的 catalog description 明确说明这是紧凑的 PubMed search/PMID-or-DOI lookup Skill，必须在对应检索阶段完成实际检索，随后才加载 `scifork-research`；检索未完成时不得同时加载二者。Progressive Research Run 可以由大模型在下一 frontier 重复该顺序，但 Skill 之间仍不互相调用。该描述借鉴通用生命科学检索 Skill 的路由原则：描述先限定适用任务，所有请求使用随包脚本，默认返回紧凑结构而非原始上游响应，失败明确且不合成记录。
+它的 catalog description 明确说明这是紧凑的 PubMed search/PMID-or-DOI lookup Skill，必须在对应检索阶段完成实际检索，随后才加载 `scifork-research`；检索未完成时不得同时加载二者。Progressive Research Run 可以由大模型为下一 Hypothesis continuation 重复该顺序，但 Skill 之间仍不互相调用。该描述借鉴通用生命科学检索 Skill 的路由原则：描述先限定适用任务，所有请求使用随包脚本，默认返回紧凑结构而非原始上游响应，失败明确且不合成记录。
 
 辅助脚本请求为：
 
@@ -1023,7 +1036,7 @@ fresh DSH profile
 | 自动审核被误解为人工接受 | 独立 `machine_reviewed` 状态、UI 分开计数、Finding/literature 只接受人工 reviewed |
 | 自动扩展污染 Graph | 先检索和 Evidence、真实点击只授权单层最多五条、低置信、去重、每条必须有科学 Edge 或 Framing Link |
 | 检索材料泄漏到项目/Git | Core 拒绝原文字段、helper 不落盘、只保存最小 Citation Snapshot、最终扫描 |
-| 递进研究失控或偏离目标 | 只接受明确 Chat 请求、声明有界计划、维护 frontier/visited、达到停止条件即汇报 |
+| 递进研究失控或偏离目标 | 只接受明确 Chat 请求、声明有界计划、维护单一 continuation/visited、达到停止条件即汇报 |
 | Git 外部变化或冲突 | 当前分支检测、结构化诊断、只读模式 |
 | Markdown 注入 | raw HTML off、CSP、路径 containment |
 | 敏感数据进入 Git | README/SECURITY 提示，绝不自动远端同步 |

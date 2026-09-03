@@ -476,6 +476,14 @@ describe('SciFork DSH bridge', () => {
       nonce: NONCE,
       status: 'started',
     })
+    bridge.state.byId['session-a']!.running = false
+    await vi.waitFor(() =>
+      expect(bridge.channel.postMessage).toHaveBeenCalledWith({
+        type: 'complete',
+        nonce: NONCE,
+      }),
+    )
+    bridge.dispose()
   })
 
   it('acknowledges queued from a busy pre-submit Session even if submit changes the live snapshot', async () => {
@@ -493,6 +501,13 @@ describe('SciFork DSH bridge', () => {
       nonce: NONCE,
       status: 'queued',
     })
+    await vi.waitFor(() =>
+      expect(bridge.channel.postMessage).toHaveBeenCalledWith({
+        type: 'complete',
+        nonce: NONCE,
+      }),
+    )
+    bridge.dispose()
   })
 
   it('rejects research expansion when the originating Session is no longer live', async () => {
@@ -530,18 +545,23 @@ describe('SciFork DSH bridge', () => {
     expect(acknowledgementMessages(bridge.channel)).toEqual([])
   })
 
-  it('drops an already accepted nonce without another submit or acknowledgement', async () => {
+  it('drops repeated or concurrent requests while one expansion is running', async () => {
     const bridge = await openBridge()
+    bridge.submit.mockImplementation(() => {
+      bridge.state.byId['session-a']!.running = true
+    })
     const message = { type: 'simulate' as const, nonce: NONCE, prompt: PROMPT }
 
     bridge.channel.receive(message)
     bridge.channel.receive(message)
+    bridge.channel.receive({ ...message, nonce: 'B'.repeat(22) })
 
     expect(bridge.setDraft).toHaveBeenCalledOnce()
     expect(bridge.submit).toHaveBeenCalledOnce()
     expect(acknowledgementMessages(bridge.channel)).toEqual([
       { type: 'ack', nonce: NONCE, status: 'started' },
     ])
+    bridge.dispose()
   })
 
   it('closes active channels on bundle unload', async () => {

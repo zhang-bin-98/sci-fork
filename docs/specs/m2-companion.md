@@ -166,6 +166,14 @@ relative-path diagnostics, current Focus, and the full body-free projection.
 Entity labels are deterministic summaries of at most 240 characters. Edge
 views may include a bounded Evidence Gap from their managed edge file.
 
+Node and Result Markdown bodies use one shared summary convention: the first
+non-empty paragraph is exactly one bold claim or observation sentence
+(`**summary sentence**`), followed by rationale, methods, limitations,
+assumptions, and evidence details. Graph labels use that first paragraph as
+plain text; Details renders the complete body and then the structured Evidence
+list. Finding, Hypothesis, and Prediction use the same convention. Evidence
+identifiers, locators, and review rationale do not belong in the summary.
+
 When `sinceProjectRevision` equals the current project revision, the response
 may omit graph entities and edges but still returns current Focus, diagnostics,
 and read-only state so a Focus-only change is observable. The browser retains

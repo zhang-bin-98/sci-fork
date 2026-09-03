@@ -862,9 +862,52 @@ function failureMessage(error: unknown): string {
     : 'The Companion is temporarily unavailable.'
 }
 
-function researchExpansionLabel(state: ResearchExpansionState): string | undefined {
-  if (state.phase !== 'acknowledged') return undefined
-  return state.acknowledgement === 'started' ? 'Started' : 'Queued'
+export function ResearchExpansionAction(props: {
+  state: ResearchExpansionState
+  disabled: boolean
+  onClick(): void
+}): React.ReactElement {
+  const running = props.state.phase === 'pending' || props.state.phase === 'acknowledged'
+  const label = running ? 'Research in progress' : RESEARCH_EXPANSION_ACTION_LABEL
+  return (
+    <button
+      type="button"
+      className={BUTTON_PRIMARY + ' size-9 px-0 sm:size-auto sm:px-3'}
+      disabled={props.disabled || running}
+      aria-label={label}
+      title={label}
+      aria-busy={running}
+      onClick={props.onClick}
+    >
+      {running ? (
+        <svg
+          className="size-4 animate-spin"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+          data-research-spinner="true"
+        >
+          <circle className="opacity-30" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+          <path className="opacity-90" d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <>
+          <svg
+            className="size-4 sm:hidden"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            aria-hidden="true"
+          >
+            <circle cx="6.75" cy="6.75" r="3.75" />
+            <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
+          </svg>
+          <span className="hidden sm:inline">{RESEARCH_EXPANSION_ACTION_LABEL}</span>
+        </>
+      )}
+    </button>
+  )
 }
 
 export function CompanionApp(props: { pageKey: string }): React.ReactElement {
@@ -1105,8 +1148,6 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   const project = snapshot?.project
   const focus = snapshot?.focus
-  const acknowledgement = researchExpansionLabel(researchExpansionState)
-
   return (
     <main className="companion-app flex h-dvh min-h-0 w-full flex-col bg-sf-canvas text-sf-ink">
       <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground sm:gap-3 sm:px-4">
@@ -1121,11 +1162,6 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
             focusedNodeId={focusedNodeId}
             onChange={setEvidenceVisibility}
           />
-          {acknowledgement === undefined ? null : (
-            <output className="min-w-14 text-right text-xs font-bold text-sf-header-success">
-              {acknowledgement}
-            </output>
-          )}
           {researchExpansionState.phase === 'failed' ? (
             <ResearchExpansionRecoveryControls
               placement="header"
@@ -1133,31 +1169,11 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
               onCopy={copyPrompt}
             />
           ) : null}
-          <button
-            type="button"
-            className={BUTTON_PRIMARY + ' size-9 px-0 sm:size-auto sm:px-3'}
-            disabled={focus === undefined || researchExpansionState.phase === 'pending'}
-            aria-label={researchExpansionState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
-            title={researchExpansionState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
+          <ResearchExpansionAction
+            state={researchExpansionState}
+            disabled={focus === undefined}
             onClick={submitResearchExpansion}
-          >
-            <svg
-              className="size-4 sm:hidden"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <circle cx="6.75" cy="6.75" r="3.75" />
-              <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
-            </svg>
-            <span className="hidden sm:inline">
-              {researchExpansionState.phase === 'pending'
-                ? 'Submitting'
-                : RESEARCH_EXPANSION_ACTION_LABEL}
-            </span>
-          </button>
+          />
         </div>
       </header>
 

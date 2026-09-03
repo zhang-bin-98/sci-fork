@@ -93,12 +93,20 @@ function stableCoordinate(value: number): number {
   return Object.is(rounded, -0) ? 0 : rounded
 }
 
-export function layoutGraph(
-  graph: SnapshotGraph,
-  direction: 'LR' | 'TB' = 'LR',
-): GraphLayout {
-  const entities = sortEntities(graph.entities)
-  const edges = sortEdges(graph.edges)
+interface LayoutConstraint {
+  from: string
+  to: string
+  id: string
+  minlen?: number
+}
+
+function layoutDagre(
+  entities: readonly ProjectionEntitySummary[],
+  edges: readonly ProjectionEdgeSummary[],
+  constraints: readonly LayoutConstraint[],
+  barrierIds: readonly string[],
+  direction: 'LR' | 'TB',
+): Graph {
   const dagre = new Graph({ directed: true, multigraph: true })
   dagre.setGraph({
     rankdir: direction,
@@ -111,16 +119,88 @@ export function layoutGraph(
   })
   dagre.setDefaultEdgeLabel(() => ({}))
 
+  const evidenceTargets = new Set(
+    edges.filter(({ source }) => source === 'evidence_ref').map(({ to }) => to),
+  )
   for (const entity of entities) {
     dagre.setNode(entity.id, {
       width: GRAPH_NODE_WIDTH,
       height: GRAPH_NODE_HEIGHT,
     })
   }
+  for (const id of barrierIds) dagre.setNode(id, { width: 0, height: 0 })
   for (const edge of edges) {
-    dagre.setEdge(edge.from, edge.to, {}, graphEdgeId(edge))
+    const spansEvidenceLayer =
+      edge.source !== 'evidence_ref' && evidenceTargets.has(edge.to)
+    dagre.setEdge(
+      edge.from,
+      edge.to,
+      spansEvidenceLayer ? { minlen: 2 } : {},
+      graphEdgeId(edge),
+    )
+  }
+  for (const constraint of constraints) {
+    dagre.setEdge(
+      constraint.from,
+      constraint.to,
+      constraint.minlen === undefined ? {} : { minlen: constraint.minlen },
+      constraint.id,
+    )
   }
   layout(dagre)
+  return dagre
+}
+
+export function layoutGraph(
+  graph: SnapshotGraph,
+  direction: 'LR' | 'TB' = 'LR',
+): GraphLayout {
+  const entities = sortEntities(graph.entities)
+  const edges = sortEdges(graph.edges)
+  const evidenceIds = new Set(
+    entities.filter(({ type }) => type === 'evidence').map(({ id }) => id),
+  )
+  let dagre = layoutDagre(entities, edges, [], [], direction)
+  const rankGroups = new Map<number, { evidence: string[]; other: string[] }>()
+  for (const entity of entities) {
+    const rank = dagre.node(entity.id)?.rank
+    if (rank === undefined) continue
+    const group = rankGroups.get(rank) ?? { evidence: [], other: [] }
+    if (evidenceIds.has(entity.id)) group.evidence.push(entity.id)
+    else group.other.push(entity.id)
+    rankGroups.set(rank, group)
+  }
+
+  const barriers: string[] = []
+  const constraints: LayoutConstraint[] = []
+  const entityIds = new Set(entities.map(({ id }) => id))
+  for (const [rank, group] of rankGroups) {
+    if (group.evidence.length === 0 || group.other.length === 0) continue
+    let barrier = `__scifork_evidence_layer__:${rank}`
+    let suffix = 1
+    while (entityIds.has(barrier) || barriers.includes(barrier)) {
+      barrier = `__scifork_evidence_layer__:${rank}:${suffix}`
+      suffix += 1
+    }
+    barriers.push(barrier)
+    for (const other of group.other) {
+      constraints.push({
+        from: other,
+        to: barrier,
+        id: `${barrier}:from:${other}`,
+        minlen: 1,
+      })
+    }
+    for (const evidence of group.evidence) {
+      constraints.push({
+        from: barrier,
+        to: evidence,
+        id: `${barrier}:to:${evidence}`,
+        minlen: 1,
+      })
+    }
+  }
+  if (constraints.length > 0) dagre = layoutDagre(entities, edges, constraints, barriers, direction)
 
   return {
     nodes: entities.map((entity) => {

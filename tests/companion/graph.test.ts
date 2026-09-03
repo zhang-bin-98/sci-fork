@@ -162,6 +162,99 @@ describe('Companion graph', () => {
     expect(focusViewportCenter(laidOut, 'node_missing')).toBeUndefined()
   })
 
+  it('places an edge target after its source in both responsive directions', () => {
+    const graph = {
+      entities: [entities[0]!, entities[1]!],
+      edges: [edges[0]!],
+    } satisfies SnapshotGraph
+    const wide = layoutGraph(graph, 'LR')
+    const narrow = layoutGraph(graph, 'TB')
+    const wideSource = wide.nodes.find(({ id }) => id === 'node_a')!
+    const wideTarget = wide.nodes.find(({ id }) => id === 'node_b')!
+    const narrowSource = narrow.nodes.find(({ id }) => id === 'node_a')!
+    const narrowTarget = narrow.nodes.find(({ id }) => id === 'node_b')!
+
+    expect(wideSource.position.x).toBeLessThan(wideTarget.position.x)
+    expect(narrowSource.position.y).toBeLessThan(narrowTarget.position.y)
+  })
+
+  it('inserts a visible Evidence rank immediately upstream of its claim', () => {
+    const graph = {
+      entities: [
+        entities[0]!,
+        entities[1]!,
+        {
+          id: 'ev_b',
+          type: 'evidence' as const,
+          direction: 'supports' as const,
+          reviewStatus: 'machine_reviewed' as const,
+          label: 'Evidence for B',
+        },
+      ],
+      edges: [
+        { from: 'node_a', to: 'node_b', relation: 'supports' as const, source: 'edge' as const },
+        { from: 'ev_b', to: 'node_b', relation: 'supports' as const, source: 'evidence_ref' as const },
+      ],
+    } satisfies SnapshotGraph
+
+    const wide = layoutGraph(graph, 'LR')
+    const narrow = layoutGraph(graph, 'TB')
+    const widePosition = new Map(wide.nodes.map(({ id, position }) => [id, position]))
+    const narrowPosition = new Map(narrow.nodes.map(({ id, position }) => [id, position]))
+
+    expect(widePosition.get('node_a')!.x).toBeLessThan(widePosition.get('ev_b')!.x)
+    expect(widePosition.get('ev_b')!.x).toBeLessThan(widePosition.get('node_b')!.x)
+    expect(narrowPosition.get('node_a')!.y).toBeLessThan(narrowPosition.get('ev_b')!.y)
+    expect(narrowPosition.get('ev_b')!.y).toBeLessThan(narrowPosition.get('node_b')!.y)
+  })
+
+  it('keeps a visible Evidence layer separate from unrelated Hypotheses', () => {
+    const graph = {
+      entities: [
+        entities[0]!,
+        entities[1]!,
+        entities[4]!,
+        {
+          id: 'node_hypothesis_unrelated',
+          type: 'node' as const,
+          kind: 'hypothesis' as const,
+          confidence: 'low' as const,
+          referenceCount: 0,
+          reviewedEvidenceCount: 0,
+          publicationCount: 0,
+          machineReviewedEvidenceCount: 0,
+          humanReviewedEvidenceCount: 0,
+          label: 'Unrelated hypothesis',
+        },
+        {
+          id: 'ev_b',
+          type: 'evidence' as const,
+          direction: 'supports' as const,
+          reviewStatus: 'machine_reviewed' as const,
+          label: 'Evidence for B',
+        },
+      ],
+      edges: [
+        { from: 'node_a', to: 'node_b', relation: 'supports' as const, source: 'edge' as const },
+        { from: 'ev_b', to: 'node_b', relation: 'supports' as const, source: 'evidence_ref' as const },
+        {
+          from: 'node_e',
+          to: 'node_hypothesis_unrelated',
+          relation: 'causes' as const,
+          source: 'edge' as const,
+        },
+      ],
+    } satisfies SnapshotGraph
+
+    const wide = layoutGraph(graph, 'LR')
+    const narrow = layoutGraph(graph, 'TB')
+    const wideEvidence = wide.nodes.find(({ id }) => id === 'ev_b')!
+    const narrowEvidence = narrow.nodes.find(({ id }) => id === 'ev_b')!
+
+    expect(wide.nodes.filter(({ id }) => id !== 'ev_b').every(({ position }) => position.x !== wideEvidence.position.x)).toBe(true)
+    expect(narrow.nodes.filter(({ id }) => id !== 'ev_b').every(({ position }) => position.y !== narrowEvidence.position.y)).toBe(true)
+  })
+
   it('produces the same finite global layout regardless of projection input order', () => {
     const selected = selectGraphView({
       entities,

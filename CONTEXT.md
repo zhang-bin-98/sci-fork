@@ -62,7 +62,7 @@ A single user-started, literature-grounded expansion from the current Focus that
 _Avoid_: Simulation, recursive run, background research
 
 **Progressive Research Run**:
-A Chat-directed sequence of Research Expansion Steps that follows one stated research objective and an evolving frontier within the user's authorization.
+A Chat-directed sequence of Research Expansion Steps that follows one stated research objective by automatically selecting exactly one newly retained Hypothesis after each step as the sole continuation; other retained claims remain terminal side branches for that run.
 _Avoid_: Background crawler, button recursion, scheduled simulation
 
 **Evidence Candidate**:

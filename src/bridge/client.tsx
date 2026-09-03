@@ -5,6 +5,7 @@ import {
   RESEARCH_EXPANSION_REJECTED_WIRE_CODE,
   RESEARCH_EXPANSION_REQUEST_WIRE_TYPE,
   type ResearchExpansionAckMessage,
+  type ResearchExpansionCompleteMessage,
   type ResearchExpansionErrorMessage,
   type ResearchExpansionRequestMessage,
 } from '../shared/companion-contract.js'
@@ -19,6 +20,7 @@ const NONCE_PATTERN = /^[A-Za-z0-9_-]{22}$/
 const OPEN_FAILURE_MESSAGE = 'SciFork could not open the Research Graph. Try again from DSH.'
 const OPEN_ACTION_LABEL = 'Open Research Graph'
 const OPEN_ACTION_TEXT = 'Research Graph'
+const RESEARCH_COMPLETION_POLL_MS = 250
 
 interface SidebarFooterActionOwnerProps {
   readonly wide: boolean
@@ -61,6 +63,11 @@ interface ChannelBinding {
   readonly channel: BroadcastChannel
   readonly acceptedNonces: Set<string>
   readonly listener: (event: MessageEvent<unknown>) => void
+  completion: {
+    nonce: string
+    observedRunning: boolean
+    timer: ReturnType<typeof setTimeout> | undefined
+  } | undefined
 }
 
 interface BridgeState {
@@ -117,6 +124,45 @@ function postError(
   channel.postMessage(message)
 }
 
+function clearCompletionWatch(binding: ChannelBinding): void {
+  const watch = binding.completion
+  if (watch?.timer !== undefined) clearTimeout(watch.timer)
+  binding.completion = undefined
+}
+
+function scheduleCompletionWatch(
+  state: BridgeState,
+  binding: ChannelBinding,
+  sessionId: string,
+): void {
+  const watch = binding.completion
+  if (watch === undefined || watch.timer !== undefined) return
+  watch.timer = setTimeout(() => {
+    watch.timer = undefined
+    const session = state.sessions.list.getSnapshot().byId[sessionId]
+    if (session === undefined) {
+      clearCompletionWatch(binding)
+      postError(binding.channel, watch.nonce, 'SESSION_UNAVAILABLE')
+      return
+    }
+    if (session.running) {
+      watch.observedRunning = true
+      scheduleCompletionWatch(state, binding, sessionId)
+      return
+    }
+    if (!watch.observedRunning) {
+      scheduleCompletionWatch(state, binding, sessionId)
+      return
+    }
+    clearCompletionWatch(binding)
+    const completion: ResearchExpansionCompleteMessage = {
+      type: 'complete',
+      nonce: watch.nonce,
+    }
+    binding.channel.postMessage(completion)
+  }, RESEARCH_COMPLETION_POLL_MS)
+}
+
 function handleResearchExpansion(
   state: BridgeState,
   binding: ChannelBinding,
@@ -125,7 +171,7 @@ function handleResearchExpansion(
   value: unknown,
 ): void {
   if (state.disposed || !isResearchExpansionRequest(value)) return
-  if (binding.acceptedNonces.has(value.nonce)) return
+  if (binding.completion !== undefined || binding.acceptedNonces.has(value.nonce)) return
 
   const session = state.sessions.list.getSnapshot().byId[sessionId]
   if (session === undefined) {
@@ -133,12 +179,20 @@ function handleResearchExpansion(
     return
   }
 
-  const status: ResearchExpansionAckMessage['status'] = session.running ? 'queued' : 'started'
+  const wasRunning = session.running
+  const status: ResearchExpansionAckMessage['status'] = wasRunning ? 'queued' : 'started'
   binding.acceptedNonces.add(value.nonce)
   try {
     const input = state.conversation.input.for(sessionScope)
     input.setDraft(value.prompt)
     input.submit()
+    const afterSubmit = state.sessions.list.getSnapshot().byId[sessionId]
+    binding.completion = {
+      nonce: value.nonce,
+      observedRunning: wasRunning || afterSubmit?.running === true,
+      timer: undefined,
+    }
+    scheduleCompletionWatch(state, binding, sessionId)
     const acknowledgement: ResearchExpansionAckMessage = {
       type: 'ack',
       nonce: value.nonce,
@@ -146,11 +200,13 @@ function handleResearchExpansion(
     }
     binding.channel.postMessage(acknowledgement)
   } catch {
+    clearCompletionWatch(binding)
     postError(binding.channel, value.nonce, RESEARCH_EXPANSION_REJECTED_WIRE_CODE)
   }
 }
 
 function closeBinding(state: BridgeState, binding: ChannelBinding): void {
+  clearCompletionWatch(binding)
   binding.channel.removeEventListener('message', binding.listener)
   binding.channel.close()
   binding.acceptedNonces.clear()
@@ -197,6 +253,7 @@ async function finishLaunch(
     binding = {
       channel,
       acceptedNonces,
+      completion: undefined,
       listener: (event) => {
         if (binding !== undefined) {
           handleResearchExpansion(state, binding, sessionId, sessionScope, event.data)

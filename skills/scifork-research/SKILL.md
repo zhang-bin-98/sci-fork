@@ -38,6 +38,18 @@ Always use the latest returned `projectRevision` after a successful mutation.
 
 Skills do not call each other and a retrieval result is not itself a Draft.
 
+## Markdown claim and details format
+
+For every `Node` and `Result` body that will appear in the Research Graph, write
+exactly one first non-empty Markdown paragraph as a single bold summary sentence
+(`**bold summary sentence**`). Put rationale, methods, observations,
+limitations, assumptions, and evidence details in later paragraphs or headings.
+Do not put Evidence Assertion metadata, publication identifiers, locators, or
+review rationale in that summary sentence. The graph card uses this first bold
+paragraph as the entity label; the Companion Details panel renders the complete
+body and the structured Evidence list below it. Keep the same format for
+`Finding`, `Hypothesis`, and `Prediction` Nodes.
+
 ## Initial question intake
 
 After the user message is submitted, classify the initial statement before
@@ -162,9 +174,12 @@ When actual results are absent, stop without graph mutation.
    Never create or promote a Finding, human `reviewed` Evidence Assertion, or
    validated Result in this workflow.
 6. When the anchor is a Research Question, create only a Hypothesis and then call
-   `create_framing_link` from that Hypothesis to the Question. Do not create a
-   scientific Edge to a Question. For any other anchor, immediately call
-   `create_edge` so the branch is not isolated.
+   `create_framing_link` from that Question to the new Hypothesis. Do not create
+   a scientific Edge to a Question. For any other anchor, immediately call
+   `create_edge` from the existing anchor to the new node: set `from` to the
+   existing Node/Result anchor and `to` to the new Node. Never reverse these
+   endpoints; this keeps LR expansion left-to-right
+   and TB expansion top-to-bottom.
 7. Every generated scientific Edge uses `basis: ai_inference`, applicable
    machine-reviewed `evidenceRefs`, non-empty provenance naming the query, an
    `evidenceGap`, and `publicationRefs` containing the one to fifty normalized,
@@ -184,32 +199,47 @@ an unreviewed source to a Finding.
 
 ## Progressive Research Run
 
-Start this workflow only from an explicit user request in the current DSH Chat
-to conduct progressive, iterative, or multi-round research. A Companion click
-never grants this authority. Use the user's objective, direction, depth, source,
-and stopping condition when supplied. Otherwise state a bounded plan in Chat.
-Ask before mutation when a material ambiguity would change the objective.
+Start this workflow only from an explicit user request in the current DSH Chat.
+Treat `深度研究`, `深度调研`, and `deep research` about the current, selected,
+or focused graph entity as explicit Progressive Research Run requests, together
+with progressive, iterative, or multi-round research wording. Such a request is
+not an Evidence-only enrichment request: do not stop after attaching literature
+to the current entity, ask whether to import, or wait for a Companion click.
+A Companion click by itself never grants this authority.
 
-The orchestrating model, not this Skill, maintains a `frontier` and `visited` set
-and alternates complete phases:
+Use the user's objective, direction, depth, source, and stopping condition when
+supplied. Otherwise state a finite plan of at least two levels in Chat. An
+ordinary stop condition may still end the run at the first level. Ask before
+mutation only when a material ambiguity would change the objective; do not ask
+for per-level or import confirmation.
 
-1. Select one unvisited frontier entity and read its full entity plus directional
+The orchestrating model, not this Skill, maintains one current continuation and
+a `visited` set, then alternates complete phases:
+
+1. Read the current Research Question or Hypothesis plus directional
    `neighbors` (`incoming`, `outgoing`, or `both`).
 2. Form one focused retrieval question. Complete one retrieval/PDF Skill and keep
    its actual results in the current Chat. The default is `pubmed-search` with
    `search` followed by `lookup`, but honor a user-selected reliable source.
-3. Load this Skill and retain only novel branches grounded by qualifying source
-   text. Apply the same Evidence-first machine review, low-confidence Node, and
-   immediate scientific Edge or Framing Link rules as the Research Expansion
-   Step.
-4. Add retained Node ids to the frontier, mark the expanded entity visited, and
-   repeat only while the user's request and declared plan authorize another turn.
+3. Load this Skill and save all zero to five novel branches grounded by
+   qualifying source text. Apply the same Evidence-first machine review,
+   low-confidence Node, and immediate scientific Edge or Framing Link rules as
+   the Research Expansion Step.
+4. Mark the expanded entity visited. From the newly retained branches,
+   automatically select exactly one new Hypothesis that best advances the stated
+   objective and unresolved Evidence Gap as the sole next continuation. Other
+   retained Hypotheses are terminal side branches for this run. Predictions are
+   always terminal and cannot continue. Do not ask for per-level confirmation.
+5. Repeat only through that selected Hypothesis while the user's request and
+   declared plan authorize another level. If the level retains no new
+   Hypothesis, stop even when it retained Predictions.
 
 Stop when the requested scope is reached, the plan is exhausted, retrieval finds
 no new explicit scientific relationship, a non-recoverable retrieval or graph
 error occurs, or a decision would materially change the objective. Report all
 queries and identifiers consulted, retained and rejected branches, remaining
-Evidence Gaps, and the final frontier. Do not silently broaden the objective.
+Evidence Gaps, the selected continuation at each level, and the final stop
+reason. Do not silently broaden the objective.
 Do not continue in the background.
 
 ## Review an Evidence Assertion

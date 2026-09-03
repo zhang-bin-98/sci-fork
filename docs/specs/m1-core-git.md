@@ -185,7 +185,8 @@ evidence_refs:             # 可选，≤50 条，无重复
     role: supports | contradicts   # 必须等于该 EA 的 direction（context 不可引用）
 ```
 
-- 无 `status` 字段（见文档修正 1）。正文（去除 front matter 后）非空，≤64 KiB。
+- 无 `status` 字段（见文档修正 1）。正文（去除 front matter 后）非空，≤64 KiB；正文第一段
+  按 Companion 约定写成单句加粗主张，后续内容使用自由 Markdown。
 
 ### Edge（edges/edge_<uuid>.json，严格对象）
 
@@ -219,7 +220,8 @@ status: draft | validated | superseded
 observed_at: "YYYY-MM-DD"
 ```
 
-- 正文非空，≤64 KiB；正文内部 Method/Result/Interpretation 结构为自由 Markdown，
+- 正文非空，≤64 KiB；正文第一段按 Companion 约定写成单句加粗观察摘要，后续内容内部
+  Method/Result/Interpretation 结构为自由 Markdown，
   Core 不解析。
 - 状态机：draft → validated | superseded；validated → superseded；superseded 终态。
 

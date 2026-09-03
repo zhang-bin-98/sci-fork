@@ -7,6 +7,7 @@ import {
   EntityNodeCard,
   EvidenceVisibilityControl,
   HeaderIdentity,
+  ResearchExpansionAction,
   ResearchExpansionRecoveryControls,
   copyEntityId,
   settleEntityIdCopyFeedback,
@@ -265,6 +266,30 @@ describe('Companion graph UI', () => {
     expect(actionClasses).not.toContain('text-white')
     expect(actionClasses).not.toContain('shadow-sm')
     expect(html).toContain('All evidence')
+  })
+
+  it('shows only a disabled spinner while research is running', () => {
+    const html = renderToStaticMarkup(
+      createElement(ResearchExpansionAction, {
+        state: {
+          phase: 'acknowledged',
+          nonce: 'A'.repeat(22),
+          prompt: 'bounded prompt',
+          acknowledgement: 'queued',
+        },
+        disabled: false,
+        onClick: () => undefined,
+      }),
+    )
+
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('aria-busy="true"')
+    expect(html).toContain('aria-label="Research in progress"')
+    expect(html).toContain('data-research-spinner="true"')
+    expect(html).not.toContain('Started')
+    expect(html).not.toContain('Queued')
+    expect(html).not.toContain('Study')
+    expect(html).not.toContain('Research &amp; Expand')
   })
 
   it('exposes hidden, focused-node, and all Evidence display modes', () => {

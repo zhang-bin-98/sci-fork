@@ -25,7 +25,9 @@ SciFork 在其旁边打开同源 Graph Companion，把普通 Research Project �
   locator 和最小 Citation Snapshot。 `machine_reviewed` Evidence 可以用于探索；
   只有人工 `reviewed` Evidence 或 validated Result 才能支持 Finding。
 - **文献驱动的扩展。** 真实点击 `Research & Expand` 后执行一次先检索的有界扩展，
-  保留零至五条直接、低置信分支。Focus 不会移动，也不会在后台递归。
+  保留零至五条直接、低置信分支。Focus 不会移动，也不会在后台递归。只有 Chat 中明确
+  请求的 Progressive Research Run 才逐层继续；每层保存全部合格分支，但只自动选择一个
+  新 Hypothesis 进入下一层。
 - **两个轻量 Skill。** `pubmed-search` 检索 PubMed 记录和有界摘要；
   `scifork-research` 将检索材料格式化为导入 Draft，并通过 SciFork typed tools
   引导受保护的图谱变更。必须先完成检索，再进行格式化。PubMed 支持完整查询语法、
@@ -143,10 +145,12 @@ dsh --profile web --dump-config
    明确的范围假设。
 3. 使用 `pubmed-search`（或其他检索/PDF Skill）取得真实来源材料，再加载
    `scifork-research` 格式化并校验导入 Draft。只有保存合格 Evidence 后才创建 Hypothesis。
-4. 在 Companion 查看图谱。Evidence 默认隐藏，可切换为当前 Focus Node 的 Evidence 或全部 Evidence。
+4. 在 Companion 查看图谱。Evidence 默认隐藏，可切换为当前 Focus Node 的 Evidence 或全部
+   Evidence；可见 Evidence 独占其目标 Node 上游的一列或一行。
 5. 选中问题或主张并点击 **Research & Expand**，执行一次有界的文献优先扩展。
-   Chat 正在运行时请求会排队，空闲时会立即开始。多层探索必须在 DSH Chat 中明确
-   请求 Progressive Research Run。
+   Chat 正在运行时请求会排队，空闲时会立即开始；禁用的转圈按钮会在该 Session 恢复
+   空闲时复位。多层探索必须在 DSH Chat 中明确请求 Progressive Research Run；每层保留
+   全部合格分支并自动选择一个新 Hypothesis 继续。
 6. 在将 machine-reviewed Evidence 接受为人工 reviewed 前先完成人工审阅；只有之后
    才能计入 Finding 的支持门槛。
 7. 分享项目或创建检查点前执行 `/research validate`。
@@ -218,6 +222,7 @@ git push origin v0.0.1
 - [领域语言](CONTEXT.md)
 - [M0 兼容性 spike](docs/specs/m0-compatibility-spike.md)
 - [渐进式研究扩展](docs/specs/progressive-research-expansion.md)
+- [Evidence 布局、研究生命周期与线性递进](docs/specs/evidence-layout-research-lifecycle-and-linear-progression.md)
 - [Research Question 与 machine-reviewed Evidence](docs/specs/research-questions-machine-review.md)
 - [安全策略](SECURITY.md)
 

@@ -226,6 +226,11 @@ export interface ResearchExpansionAckMessage {
   status: 'started' | 'queued'
 }
 
+export interface ResearchExpansionCompleteMessage {
+  type: 'complete'
+  nonce: string
+}
+
 export interface ResearchExpansionErrorMessage {
   type: 'error'
   nonce: string
