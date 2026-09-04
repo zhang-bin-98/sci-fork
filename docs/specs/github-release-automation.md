@@ -48,14 +48,16 @@ rules that GitHub's glob syntax cannot express:
    root.
 5. No dependency field contains a `workspace:*` specifier.
 
-After preflight, a read-only verification job installs the locked dependency
-graph, runs `pnpm check`, checks `index.js`, performs an isolated local-Git
-source installation, validates the dry-run package manifest, creates one real
-tarball, inspects the real archive for the required package surfaces and
-license, and generates a sibling `.sha256` file. It uploads only those two
-verified files as a short-lived workflow artifact. A dependent publication job
-rechecks the remote tag against the exact packaged commit, downloads and
-verifies the artifact checksum, and creates the GitHub Release.
+After preflight, a read-only verification job enables the pnpm Corepack shim,
+installs the locked dependency graph, runs `pnpm check`, checks `index.js`,
+performs an isolated local-Git source installation, validates the dry-run
+package manifest, creates one real tarball, inspects the real archive for the
+required package surfaces and license, and generates a sibling `.sha256` file.
+The shim is required because pnpm starts a nested `pnpm install` while preparing
+a Git dependency. The job uploads only those two verified files as a short-lived
+workflow artifact. A dependent publication job rechecks the remote tag against
+the exact packaged commit, downloads and verifies the artifact checksum, and
+creates the GitHub Release.
 Stable versions create stable releases; versions with a SemVer prerelease
 component create prereleases.
 
