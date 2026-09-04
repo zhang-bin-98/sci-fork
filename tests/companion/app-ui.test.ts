@@ -141,7 +141,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain(LONG_LABEL)
     expect(html).not.toContain('aria-describedby=')
     expect(html).toContain('HYPOTHESIS')
-    expect(html).toContain('2 publications · 0 machine-reviewed · 1 human-reviewed')
+    expect(html).toContain('Low · 2 pub · 0 machine · 1 human')
   })
 
   it('makes the complete quiet identity row the copy control in open Details', () => {
@@ -448,7 +448,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain('2 publications · 1 machine-reviewed · 1 human-reviewed')
   })
 
-  it('reports publication and review-state counts explicitly on cards and in Details', () => {
+  it('uses compact card counts and complete Details counts', () => {
     const card = renderToStaticMarkup(createElement(EntityNodeCard, { entity: singularSummary }))
     const details = renderToStaticMarkup(
       createElement(DetailsPane, {
@@ -459,7 +459,7 @@ describe('Companion graph UI', () => {
       }),
     )
 
-    expect(card).toContain('1 publication · 1 machine-reviewed · 0 human-reviewed')
+    expect(card).toContain('Low · 1 pub · 1 machine · 0 human')
     expect(details).toContain('1 publication · 1 machine-reviewed · 0 human-reviewed')
   })
 

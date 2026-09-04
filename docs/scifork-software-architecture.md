@@ -528,9 +528,10 @@ Graph 可见时每 5 秒请求轻量 snapshot；页面隐藏时暂停，重新�
   Focus 高亮；请求期间显示独立 pending 反馈，连续点击串行收敛到最后一次目标。
 - 截断实体标签在 hover/focus 时由卡片本体向下展开，完整文本位于卡片内；为保持
   画布稳定，不因 hover 重新运行 Dagre，极长标签在有界卡片内部滚动。
-- 卡片使用颜色圆点与文字共同表达精确实体类型，Question 使用中性样式。Node 卡片显示
-  `publicationCount`、`machineReviewedEvidenceCount` 与 `humanReviewedEvidenceCount`；
-  Framing Link 和 Question 自身不贡献这些计数。颜色不得成为唯一类型信息。
+- 卡片使用颜色圆点与文字共同表达精确实体类型，Question 使用中性样式。Node 卡片以
+  紧凑标签显示 `publicationCount`、`machineReviewedEvidenceCount` 与
+  `humanReviewedEvidenceCount`（如 `Low · 1 pub · 1 machine · 0 human`）；Details
+  仍显示完整术语。Framing Link 和 Question 自身不贡献这些计数。颜色不得成为唯一类型信息。
 - 不提供 density preference。
 - Focus 与 selected entity 是唯一 UI 导航状态。
 - 节点位置由确定性布局重建，不持久化。

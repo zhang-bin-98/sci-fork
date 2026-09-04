@@ -113,15 +113,8 @@ export function formatEvidenceCounts(
 
 function entityMeta(entity: ProjectionEntitySummary): string {
   if (entity.type === 'node') {
-    return (
-      entity.confidence +
-      ' confidence · ' +
-      formatEvidenceCounts(
-        entity.publicationCount,
-        entity.machineReviewedEvidenceCount,
-        entity.humanReviewedEvidenceCount,
-      )
-    )
+    const confidence = entity.confidence.slice(0, 1).toUpperCase() + entity.confidence.slice(1)
+    return `${confidence} · ${entity.publicationCount} pub · ${entity.machineReviewedEvidenceCount} machine · ${entity.humanReviewedEvidenceCount} human`
   }
   if (entity.type === 'evidence') return entity.reviewStatus
   if (entity.type === 'question') return 'open question'
@@ -148,7 +141,7 @@ export function EntityNodeCard(props: {
   return (
     <div className="entity-node-card relative size-full">
       <div
-        className="entity-node-content absolute inset-x-0 top-0 z-[1] grid min-h-full w-full grid-rows-[auto_auto_auto] gap-1 rounded-lg border border-sf-node-border bg-sf-surface px-3 py-2.5 text-left shadow-sm transition-shadow duration-150 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sf-focus/45 focus-visible:ring-offset-2"
+        className="entity-node-content absolute inset-x-0 top-0 z-[1] grid min-h-full w-full grid-rows-[auto_auto_auto] gap-1 rounded-lg border border-sf-node-border bg-sf-surface px-3 py-2 text-left shadow-sm transition-shadow duration-150 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sf-focus/45 focus-visible:ring-offset-2"
         tabIndex={0}
         aria-label={entityTypeLabel(entity) + ': ' + entity.label}
       >

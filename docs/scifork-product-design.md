@@ -111,9 +111,10 @@ Focus 路径继续在全局图中高亮。图中截断的实体标签在鼠标�
 
 Companion 使用颜色圆点和文字共同区分实体：Research Question 为中性灰、Finding 为绿色、
 Hypothesis 为琥珀色、Prediction 为紫色、Evidence Assertion 显示为 `EVIDENCE` 并使用蓝色、Result 为青色。
-颜色不是唯一语义载体。Node 卡片显示去重的 Publication 数，并分别显示
-machine-reviewed 与人工 reviewed Evidence 数；Framing Link 和 Question 本身不贡献文献
-计数。相关 Node 和已保存科学 Edge 的 Details 按人工 reviewed、machine-reviewed、
+颜色不是唯一语义载体。Node 卡片用紧凑标签显示去重的 Publication 数，并分别显示
+machine-reviewed 与人工 reviewed Evidence 数（例如 `Low · 1 pub · 1 machine · 0 human`）；
+完整术语保留在 Details 中。Framing Link 和 Question 本身不贡献文献计数。相关 Node
+和已保存科学 Edge 的 Details 按人工 reviewed、machine-reviewed、
 rejected 以及仅检索引用分组展示文献来源，rejected 默认收起。
 
 Node 与 Result 的正文采用统一的 Markdown 摘要约定：正文第一段必须只有一句加粗的
