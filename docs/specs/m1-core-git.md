@@ -526,8 +526,20 @@ payload 一律 `{ code, message, recoverable, hint?, entityId? }`，不含 Page 
 
 - 单元：`tests/core/*.test.ts`（Vitest，node 环境，注入 SHA-256 哈希）。
 - Host 单元/集成：`tests/host/*.test.ts`，用结构性 fake Fs/Subprocess/Storage
-  端口驱动完整流水线，不做网络或真实 Git 依赖。
+  端口驱动完整流水线，不做网络或真实 Git 依赖。命令初始化测试也通过现有
+  `mkdirs` 替身隔离目录创建；禁止调用真实 `mkdirSync` 时，`/research init`
+  仍须成功、向替身传入当前项目根，并在 fake Fs 中写入有效 manifest。
 - 真实 Git 最小验证：`tests/host/git-real.test.ts` 在临时目录用系统 Git
   执行 init/checkpoint 的 argv 行为（无 Git 时自动跳过）。
 - 冒烟：方案 B 精简后已执行一次性 DSH profile，验证工具/命令/Skill、初始化、校验与
   单实体检查点，并将结果写入本文档；不含真实模型 tool-call loop。
+
+### 命令测试隔离回归（2026-09-04）
+
+- Release CI 暴露命令 fixture 遗漏 `mkdirs` 替身，导致 fake 项目初始化尝试在
+  真实文件系统创建目录。测试现以抛错替身禁止原生 `mkdirSync`，复现初始化
+  返回 error 而非 success 的失败（Red）。
+- 补齐现有 `mkdirs` 注入点并核对其项目根参数，保留全部原有断言；命令测试
+  7 项与全量 391 项通过（Green）。不修改生产代码，不引入额外抽象。
+- 本地验证：`corepack pnpm check`、入口语法、81 文件打包清单、`v0.0.1`
+  发布预检及 `git diff --check` 均通过；未新增 DSH profile 冒烟。

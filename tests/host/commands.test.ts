@@ -1,9 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { registerResearchCommands } from '../../src/host/commands.js'
 import type { ResearchMutationDeps } from '../../src/host/apply-command.js'
 import { FakeCommandsPort, FakeFs, scriptedGit } from './fakes.js'
 import type { CommandInvocation } from '../../src/host/contracts.js'
+
+vi.mock('node:fs', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:fs')>(),
+  mkdirSync: () => {
+    throw new Error('Command unit tests must not create real directories')
+  },
+}))
 
 const sha256 = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex')
 
@@ -30,15 +37,17 @@ function initGit() {
 async function registered(entries: Record<string, string> = {}) {
   const fs = new FakeFs(entries)
   const commands = new FakeCommandsPort()
+  const mkdirs: string[] = []
   const deps: ResearchMutationDeps & { commands: FakeCommandsPort; mkdirs?: (root: string) => void } = {
     fs,
     subprocess: initGit(),
     hash: sha256,
     commands,
+    mkdirs: (root) => { mkdirs.push(root) },
     sandboxPolicy: { resolve: () => ({ mode: 'danger-full-access', workspaceRoot: '/' }) },
   }
   const dispose = registerResearchCommands(deps)
-  return { fs, commands, dispose, deps }
+  return { fs, commands, dispose, deps, mkdirs }
 }
 
 function invocation(cwd: string | undefined, rawInput: string): CommandInvocation {
@@ -59,9 +68,10 @@ describe('registerResearchCommands', () => {
   })
 
   it('initializes a project via /research init', async () => {
-    const { commands, fs } = await registered()
+    const { commands, fs, mkdirs } = await registered()
     const result = await commands.definitions[0]!.handler(invocation('/newproj', ' init '))
     expect(result.kind).toBe('success')
+    expect(mkdirs).toEqual(['/newproj'])
     const text = result.kind === 'success' ? (result.text ?? '') : ''
     expect(text).toContain('initialized')
     expect(fs.contentOf('/newproj/research.json')).toContain('"schema_version": 1')
