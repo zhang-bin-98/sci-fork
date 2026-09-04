@@ -18,7 +18,7 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 图谱只是这些文件可重建的视图，不是另一个数据库；SciFork 不会上传项目，也不提供
 云同步。
 
-> **早期版本：** SciFork `0.0.1` 锁定 DSH `0.1.1-rc.2` 的公开接口。
+> **早期版本：** SciFork `0.0.2` 锁定 DSH `0.1.1-rc.2` 的公开接口。
 
 ## 你可以做什么
 
@@ -42,7 +42,7 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 ### 从 GitHub 源码安装
 
-`v0.0.1` 之后的版本支持源码安装。SciFork 没有 npm 包时，DSH Plugin Hub 会使用
+从 `v0.0.2` 开始支持源码安装。SciFork 没有 npm 包时，DSH Plugin Hub 会使用
 该安装路径；安装过程会从 Git 源码在本地构建 `dist/`：
 
 ```sh
@@ -65,25 +65,25 @@ dsh --profile web
 需要校验正式发布的 checksum，或不希望在本机构建源码时，请使用预构建安装包。
 
 1. 从 [GitHub Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases)下载
-   `dsh-scifork-0.0.1.tgz` 和 `dsh-scifork-0.0.1.tgz.sha256`。
+   `dsh-scifork-0.0.2.tgz` 和 `dsh-scifork-0.0.2.tgz.sha256`。
 2. 将两个文件放在同一目录，并校验安装包。
 
 Linux：
 
 ```sh
-sha256sum -c dsh-scifork-0.0.1.tgz.sha256
+sha256sum -c dsh-scifork-0.0.2.tgz.sha256
 ```
 
 macOS：
 
 ```sh
-shasum -a 256 -c dsh-scifork-0.0.1.tgz.sha256
+shasum -a 256 -c dsh-scifork-0.0.2.tgz.sha256
 ```
 
 Windows PowerShell：
 
 ```powershell
-$archive = 'dsh-scifork-0.0.1.tgz'
+$archive = 'dsh-scifork-0.0.2.tgz'
 $expected = (Get-Content "$archive.sha256").Split()[0].ToLowerInvariant()
 $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
@@ -92,7 +92,7 @@ if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
 3. 将已校验的安装包添加到 DSH Web profile。
 
 ```sh
-dsh plugin --profile web add ./dsh-scifork-0.0.1.tgz
+dsh plugin --profile web add ./dsh-scifork-0.0.2.tgz
 ```
 
 4. 从你希望作为 Research Project 的目录启动 DSH。
@@ -156,8 +156,8 @@ DSH 建议公开插件仓库添加官方推荐的
 
 独立社区目录 [DSH Plugin Hub](https://dsh-plugin.org) 会扫描该话题，并可能收录
 符合条件的仓库。它由社区维护，不是 DeepSeek AI 运营或背书的官方市场。已经发布的
-`v0.0.1` 仍然只支持 tarball；后续版本同时支持 GitHub 源码构建和带 checksum 的
-GitHub Release tarball。SciFork 不发布到 npm。
+`v0.0.1` 仍然只支持 tarball；`v0.0.2` 及后续版本同时支持 GitHub 源码构建和带
+checksum 的 GitHub Release tarball。SciFork 不发布到 npm。
 
 ## 许可证
 

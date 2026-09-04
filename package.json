@@ -1,6 +1,6 @@
 {
   "name": "dsh-scifork",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A Git-native research graph for literature-grounded research expansion inside DeepSeek Harness.",
   "homepage": "https://github.com/zhang-bin-98/sci-fork#readme",
   "repository": {
