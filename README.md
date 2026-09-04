@@ -1,6 +1,6 @@
 # SciFork
 
-[![Release workflow](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release workflow](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml) [![DSH Plugin](https://img.shields.io/badge/DeepSeek_Harness-plugin-0f766e.svg)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ![SciFork — Git-native biomedical Research Graph. Literature-grounded, local-first, and auditable.](docs/assets/scifork-banner.png)
 
@@ -20,6 +20,20 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 
 > **Early release:** SciFork `0.0.1` is pinned to the public interfaces in DSH
 > `0.1.1-rc.2`.
+
+## DSH ecosystem and distribution
+
+SciFork follows the public DSH bundle contract: the package exports `name` and
+`apply(ctx)`, declares its `cordis.patch.yml` through `package.json#dsh.bundle`,
+and can be installed with the DSH plugin command. DSH recommends adding the
+official [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) to public
+plugin repositories for ecosystem discovery.
+
+The independent community directory [DSH Plugin Hub](https://dsh-plugin.org)
+scans that topic and may list matching repositories. It is not operated by or
+endorsed by DeepSeek AI. SciFork `0.0.1` is distributed as a prebuilt GitHub
+Release tarball; use the release installation instructions below rather than a
+direct GitHub-source install.
 
 ## What you can do
 
