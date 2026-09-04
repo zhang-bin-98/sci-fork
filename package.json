@@ -65,7 +65,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs && tailwindcss -i src/companion/styles.css -o dist/companion/styles.css --minify",
     "test": "vitest run",
+    "prepare": "corepack pnpm build",
     "prepack": "corepack pnpm build",
+    "verify:source": "node scripts/verify-source-install.mjs",
     "verify:pack": "node scripts/verify-pack.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "check": "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"

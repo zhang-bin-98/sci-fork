@@ -46,7 +46,31 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 - Git with `user.name` and `user.email` configured
 - DSH Web configured for local loopback access (`127.0.0.1`)
 
+### Install from GitHub source
+
+Source installation is supported by releases after `v0.0.1`. DSH Plugin Hub
+uses this route when SciFork has no npm package. The install builds `dist/`
+locally from the Git source:
+
+```sh
+dsh plugin --profile web add git+https://github.com/zhang-bin-98/sci-fork.git
+```
+
+If pnpm blocks the Git dependency's `prepare` script, use the exact
+`allowBuilds` key and profile `pnpm-workspace.yaml` path printed by DSH, then
+run the same command again. Do not guess or broaden the allowed key.
+
+After installation, restart DSH if it is already running. Start DSH from the
+directory you want to use as the Research Project:
+
+```sh
+dsh --profile web
+```
+
 ### Install from GitHub Releases
+
+Use the prebuilt archive when you want to verify the published checksum or
+avoid running the source build locally.
 
 1. Download `dsh-scifork-0.0.1.tgz` and
    `dsh-scifork-0.0.1.tgz.sha256` from the
@@ -151,9 +175,9 @@ plugin repositories for ecosystem discovery.
 
 The independent community directory [DSH Plugin Hub](https://dsh-plugin.org)
 scans that topic and may list matching repositories. It is not operated by or
-endorsed by DeepSeek AI. SciFork `0.0.1` is distributed as a prebuilt GitHub
-Release tarball; use the release installation instructions above rather than a
-direct GitHub-source install.
+endorsed by DeepSeek AI. The released `v0.0.1` tag remains tarball-only; later
+releases support both a GitHub source build and the checksum-backed GitHub
+Release tarball. SciFork is not published to npm.
 
 ## License
 

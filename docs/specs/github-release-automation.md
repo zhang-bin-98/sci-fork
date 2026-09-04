@@ -14,6 +14,8 @@ version, omit required files, or omit the checksum users are told to verify.
 Goals:
 
 - Build and verify the package from a version tag on GitHub-hosted runners.
+- Verify that the tagged source can build and install as an isolated Git
+  dependency before packaging the release assets.
 - Require the tag to match `package.json#version` and originate from the default
   branch.
 - Require a selected license identifier, a packaged license file, and no
@@ -47,12 +49,13 @@ rules that GitHub's glob syntax cannot express:
 5. No dependency field contains a `workspace:*` specifier.
 
 After preflight, a read-only verification job installs the locked dependency
-graph, runs `pnpm check`, checks `index.js`, validates the dry-run package
-manifest, creates one real tarball, inspects the real archive for the required
-package surfaces and license, and generates a sibling `.sha256` file. It uploads
-only those two verified files as a short-lived workflow artifact. A dependent
-publication job rechecks the remote tag against the exact packaged commit,
-downloads and verifies the artifact checksum, and creates the GitHub Release.
+graph, runs `pnpm check`, checks `index.js`, performs an isolated local-Git
+source installation, validates the dry-run package manifest, creates one real
+tarball, inspects the real archive for the required package surfaces and
+license, and generates a sibling `.sha256` file. It uploads only those two
+verified files as a short-lived workflow artifact. A dependent publication job
+rechecks the remote tag against the exact packaged commit, downloads and
+verifies the artifact checksum, and creates the GitHub Release.
 Stable versions create stable releases; versions with a SemVer prerelease
 component create prereleases.
 
@@ -93,6 +96,8 @@ draft is an error and is never replaced automatically.
   fail before publication.
 - The published `.tgz` passes the existing package-manifest gate and a check of
   its real archive contents, including both language README files and `LICENSE`.
+- The tagged repository passes the Git source-install gate before the release
+  tarball is created.
 - The checksum file names the tarball and contains its SHA-256 digest.
 - The GitHub Release contains one `.tgz` and its checksum and uses generated
   release notes.
@@ -105,8 +110,8 @@ draft is an error and is never replaced automatically.
 - Parse the workflow YAML with the repository's YAML parser and assert its tag
   trigger, least-privilege permission, full-SHA action pins, token scope, and
   draft/upload/publish sequence.
-- Run `pnpm check`, `node --check index.js`, `pnpm verify:pack`, and
-  `git diff --check` locally.
+- Run `pnpm check`, `node --check index.js`, `pnpm verify:source`,
+  `pnpm verify:pack`, and `git diff --check` locally.
 - Exercise the current repository preflight and confirm that the selected MIT
   metadata and non-empty `LICENSE` pass its license gate.
 - The first real GitHub execution is a version-tag release after the commit is

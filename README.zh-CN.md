@@ -40,7 +40,29 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 - 已配置 `user.name` 和 `user.email` 的 Git
 - 配置为本机回环访问（`127.0.0.1`）的 DSH Web
 
+### 从 GitHub 源码安装
+
+`v0.0.1` 之后的版本支持源码安装。SciFork 没有 npm 包时，DSH Plugin Hub 会使用
+该安装路径；安装过程会从 Git 源码在本地构建 `dist/`：
+
+```sh
+dsh plugin --profile web add git+https://github.com/zhang-bin-98/sci-fork.git
+```
+
+如果 pnpm 阻止 Git 依赖的 `prepare` 脚本，请把 DSH 输出中给出的精确
+`allowBuilds` key 写入它提示的 profile `pnpm-workspace.yaml`，然后重新执行同一命令。
+不要猜测或扩大允许范围。
+
+安装完成后，如果 DSH 已经在运行，请重启 DSH。然后从希望作为 Research Project 的
+目录启动 DSH：
+
+```sh
+dsh --profile web
+```
+
 ### 从 GitHub Releases 安装
+
+需要校验正式发布的 checksum，或不希望在本机构建源码时，请使用预构建安装包。
 
 1. 从 [GitHub Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases)下载
    `dsh-scifork-0.0.1.tgz` 和 `dsh-scifork-0.0.1.tgz.sha256`。
@@ -133,9 +155,9 @@ DSH 建议公开插件仓库添加官方推荐的
 [`dsh-plugin` 话题](https://github.com/topics/dsh-plugin)，以便在生态中被发现。
 
 独立社区目录 [DSH Plugin Hub](https://dsh-plugin.org) 会扫描该话题，并可能收录
-符合条件的仓库。它由社区维护，不是 DeepSeek AI 运营或背书的官方市场。
-SciFork `0.0.1` 以 GitHub Release 预构建 tarball 分发，请按上方发布版本安装说明操作，
-不要直接从 GitHub 源码安装。
+符合条件的仓库。它由社区维护，不是 DeepSeek AI 运营或背书的官方市场。已经发布的
+`v0.0.1` 仍然只支持 tarball；后续版本同时支持 GitHub 源码构建和带 checksum 的
+GitHub Release tarball。SciFork 不发布到 npm。
 
 ## 许可证
 
