@@ -297,15 +297,18 @@ The page sends `{ type: 'research_expansion', nonce, prompt }` on the
 `scifork:research-expansion:v1:<page-key>` channel.
 Each retry is another real click and uses a new 128-bit nonce while retaining
 the exact prompt. The Bridge accepts only its own channel, the exact message
-shape, bounded fields, a live originating Session, and a nonce not previously
-accepted on that channel. It calls `setDraft(prompt)` then `submit()` exactly
-once. The pre-submit Session list `running` bit determines the acknowledgement:
+shape, bounded fields, a live originating Session, and a nonce not present in
+the most recent 256 accepted nonces on that channel. It calls
+`setDraft(prompt)` then `submit()` exactly once. The pre-submit Session list
+`running` bit determines the acknowledgement:
 `started` when idle, `queued` when busy.
 
 The page displays `Started` or `Queued` only after
 `{ type: 'ack', nonce, status }`. No acknowledgement within 2 seconds, an error
 reply, or an unavailable channel preserves the prompt and exposes `Retry` and
-`Copy`. Duplicate nonce messages are dropped without another submit. Bridge
+`Copy`. Duplicate nonce messages within that 256-nonce window are dropped
+without another submit. Older nonces may theoretically be accepted again after
+FIFO eviction; this is the explicit trade-off for bounded memory. Bridge
 channels and nonce state close on bundle unload.
 
 ## Constraints and Interfaces
