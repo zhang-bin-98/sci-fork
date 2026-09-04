@@ -36,8 +36,9 @@ const promptInput = {
       type: 'node' as const,
       kind: 'hypothesis' as const,
       confidence: 'low' as const,
-      referenceCount: 0,
-      reviewedEvidenceCount: 0,
+      publicationCount: 0,
+      machineReviewedEvidenceCount: 0,
+      humanReviewedEvidenceCount: 0,
       label: 'Blocking IL-6 may reduce the inflammatory phenotype.',
     },
     {
@@ -113,6 +114,7 @@ describe('literature-grounded research expansion prompt', () => {
     expect(normalized).toContain('confidence: low')
     expect(normalized).toContain('create_node')
     expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('from the existing anchor to the new node')
     expect(normalized).toContain('create_evidence_assertion')
     expect(normalized).toContain('machine_reviewed')
     expect(normalized).toContain('create_framing_link')
@@ -123,6 +125,9 @@ describe('literature-grounded research expansion prompt', () => {
     expect(normalized).toContain('never write authors')
     expect(normalized).toContain('pdf')
     expect(normalized).toContain('raw provider output')
+    expect(normalized).toContain('first non-empty markdown paragraph')
+    expect(normalized).toContain('bold summary sentence')
+    expect(normalized).toContain('do not put evidence assertion')
     expect(normalized).toContain('publicationrefs')
     expect(normalized).toContain('focus remains unchanged')
     expect(normalized).toContain('do not recurse')
@@ -160,6 +165,7 @@ describe('literature-grounded research expansion prompt', () => {
     expect(normalized).toContain('five')
     expect(normalized).toContain('create_node')
     expect(normalized).toContain('create_edge')
+    expect(normalized).toContain('from the existing anchor to the new node')
     expect(normalized).toContain('create_evidence_assertion')
     expect(normalized).toContain('machine_reviewed')
     expect(normalized).toContain('create_framing_link')
@@ -190,7 +196,7 @@ describe('research expansion acknowledgement channel', () => {
 
     researchExpansion.submit(prompt)
     expect(channel.posted).toEqual([
-      { type: 'simulate', nonce: firstNonce, prompt },
+      { type: 'research_expansion', nonce: firstNonce, prompt },
     ])
     expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
@@ -210,8 +216,8 @@ describe('research expansion acknowledgement channel', () => {
 
     researchExpansion.retry()
     expect(channel.posted).toEqual([
-      { type: 'simulate', nonce: firstNonce, prompt },
-      { type: 'simulate', nonce: secondNonce, prompt },
+      { type: 'research_expansion', nonce: firstNonce, prompt },
+      { type: 'research_expansion', nonce: secondNonce, prompt },
     ])
     expect(researchExpansion.getState()).toMatchObject({
       phase: 'pending',
@@ -234,6 +240,9 @@ describe('research expansion acknowledgement channel', () => {
     })
     vi.advanceTimersByTime(2_000)
     expect(researchExpansion.getState()).toMatchObject({ phase: 'acknowledged' })
+
+    channel.emit({ type: 'complete', nonce: secondNonce })
+    expect(researchExpansion.getState()).toEqual({ phase: 'idle' })
 
     researchExpansion.dispose()
     expect(channel.listeners.size).toBe(0)

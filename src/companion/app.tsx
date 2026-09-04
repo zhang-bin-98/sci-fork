@@ -26,9 +26,9 @@ import { CompanionApiClient, CompanionApiError } from './api.js'
 import { DetailsMarkdown } from './details.js'
 import { FocusSelectionQueue } from './focus-selection.js'
 import {
-  type EvidenceVisibility,
+  type GraphView,
+  evidenceAnchorForFocus,
   focusViewportCenter,
-  evidenceVisibilityGraph,
   graphDirectionForViewport,
   layoutGraph,
   selectGraphView,
@@ -103,10 +103,6 @@ function entityTypeClass(entity: EntityTypeCarrier): EntityVisualType {
   return entity.type === 'node' ? entity.kind : entity.type
 }
 
-export function formatReferenceCounts(referenceCount: number, reviewedCount: number): string {
-  return `${referenceCount} ${referenceCount === 1 ? 'ref' : 'refs'} (${reviewedCount} reviewed)`
-}
-
 export function formatEvidenceCounts(
   publicationCount: number,
   machineReviewedCount: number,
@@ -117,15 +113,8 @@ export function formatEvidenceCounts(
 
 function entityMeta(entity: ProjectionEntitySummary): string {
   if (entity.type === 'node') {
-    return (
-      entity.confidence +
-      ' confidence · ' +
-      formatEvidenceCounts(
-        entity.publicationCount ?? entity.referenceCount,
-        entity.machineReviewedEvidenceCount ?? 0,
-        entity.humanReviewedEvidenceCount ?? entity.reviewedEvidenceCount,
-      )
-    )
+    const confidence = entity.confidence.slice(0, 1).toUpperCase() + entity.confidence.slice(1)
+    return `${confidence} · ${entity.publicationCount} pub · ${entity.machineReviewedEvidenceCount} machine · ${entity.humanReviewedEvidenceCount} human`
   }
   if (entity.type === 'evidence') return entity.reviewStatus
   if (entity.type === 'question') return 'open question'
@@ -152,7 +141,7 @@ export function EntityNodeCard(props: {
   return (
     <div className="entity-node-card relative size-full">
       <div
-        className="entity-node-content absolute inset-x-0 top-0 z-[1] grid min-h-full w-full grid-rows-[auto_auto_auto] gap-1 rounded-lg border border-sf-node-border bg-sf-surface px-3 py-2.5 text-left shadow-sm transition-shadow duration-150 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sf-focus/45 focus-visible:ring-offset-2"
+        className="entity-node-content absolute inset-x-0 top-0 z-[1] grid min-h-full w-full grid-rows-[auto_auto_auto] gap-1 rounded-lg border border-sf-node-border bg-sf-surface px-3 py-2 text-left shadow-sm transition-shadow duration-150 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sf-focus/45 focus-visible:ring-offset-2"
         tabIndex={0}
         aria-label={entityTypeLabel(entity) + ': ' + entity.label}
       >
@@ -266,6 +255,7 @@ interface GraphPaneProps {
   focusEntityId: string | undefined
   pendingEntityId: string | undefined
   pathIds: readonly string[]
+  interactionDisabled: boolean
   onSelect(entityId: string): void
 }
 
@@ -284,50 +274,38 @@ function useWideGraphLayout(): boolean {
   return wide
 }
 
-export function EvidenceVisibilityControl(props: {
-  visibility: EvidenceVisibility
-  focusedNodeId: string | undefined
-  onChange(visibility: EvidenceVisibility): void
+export type GraphViewMode = GraphView['mode']
+
+export function GraphViewControl(props: {
+  view: GraphViewMode
+  canEnterEvidence: boolean
+  transitioning: boolean
+  onChange(view: GraphViewMode): void
 }): React.ReactElement {
-  const options: Array<{
-    value: EvidenceVisibility
-    label: string
-    compactLabel: string
-    disabled?: boolean
-  }> = [
-    { value: 'hidden', label: 'Hide evidence', compactLabel: 'Hide' },
-    {
-      value: 'focused-node',
-      label: 'Focus evidence',
-      compactLabel: 'Focus',
-      disabled: props.focusedNodeId === undefined,
-    },
-    { value: 'all', label: 'All evidence', compactLabel: 'All' },
-  ]
+  const targetView: GraphViewMode = props.view === 'main' ? 'evidence' : 'main'
+  const label = targetView === 'main' ? 'Main view' : 'Evidence view'
+  const disabled =
+    props.transitioning || (targetView === 'evidence' && !props.canEnterEvidence)
+  const title =
+    props.transitioning
+      ? 'Restoring Main view'
+      : targetView === 'evidence' && disabled
+        ? 'Focus an entity with direct Evidence to enter Evidence view'
+        : label
   return (
-    <div
-      className="flex min-w-0 items-center gap-1"
-      role="group"
-      aria-label="Evidence display"
-      data-evidence-visibility-control="true"
+    <button
+      type="button"
+      className={BUTTON_HEADER + ' h-9 px-2 text-xs sm:px-2.5'}
+      aria-label={label}
+      aria-busy={props.transitioning}
+      title={title}
+      disabled={disabled}
+      data-graph-view-control="true"
+      data-graph-view={targetView}
+      onClick={() => props.onChange(targetView)}
     >
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className={BUTTON_HEADER + ' size-9 px-0 sm:size-auto sm:px-2.5'}
-          aria-pressed={props.visibility === option.value}
-          aria-label={option.label}
-          title={option.disabled ? 'Focus a Node to show its evidence' : option.label}
-          disabled={option.disabled}
-          data-evidence-visibility={option.value}
-          onClick={() => props.onChange(option.value)}
-        >
-          <span className="sm:hidden">{option.compactLabel}</span>
-          <span className="hidden sm:inline">{option.label}</span>
-        </button>
-      ))}
-    </div>
+      {targetView === 'main' ? 'Main' : 'Evidence'}
+    </button>
   )
 }
 
@@ -411,6 +389,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
       ref={paneRef}
       className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted xl:border-r xl:border-b-0"
       aria-label="Research Graph"
+      aria-busy={props.interactionDisabled}
     >
       <ReactFlow<EntityFlowNode, RelationFlowEdge>
         key={layoutKey}
@@ -425,8 +404,13 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
         minZoom={0.25}
         maxZoom={1.6}
         onInit={setFlow}
-        onNodeClick={(_event, node) => props.onSelect(node.id)}
+        nodesFocusable={!props.interactionDisabled}
+        edgesFocusable={!props.interactionDisabled}
+        onNodeClick={(_event, node) => {
+          if (!props.interactionDisabled) props.onSelect(node.id)
+        }}
         onEdgeClick={(_event, edge) => {
+          if (props.interactionDisabled) return
           const edgeId = edge.data?.edge.id
           if (edgeId !== undefined) props.onSelect(edgeId)
         }}
@@ -512,7 +496,6 @@ function LiteratureDetails(props: { literature: LiteratureProjection }): React.R
   const groups: Array<[string, LiteratureEvidenceItem[]]> = [
     ['Human-reviewed Evidence', props.literature.humanReviewed],
     ['Machine-reviewed Evidence', props.literature.machineReviewed],
-    ['Candidate Evidence', props.literature.candidate],
   ]
   return (
     <section className="grid gap-3" aria-label="Literature">
@@ -598,9 +581,9 @@ function entityEvidenceCountLabel(entity: EntityDocument): string | undefined {
   }
   if (entity.type !== 'node') return undefined
   return formatEvidenceCounts(
-    entity.publicationCount ?? entity.referenceCount,
-    entity.machineReviewedEvidenceCount ?? 0,
-    entity.humanReviewedEvidenceCount ?? entity.reviewedEvidenceCount,
+    entity.publicationCount,
+    entity.machineReviewedEvidenceCount,
+    entity.humanReviewedEvidenceCount,
   )
 }
 
@@ -862,9 +845,69 @@ function failureMessage(error: unknown): string {
     : 'The Companion is temporarily unavailable.'
 }
 
-function researchExpansionLabel(state: ResearchExpansionState): string | undefined {
-  if (state.phase !== 'acknowledged') return undefined
-  return state.acknowledgement === 'started' ? 'Started' : 'Queued'
+export function ResearchExpansionAction(props: {
+  state: ResearchExpansionState
+  disabled: boolean
+  onClick(): void
+}): React.ReactElement {
+  const running = props.state.phase === 'pending' || props.state.phase === 'acknowledged'
+  const label = running ? 'Research in progress' : RESEARCH_EXPANSION_ACTION_LABEL
+  return (
+    <button
+      type="button"
+      className={BUTTON_PRIMARY + ' size-9 px-0 sm:size-auto sm:px-3'}
+      disabled={props.disabled || running}
+      aria-label={label}
+      title={label}
+      aria-busy={running}
+      onClick={props.onClick}
+    >
+      {running ? (
+        <svg
+          className="size-4 animate-spin"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+          data-research-spinner="true"
+        >
+          <circle className="opacity-30" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+          <path className="opacity-90" d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <>
+          <svg
+            className="size-4 sm:hidden"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            aria-hidden="true"
+          >
+            <circle cx="6.75" cy="6.75" r="3.75" />
+            <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
+          </svg>
+          <span className="hidden sm:inline">{RESEARCH_EXPANSION_ACTION_LABEL}</span>
+        </>
+      )}
+    </button>
+  )
+}
+
+export async function restoreMainView(inputs: {
+  graph: SnapshotGraph
+  anchorId: string
+  focusEntityId: string | undefined
+  pendingFocusId?: string | undefined
+  selectFocus(entityId: string): Promise<boolean>
+}): Promise<'restored' | 'anchor-missing' | 'failed'> {
+  const anchorExists = inputs.graph.entities.some(
+    (entity) => entity.id === inputs.anchorId && entity.type === 'node',
+  )
+  if (!anchorExists) return 'anchor-missing'
+  if (inputs.focusEntityId === inputs.anchorId && inputs.pendingFocusId === undefined) {
+    return 'restored'
+  }
+  return (await inputs.selectFocus(inputs.anchorId)) ? 'restored' : 'failed'
 }
 
 export function CompanionApp(props: { pageKey: string }): React.ReactElement {
@@ -874,8 +917,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const [selectedId, setSelectedId] = React.useState<string>()
   const [details, setDetails] = React.useState<EntityDocument>()
   const [detailsOpen, setDetailsOpen] = React.useState(true)
-  const [evidenceVisibility, setEvidenceVisibility] =
-    React.useState<EvidenceVisibility>('hidden')
+  const [graphView, setGraphView] = React.useState<GraphView>({ mode: 'main' })
+  const [viewTransitioning, setViewTransitioning] = React.useState(false)
   const [error, setError] = React.useState<string>()
   const [pendingFocusId, setPendingFocusId] = React.useState<string>()
   const [researchExpansionState, setResearchExpansionState] =
@@ -889,6 +932,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const detailsRequestRef = React.useRef(0)
   const focusQueueRef = React.useRef<FocusSelectionQueue<FocusSuccess> | undefined>(undefined)
   const snapshotInFlightRef = React.useRef(false)
+  const viewTransitioningRef = React.useRef(false)
   const researchExpansionRef =
     React.useRef<ResearchExpansionChannel | undefined>(undefined)
 
@@ -932,6 +976,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   React.useEffect(() => {
     const queue = new FocusSelectionQueue<FocusSuccess>({
       setFocus: (entityId) => api.setFocus(entityId),
+      isConfirmed: (entityId, response) => response.focus.focusEntityId === entityId,
       onConfirmed: (entityId, response) => {
         if (!mountedRef.current) return
         setError(undefined)
@@ -1067,24 +1112,62 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   }, [invalidKey, props.pageKey])
 
   const selectEntity = React.useCallback((entityId: string): void => {
+    if (viewTransitioningRef.current) return
     setError(undefined)
-    focusQueueRef.current?.select(entityId)
+    void focusQueueRef.current?.select(entityId)
   }, [])
 
-  const focusedNodeId = React.useMemo(() => {
-    const focusEntityId = snapshot?.focus?.focusEntityId
-    if (focusEntityId === undefined) return undefined
-    const focusedEntity = graph?.entities.find((entity) => entity.id === focusEntityId)
-    return focusedEntity?.type === 'node' ? focusedEntity.id : undefined
-  }, [graph, snapshot?.focus?.focusEntityId])
-
-  const graphView = React.useMemo(
+  const eligibleEvidenceAnchor = React.useMemo(
     () =>
-      selectGraphView(
-        evidenceVisibilityGraph(graph ?? EMPTY_GRAPH, evidenceVisibility, focusedNodeId),
-      ),
-    [graph, evidenceVisibility, focusedNodeId],
+      pendingFocusId === undefined
+        ? evidenceAnchorForFocus(graph ?? EMPTY_GRAPH, snapshot?.focus?.focusEntityId)
+        : undefined,
+    [graph, pendingFocusId, snapshot?.focus?.focusEntityId],
   )
+  const visibleGraph = React.useMemo(
+    () => selectGraphView(graph ?? EMPTY_GRAPH, graphView),
+    [graph, graphView],
+  )
+
+  React.useEffect(() => {
+    if (graph === undefined || graphView.mode !== 'evidence') return
+    const anchorExists = graph.entities.some(
+      (entity) => entity.id === graphView.anchorId && entity.type === 'node',
+    )
+    if (anchorExists) return
+    viewTransitioningRef.current = false
+    setViewTransitioning(false)
+    setGraphView({ mode: 'main' })
+  }, [graph, graphView])
+
+  const changeGraphView = (nextView: GraphViewMode): void => {
+    if (viewTransitioningRef.current || nextView === graphView.mode) return
+    if (nextView === 'evidence') {
+      if (eligibleEvidenceAnchor === undefined) return
+      setGraphView({ mode: 'evidence', anchorId: eligibleEvidenceAnchor })
+      return
+    }
+    if (graphView.mode !== 'evidence') return
+
+    const latestGraph = graphRef.current
+    if (latestGraph === undefined) return
+    viewTransitioningRef.current = true
+    setViewTransitioning(true)
+    const anchorId = graphView.anchorId
+    void restoreMainView({
+      graph: latestGraph,
+      anchorId,
+      focusEntityId: snapshotRef.current?.focus?.focusEntityId,
+      pendingFocusId: focusQueueRef.current?.pendingEntityId,
+      selectFocus: (entityId) =>
+        focusQueueRef.current?.select(entityId) ?? Promise.resolve(false),
+    }).then((result) => {
+      if (!mountedRef.current) return
+      if (result !== 'failed') setGraphView({ mode: 'main' })
+      viewTransitioningRef.current = false
+      setViewTransitioning(false)
+    })
+  }
 
   const submitResearchExpansion = (): void => {
     const focusEntityId = snapshotRef.current?.focus?.focusEntityId
@@ -1105,8 +1188,6 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   const project = snapshot?.project
   const focus = snapshot?.focus
-  const acknowledgement = researchExpansionLabel(researchExpansionState)
-
   return (
     <main className="companion-app flex h-dvh min-h-0 w-full flex-col bg-sf-canvas text-sf-ink">
       <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground sm:gap-3 sm:px-4">
@@ -1116,16 +1197,12 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           {...(project?.head === undefined ? {} : { head: project.head })}
         />
         <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
-          <EvidenceVisibilityControl
-            visibility={evidenceVisibility}
-            focusedNodeId={focusedNodeId}
-            onChange={setEvidenceVisibility}
+          <GraphViewControl
+            view={graphView.mode}
+            canEnterEvidence={eligibleEvidenceAnchor !== undefined}
+            transitioning={viewTransitioning}
+            onChange={changeGraphView}
           />
-          {acknowledgement === undefined ? null : (
-            <output className="min-w-14 text-right text-xs font-bold text-sf-header-success">
-              {acknowledgement}
-            </output>
-          )}
           {researchExpansionState.phase === 'failed' ? (
             <ResearchExpansionRecoveryControls
               placement="header"
@@ -1133,31 +1210,11 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
               onCopy={copyPrompt}
             />
           ) : null}
-          <button
-            type="button"
-            className={BUTTON_PRIMARY + ' size-9 px-0 sm:size-auto sm:px-3'}
-            disabled={focus === undefined || researchExpansionState.phase === 'pending'}
-            aria-label={researchExpansionState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
-            title={researchExpansionState.phase === 'pending' ? 'Submitting' : RESEARCH_EXPANSION_ACTION_LABEL}
+          <ResearchExpansionAction
+            state={researchExpansionState}
+            disabled={focus === undefined}
             onClick={submitResearchExpansion}
-          >
-            <svg
-              className="size-4 sm:hidden"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <circle cx="6.75" cy="6.75" r="3.75" />
-              <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
-            </svg>
-            <span className="hidden sm:inline">
-              {researchExpansionState.phase === 'pending'
-                ? 'Submitting'
-                : RESEARCH_EXPANSION_ACTION_LABEL}
-            </span>
-          </button>
+          />
         </div>
       </header>
 
@@ -1210,17 +1267,18 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
             </>
           )}
         </section>
-      ) : graphView.entities.length === 0 ? (
+      ) : visibleGraph.entities.length === 0 ? (
         <section className="flex min-h-0 flex-1 items-center justify-center gap-3 bg-sf-surface-muted text-sf-muted">
           <span>No research entities</span>
         </section>
       ) : (
         <div className={WORKSPACE_BASE + ' ' + (detailsOpen ? WORKSPACE_OPEN : WORKSPACE_CLOSED)}>
           <GraphPane
-            graph={graphView}
+            graph={visibleGraph}
             focusEntityId={focus?.focusEntityId}
             pendingEntityId={pendingFocusId}
             pathIds={focus?.pathIds ?? []}
+            interactionDisabled={viewTransitioning}
             onSelect={selectEntity}
           />
           <DetailsPane

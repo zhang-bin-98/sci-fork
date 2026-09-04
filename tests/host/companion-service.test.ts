@@ -277,13 +277,15 @@ describe('CompanionService reads', () => {
     })
     if (!result.ok || result.graph === undefined) throw new Error('snapshot failed')
     expect(result.graph.entities).toHaveLength(3)
-    expect(result.graph.entities.find((entity) => entity.id === NODE)).toMatchObject({
+    const nodeSummary = result.graph.entities.find((entity) => entity.id === NODE)
+    expect(nodeSummary).toMatchObject({
       id: NODE,
       type: 'node',
       kind: 'hypothesis',
       label: 'STAT3 sustains resistant-cell proliferation',
-      referenceCount: 2,
-      reviewedEvidenceCount: 1,
+      publicationCount: 2,
+      machineReviewedEvidenceCount: 0,
+      humanReviewedEvidenceCount: 1,
     })
     expect(result.graph.edges.find((edge) => edge.id === EDGE)).toMatchObject({
       relation: 'supports',
@@ -294,6 +296,25 @@ describe('CompanionService reads', () => {
       expect(entity.label.length).toBeLessThanOrEqual(240)
       expect(entity).not.toHaveProperty('body')
     }
+  })
+
+  it('uses the first bold Markdown paragraph as the graph claim label', async () => {
+    const state = await setup({
+      ...entries(),
+      [`/project/nodes/${NODE}.md`]: NODE_FILE.replace(
+        '# STAT3 sustains resistant-cell proliferation',
+        '**STAT3 sustains resistant-cell proliferation.**',
+      ),
+    })
+    const launched = await state.service.launch('session-1')
+    if (!launched.ok) throw new Error('launch failed')
+    const localKey = launched.url.split('#key=')[1]!
+
+    const snapshot = await state.service.snapshot(localKey)
+    if (!snapshot.ok || snapshot.graph === undefined) throw new Error('snapshot failed')
+    expect(snapshot.graph.entities.find((entity) => entity.id === NODE)).toMatchObject({
+      label: 'STAT3 sustains resistant-cell proliferation.',
+    })
   })
 
   it('omits an unchanged graph but still returns a Focus-only change', async () => {
@@ -322,8 +343,9 @@ describe('CompanionService reads', () => {
       entity: {
         id: NODE,
         type: 'node',
-        referenceCount: 2,
-        reviewedEvidenceCount: 1,
+        publicationCount: 2,
+        machineReviewedEvidenceCount: 0,
+        humanReviewedEvidenceCount: 1,
         body: expect.stringContaining('provisional'),
       },
     })

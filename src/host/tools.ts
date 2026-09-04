@@ -61,10 +61,10 @@ const READ_PARAMETERS = {
   properties: {
     operation: {
       type: 'string',
-      enum: ['summary', 'focus', 'entity', 'neighborhood', 'neighbors', 'find', 'checkpoint'],
-      description: 'summary | focus | entity | neighborhood | neighbors | find | checkpoint',
+      enum: ['summary', 'focus', 'entity', 'neighbors', 'find', 'checkpoint'],
+      description: 'summary | focus | entity | neighbors | find | checkpoint',
     },
-    entityId: { type: 'string', description: 'entity id for entity/neighborhood/neighbors reads' },
+    entityId: { type: 'string', description: 'entity id for entity/neighbors reads' },
     direction: {
       type: 'string',
       enum: ['incoming', 'outgoing', 'both'],
@@ -270,26 +270,18 @@ async function executeRead(
         }
   }
 
-  if (operation === 'entity' || operation === 'neighborhood') {
+  if (operation === 'entity') {
     const entityId = typeof args['entityId'] === 'string' ? args['entityId'] : ''
     const entity = entityPayload(project, entityId)
     if (entity === undefined) {
       return { ok: false, code: 'INVALID_ENTITY', message: `entity ${entityId} does not exist`, recoverable: true, entityId }
     }
-    if (operation === 'entity') {
-      const path = entityFilePath(entityId)
-      const content = path === undefined ? undefined : project.files.get(path)
-      if (content === undefined) {
-        return { ok: false, code: 'INVALID_ENTITY', message: `entity ${entityId} has no managed file`, recoverable: false, entityId }
-      }
-      return { ok: true, entityId, entity, fileVersion: fileVersion(content, deps.hash) }
+    const path = entityFilePath(entityId)
+    const content = path === undefined ? undefined : project.files.get(path)
+    if (content === undefined) {
+      return { ok: false, code: 'INVALID_ENTITY', message: `entity ${entityId} has no managed file`, recoverable: false, entityId }
     }
-    const includeFraming = entityTypeOfId(entityId) === 'question'
-    const edges = buildProjection(project).edges.filter((edge) =>
-      (edge.from === entityId || edge.to === entityId) &&
-      (includeFraming ? edge.source === 'framing_link' : edge.source !== 'framing_link'),
-    )
-    return { ok: true, entityId, entity, edges }
+    return { ok: true, entityId, entity, fileVersion: fileVersion(content, deps.hash) }
   }
 
   if (operation === 'neighbors') {
@@ -402,7 +394,6 @@ const APPLY_COMMAND_SCHEMA = {
         locator: { type: 'object' },
         assertion: { type: 'string' },
         direction: { type: 'string', enum: ['supports', 'contradicts', 'context'] },
-        reviewStatus: { type: 'string', enum: ['machine_reviewed'] },
         citation: { type: 'object' },
         machineReviewRationale: { type: 'string' },
         limitations: { type: 'array', items: { type: 'string' } },
@@ -415,7 +406,7 @@ const APPLY_COMMAND_SCHEMA = {
       {
         id: ID,
         expectedFileVersion: VERSION,
-        reviewStatus: { type: 'string', enum: ['machine_reviewed', 'reviewed', 'rejected'] },
+        reviewStatus: { type: 'string', enum: ['reviewed', 'rejected'] },
         citation: { type: 'object' },
         machineReviewRationale: { type: 'string' },
         limitations: { type: 'array', items: { type: 'string' } },
@@ -429,7 +420,10 @@ const APPLY_COMMAND_SCHEMA = {
         nodeKind: { type: 'string', enum: ['finding', 'hypothesis', 'prediction'] },
         confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
         evidenceRefs: EVIDENCE_REFS,
-        body: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold summary sentence; put details in later paragraphs.',
+        },
       },
       ['id', 'nodeKind', 'confidence', 'body'],
     ),
@@ -441,7 +435,10 @@ const APPLY_COMMAND_SCHEMA = {
         nodeKind: { type: 'string', enum: ['finding', 'hypothesis', 'prediction'] },
         confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
         evidenceRefs: EVIDENCE_REFS,
-        body: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold summary sentence; put details in later paragraphs.',
+        },
       },
       ['id', 'expectedFileVersion'],
     ),
@@ -476,7 +473,14 @@ const APPLY_COMMAND_SCHEMA = {
     ),
     commandBranch(
       'create_result',
-      { id: ID, observedAt: { type: 'string' }, body: { type: 'string' } },
+      {
+        id: ID,
+        observedAt: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold observation sentence; put details in later paragraphs.',
+        },
+      },
       ['id', 'observedAt', 'body'],
     ),
     commandBranch(
@@ -486,7 +490,10 @@ const APPLY_COMMAND_SCHEMA = {
         expectedFileVersion: VERSION,
         status: { type: 'string', enum: ['draft', 'validated', 'superseded'] },
         observedAt: { type: 'string' },
-        body: { type: 'string' },
+        body: {
+          type: 'string',
+          description: 'Markdown body: first non-empty paragraph is one bold observation sentence; put details in later paragraphs.',
+        },
       },
       ['id', 'expectedFileVersion'],
     ),
@@ -622,7 +629,7 @@ function readTool(deps: ResearchToolsDeps): ToolDefinition {
   return {
     name: 'research_graph_read',
     description:
-      'Read the SciFork Research Graph for the current session project: summary, focus, entity, neighborhood, ' +
+      'Read the SciFork Research Graph for the current session project: summary, focus, entity, ' +
       'directional neighbors, find, or checkpoint state. Neighbor reads return incident edges and compact adjacent cards without bodies. ' +
       'Entity reads include fileVersion for guarded updates/deletes. Read-only; never writes files or Git.',
     parameters: READ_PARAMETERS,

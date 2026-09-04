@@ -1,21 +1,19 @@
 # SciFork M2 Companion
 
 > Status: Implemented; automated and default-breakpoint browser verification passed on 2026-09-01
-> Date: 2026-08-31
+> Date: 2026-09-03
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.19](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
-> Action semantics: the historical `Simulate & Save` contract below is superseded
-> by [literature-grounded research expansion](progressive-research-expansion.md).
-> Historical baseline: parent-version references and the superseded wire section
-> record M2 as implemented at that time; current behavior is defined by the
-> linked refinements and the v0.19/v0.20 umbrella documents.
+> Action semantics are defined by
+> [literature-grounded research expansion](progressive-research-expansion.md) and
+> the current v0.20/v0.21 umbrella documents.
 
 ## Problem
 
 M1 provides the rebuildable projection, project locator, Focus sidecar, and
 current-branch Git behavior, but `/scifork` is not yet a usable Companion.
-The M0 client still opens an unauthenticated placeholder and exposes a direct
-spike Simulate button. M2 must add the standalone graph experience without
+The M0 client still opens an unauthenticated placeholder and exposes only a
+direct submit spike. M2 must add the standalone graph experience without
 creating another backend, trusting browser-supplied paths, or sending a prompt
 to a different DSH Session.
 
@@ -26,12 +24,13 @@ to a different DSH Session.
    Key that never enters a query, repository, log, or Chat command result.
 3. Expose bounded snapshot, entity, and Focus POST APIs over the existing DSH
    Web origin.
-4. Render the complete Research Graph, graph-highlighted Focus path, and safe read-only,
-   collapsible Details in one responsive React layout; Focus only recenters and
-   highlights after Host acknowledgement.
+4. Retain the complete Research Graph snapshot while rendering either its
+   non-Evidence Main graph or one locked-anchor Evidence subgraph, together with
+   graph-highlighted Focus and safe, collapsible Details in one responsive React
+   layout; Focus only recenters and highlights after Host acknowledgement.
 5. Poll only while the page is visible and detect project, branch, HEAD, Focus,
    and validation changes through fresh Host reads.
-6. Submit a bounded simulation prompt to the exact originating Session through
+6. Submit a bounded Research Expansion prompt to the exact originating Session through
    a scoped BroadcastChannel and the public `setDraft + submit` transaction.
 
 ## Non-goals
@@ -166,17 +165,27 @@ relative-path diagnostics, current Focus, and the full body-free projection.
 Entity labels are deterministic summaries of at most 240 characters. Edge
 views may include a bounded Evidence Gap from their managed edge file.
 
+Node and Result Markdown bodies use one shared summary convention: the first
+non-empty paragraph is exactly one bold claim or observation sentence
+(`**summary sentence**`), followed by rationale, methods, limitations,
+assumptions, and evidence details. Graph labels use that first paragraph as
+plain text; Details renders the complete body and then the structured Evidence
+list. Finding, Hypothesis, and Prediction use the same convention. Evidence
+identifiers, locators, and review rationale do not belong in the summary.
+
 When `sinceProjectRevision` equals the current project revision, the response
 may omit graph entities and edges but still returns current Focus, diagnostics,
 and read-only state so a Focus-only change is observable. The browser retains
 the last graph until a changed revision arrives.
 
-The client always renders the complete body-free projection returned by the
-snapshot. Without a Focus, the initial viewport fits that complete graph. With
-a Focus, the entity or stored Edge remains part of the same complete graph and
-is highlighted; a Focus change preserves the current zoom and moves the entity
-center or Edge midpoint to the viewport center. An empty project has an explicit
-empty state. The layout is rebuilt deterministically and is never persisted.
+The client retains the complete body-free projection returned by the snapshot
+and derives one local view. Main is the default and contains every non-Evidence
+entity and relationship whose endpoints remain visible. Evidence view contains
+one locked eligible anchor, its existing direct Evidence entities, and matching
+`evidence_ref` relationships. The current view fits its graph; a visible Focus
+change preserves zoom and moves the entity center or Edge midpoint to the
+viewport center. An empty view has an explicit state. Layout and view state are
+never persisted.
 
 ### Entity and Focus
 
@@ -202,10 +211,12 @@ only solid selection highlight and Details target. While one request is in
 flight, later clicks are retained and processed serially so the last clicked
 entity becomes the final Focus instead of being silently dropped.
 
-Focus does not define graph membership. Path changes, entity clicks, polling,
-and restored Focus state never remove unrelated entities or Edges from the
-Companion. The bounded one-hop selection remains an internal simulation-prompt
-context only.
+Focus does not directly filter graph membership. In Main, an eligible confirmed
+Focus enables entry to Evidence and becomes its locked anchor. Later Evidence
+Focus changes do not replace that anchor. Returning to Main restores the anchor
+through the serialized Focus queue before changing views. Focus path state is
+visualization-only and is not a second graph or Research Expansion context
+source.
 
 ### Details Safety
 
@@ -248,12 +259,10 @@ ellipsized before metadata wraps. Drawer chevrons use left/right semantics besid
 the graph and up/down semantics below it. `Research & Expand` uses a warm-white
 action surface with accent-green text instead of a filled green CTA.
 
-The original M2 projection summaries exposed `referenceCount` and
-`reviewedEvidenceCount`.
-The Host deduplicates total references from the Node and incident stored Edges by
-canonical PMID, otherwise normalized DOI. Reviewed count only includes publications
-behind reviewed Evidence Assertions. Cards and Details format this as
-`1 ref (M reviewed)` for a singular total and `N refs (M reviewed)` otherwise.
+The Host deduplicates publications from the Node and incident stored Edges by
+canonical PMID, otherwise normalized DOI. Snapshot and entity responses expose
+required `publicationCount`, `machineReviewedEvidenceCount`, and
+`humanReviewedEvidenceCount` fields.
 
 Tailwind theme tokens and utilities own the general Companion visual system:
 app shell, header, controls, banners, cards, Details, typography, spacing,
@@ -278,23 +287,14 @@ The Companion performs one snapshot read on mount when visible, repeats every
 while hidden, and refreshes immediately when visibility returns. It has at most
 one snapshot request in flight and disposes timers/listeners on unmount.
 
-### Historical: Simulate & Save (superseded)
+### Research Expansion channel
 
-This subsection records the M2 wire baseline only. The visible action and prompt
-behavior are replaced by `Research & Expand`; only the documented v1 wire
-literals remain for an already-open first-party Companion during bundle reload.
+The visible `Research & Expand` action builds the bounded prompt defined by the
+current Research Expansion specification. The encoded prompt is at most 12 KiB;
+the Bridge rejects messages above 16 KiB.
 
-`buildSimulationPrompt` runs only from the `Simulate & Save` click path and uses the
-latest snapshot. It includes the Focus id and summary, bounded-neighborhood support and
-contradiction summaries, stored Evidence Gaps, and a clear simulation/critique
-task. It preserves Result versus Interpretation and instructs the model not to
-promote hypotheses, predictions, or `ai_inference` to Findings. The v0.0.1
-[bounded simulation extension](simulation-branches.md) also makes that real
-click the explicit authorization to save every valid branch from a single-layer,
-zero-to-five branch run, with a low-confidence Node and an Edge for each. The encoded
-prompt is at most 12 KiB; the Bridge rejects messages above 16 KiB.
-
-The page sends `{ type: 'simulate', nonce, prompt }` on the key-derived channel.
+The page sends `{ type: 'research_expansion', nonce, prompt }` on the
+`scifork:research-expansion:v1:<page-key>` channel.
 Each retry is another real click and uses a new 128-bit nonce while retaining
 the exact prompt. The Bridge accepts only its own channel, the exact message
 shape, bounded fields, a live originating Session, and a nonce not previously
@@ -337,9 +337,9 @@ channels and nonce state close on bundle unload.
       loopback, JSON type, body size, strict body, and allowlist boundaries.
 - [x] Snapshot and Details stay consistent with M1 parsing, projection,
       diagnostics, Focus, branch, and HEAD behavior.
-- [x] The Companion always renders the complete projection; changing a Node,
-      Result, Evidence Assertion, or stored Edge Focus preserves graph membership and
-      current zoom while centering the focused entity or Edge midpoint.
+- [x] The Companion retains the complete snapshot while rendering either the
+      complete non-Evidence Main graph or one locked-anchor Evidence subgraph;
+      visible Focus changes preserve current zoom and center the target.
 - [x] The same React tree works at narrow and wide viewports; graph, path,
       selected Details, loading, empty, read-only, and invalid-key states fit
       without overlap.
@@ -366,7 +366,7 @@ channels and nonce state close on bundle unload.
 - [x] Hidden pages issue no polling requests and refresh immediately when shown.
 - [x] Details executes no raw HTML/script and performs no automatic remote or
       uncontained resource load.
-- [x] A real Simulate click submits once to the originating Session; idle and
+- [x] A real `Research & Expand` click submits once to the originating Session; idle and
       busy acknowledgements are Started and Queued, wrong channels/sessions do
       not submit, and duplicates do not resubmit.
 - [x] Ack failure retains the bounded prompt and offers working Retry and Copy.
@@ -375,7 +375,7 @@ channels and nonce state close on bundle unload.
 - [x] Desktop and default-breakpoint browser checks cover nonblank rendering,
       stable graph sizing, responsive Details, and no incoherent overlap.
 
-### Browser verification record (2026-09-01)
+### Browser verification record (2026-09-01; Evidence interaction superseded)
 
 The built Companion was served from a loopback fixture with a bounded snapshot
 containing Question, Hypothesis, Prediction, Result, and Evidence entities. At
@@ -385,10 +385,14 @@ incoherent overlap. Graph direction changed from TB to LR at `md=768px` and
 Details changed from a bottom drawer to a side drawer at `xl=1280px`. The
 single-row header and Details primary row remained non-overlapping; Details body
 content remained in its internal scroll region. At 320px the icon-only actions
-retained accessible labels, Evidence toggling revealed the fifth node, and the
+retained accessible labels, the then-current Evidence control revealed the fifth node, and the
 Details close/open controls preserved the graph without overlap. Screenshots at
 320px, 768px, and 1280px confirmed nonblank graph pixels, stable node sizing,
 card rendering, and drawer placement.
+
+This record predates the mutually exclusive Main/Evidence contract. Its
+responsive layout observations remain valid; the replacement interaction is
+verified separately after implementation.
 
 ## Test Plan
 
@@ -401,7 +405,7 @@ card rendering, and drawer placement.
   launch failure notification, key-derived channel, idle/busy submit, exact
   ordering, wrong shape/session, duplicate nonce, prompt limit, and disposal.
 - Companion unit: fragment consumption/storage clearing, API error mapping,
-  global graph membership, bounded prompt-neighborhood selection, Focus center
+  Main/Evidence graph membership, bounded Research Expansion prompt, Focus center
   resolution, serialized latest-click selection, layout determinism, visible-only
   polling, safe link and image rendering, Details two-row id-text copy/type/reference/drawer semantics,
   prompt content/byte cap, ack timeout/retry nonce behavior.
@@ -412,4 +416,4 @@ card rendering, and drawer placement.
   restrained body heading scale, drawer and internal scroll.
 - DSH smoke (separate explicit approval): disposable pinned `0.1.1-rc.2`
   profile, one package install, `/research init`, Open action, snapshot/entity/
-  Focus, idle and busy Simulate, reload, unload, and project readability.
+  Focus, idle and busy Research Expansion, reload, unload, and project readability.

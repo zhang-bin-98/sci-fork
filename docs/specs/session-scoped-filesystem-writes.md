@@ -1,7 +1,7 @@
 # Session-scoped filesystem writes
 
 > Status: Implemented
-> Parent design: [software architecture v0.20](../scifork-software-architecture.md)
+> Parent design: [software architecture v0.21](../scifork-software-architecture.md)
 > Related contract: [M1 Core + Git](m1-core-git.md)
 
 ## Problem

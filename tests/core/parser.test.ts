@@ -25,7 +25,7 @@ function evidenceMd(id: string, extra = ''): string {
     '  kind: pubmed_abstract',
     'assertion: "STAT3 is phosphorylated."',
     'direction: supports',
-    'review_status: candidate',
+    'review_status: reviewed',
     extra,
     '---',
     'Context notes.',
@@ -161,7 +161,7 @@ describe('parseProject', () => {
       '  kind: pubmed_abstract',
       'assertion: "Claim."',
       'direction: context',
-      'review_status: candidate',
+      'review_status: reviewed',
       '---',
     ].join('\n') + '\n'
     const project = parseProject(new Map([
@@ -205,7 +205,7 @@ describe('parseProject', () => {
         '  kind: pubmed_abstract',
         'assertion: "Claim."',
         'direction: supports',
-        'review_status: candidate',
+        'review_status: reviewed',
         '---',
         'Body.',
       ].join('\n') + '\n'],

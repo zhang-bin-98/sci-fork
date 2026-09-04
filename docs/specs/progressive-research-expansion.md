@@ -3,28 +3,26 @@
 > The automatic-evidence and open-ended-anchor behavior in this implemented
 > baseline is refined by
 > [Research Questions and machine-reviewed evidence](research-questions-machine-review.md).
+> Evidence layout, action completion, and the single progressive continuation
+> are refined by [Evidence layout, research lifecycle, and linear progression](evidence-layout-research-lifecycle-and-linear-progression.md).
 
-> Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31
+> Status: implemented; automated verification and pinned DSH E2E passed on 2026-08-31; interface cleanup updated on 2026-09-03
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 4, 6-9, and 13-15; [software architecture v0.19](../scifork-software-architecture.md) sections 7, 9, 10, and 15-18
 > Historical baseline: the parent versions above describe the design snapshot
 > used for this expansion; current umbrella behavior is defined by product
-> design v0.19 and software architecture v0.20.
-> Refines: [bounded simulation branches](simulation-branches.md) and [ADR-0001](../adr/0001-llm-orchestrated-simulation-branches.md)
+> design v0.20 and software architecture v0.21.
 > Decision: [ADR-0002](../adr/0002-separate-step-expansion-from-progressive-research.md)
 
 ## Problem
 
-The implemented `Simulate & Save` action reasons from a prebuilt, depth-one Focus
-neighborhood and may save plausible branches without first retrieving related
-literature. That makes the action convenient but gives the model too little control
-over context selection and makes a speculative simulation look more authoritative
-than it is. It also conflates two different user intents: taking one deliberate
-step from the visible Focus and asking Chat to conduct a progressive, multi-round
-research investigation.
+Research expansion needs to choose current graph context and retrieve literature
+before it persists a branch. The product must also distinguish two user intents:
+taking one deliberate step from the visible Focus and asking Chat to conduct a
+progressive, multi-round research investigation.
 
 ## Goals
 
-1. Replace `Simulate & Save` with a predictable `Research & Expand` action that
+1. Provide a predictable `Research & Expand` action that
    performs one literature-grounded, one-hop Research Expansion Step.
 2. Let the model select fresh graph context through primitive directional-neighbor
    reads instead of embedding a fixed neighborhood body in the Companion prompt.
@@ -72,7 +70,9 @@ For one valid step, the model:
 3. Uses the retrieved material to identify zero to five scientifically distinct,
    non-duplicate direct branches from the current Focus anchor.
 4. Saves each retained branch as one low-confidence Hypothesis or Prediction and
-   immediately connects it with one typed Edge.
+   immediately connects it with one typed Edge from the existing Node/Result
+   anchor to the new Node. This preserves left-to-right (`LR`) and
+   top-to-bottom (`TB`) expansion in the Companion.
 5. Re-reads and reports the exact saved, rejected, or failed Node and Edge ids.
 
 When Focus is an Edge, the model reads its endpoints and chooses the scientifically
@@ -89,8 +89,8 @@ step. Idle and busy Session behavior remains the public DSH start/Queue behavior
 ### Explicit connected relationships
 
 Every retained node must be connected to a Node or Result already in the visited
-research state by a scientific Edge whose direction and relation the model can
-explain. `predicts` retains its legal Finding/Hypothesis-to-Prediction shape; other
+research state by a scientific Edge from that existing anchor to the new node,
+whose direction and relation the model can explain. `predicts` retains its legal Finding/Hypothesis-to-Prediction shape; other
 relationships use the narrowest valid `supports`, `contradicts`, `causes`, or
 `associated_with` relation.
 
@@ -102,7 +102,7 @@ identifying the records that support that exact inference. These references are
 normalized and deduplicated, while machine-reviewed Evidence still cannot satisfy
 a Finding support threshold.
 
-The generated expansion may branch and later converge:
+The saved graph may branch and later converge:
 
 ```text
 A -> B -> C
@@ -110,7 +110,8 @@ A -> B -> C
 ```
 
 No generated node may be isolated. A run keeps a visited set to avoid repeatedly
-expanding the same entity, but SciFork does not impose a global DAG invariant on
+expanding the same entity and selects only one newly retained Hypothesis to
+continue after each level, but SciFork does not impose a global DAG invariant on
 the scientific graph.
 
 ### Progressive Research Run
@@ -123,16 +124,17 @@ are absent, the model states a bounded plan in Chat and proceeds only while that
 plan remains within the request; a material ambiguity requires clarification
 before mutation.
 
-The model maintains a research frontier and repeats the following logical step:
+The model maintains one current continuation plus a visited set and repeats the
+following logical step:
 
 ```text
-read frontier entity and directional neighbors
+read current Question/Hypothesis and directional neighbors
 -> choose a retrieval question
 -> load and complete one retrieval Skill
 -> inspect promising records
 -> load scifork-research
--> retain only explicit connected Node + Edge branches
--> update visited set and frontier
+-> retain all qualifying connected Node + Edge branches
+-> automatically select exactly one new Hypothesis as the next continuation
 ```
 
 The packaged PubMed Skill is the default, but a Chat-authorized run remains
@@ -140,13 +142,15 @@ provider-neutral and may use another user-selected database/PDF retrieval Skill 
 reliable material already present in Chat. Skills never call one another: the DSH
 model completes each retrieval phase, keeps its results in current Chat context,
 then loads `scifork-research` for graph decisions and persistence. It may repeat
-that sequence for the next frontier.
+that sequence for the selected continuation. Unselected Hypotheses and all
+Predictions remain saved terminal side branches for that run.
 
 The model stops when it reaches the user's requested scope, finds no novel
 defensible connected relationship, exhausts its declared plan, encounters a
 non-recoverable retrieval or graph error, or needs a decision that would change
 the objective. It reports the queries and identifiers consulted, branches retained
-or rejected, remaining Evidence Gaps, and the frontier at termination. It does not
+or rejected, the selected continuation at each level, remaining Evidence Gaps,
+and the final stop reason. It does not
 silently broaden the objective or continue as background work.
 
 ### Directional graph reads
@@ -167,8 +171,7 @@ Node/Result endpoint. `direction` defaults to `both`. The result identifies the
 requested entity and returns each matching incident Edge together with a compact
 adjacent-entity card and whether that neighbor is incoming or outgoing. It does
 not inline adjacent entity bodies; the model uses the existing `entity` operation
-when full content is relevant. The existing `neighborhood` operation remains
-compatible, and `find` remains available for duplicate checks outside the
+when full content is relevant. `find` remains available for duplicate checks outside the
 traversed component.
 
 The interface uses incoming/outgoing rather than parent/child because Research
@@ -197,7 +200,7 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
 ## Acceptance criteria
 
 - [x] Product and architecture documents distinguish Research Expansion Step from
-      Progressive Research Run and no longer describe the button as simulation.
+      Progressive Research Run and describe the button only as Research Expansion.
 - [x] `CONTEXT.md` defines both terms without treating parent/child as a scientific
       relationship.
 - [x] The Companion action reads `Research & Expand` and its real click submits one
@@ -208,7 +211,7 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
       embedding the current neighborhood body.
 - [x] `research_graph_read` supports directional neighbor reads with compact
       adjacent-entity cards while preserving existing read operations.
-- [x] The packaged Skill describes a user-authorized progressive research frontier,
+- [x] The packaged Skill describes a user-authorized progressive research continuation,
       provider-neutral retrieval phases, explicit stop conditions, and connected
       persistence without one Skill calling another.
 - [x] Search results remain untrusted; automatic expansion creates only
@@ -221,27 +224,6 @@ Graph relations are directed scientific claims, not ownership or a tree hierarch
 - [x] A disposable pinned-DSH E2E verifies one button step and one explicit
       Chat-authorized progressive run before release.
 
-### Historical verification record (2026-08-31)
-
-The counts below describe this feature checkpoint, not the current repository
-test inventory; current release gates come from `package.json` and `README.md`.
-
-- Automated Red/Green covered the prompt replacement, directional neighbors,
-  packaged Skill catalog/content, and empty-Focus lossless JSON regression.
-- At this feature checkpoint, final post-fix `pnpm check` passed 31 test files
-  and 318 tests.
-- The pinned disposable DSH `0.1.1-rc.2` profile reset the graph Edge-first,
-  preserved the legacy candidate Evidence Assertion, and verified an empty Focus as
-  lossless `{ "ok": true }`.
-- One real `Research & Expand` click returned `Started`, completed PubMed search
-  then PMID lookup, loaded `scifork-research`, read `neighbors` with direction
-  `both`, and retained three direct Node+Edge branches while Focus stayed unchanged.
-- One explicit two-level Progressive Research Run maintained `frontier` and
-  `visited`, completed a fresh retrieval phase per level, retained one connected
-  branch per level, and stopped at the declared depth. Final state: seven Nodes,
-  six stored Edges, one legacy candidate Evidence Assertion, zero Results, and
-  unchanged Focus.
-
 ## Test plan
 
 ### Host/tool tests
@@ -253,7 +235,6 @@ test inventory; current release gates come from `package.json` and `README.md`.
 
 ### Companion/Bridge tests
 
-- Observe Red for the old label and neighborhood-heavy simulation prompt.
 - Verify the new label, Focus id/summary, literature-first objective, single-step
   authorization, zero-to-five direct branches, unchanged Focus, and no recursion.
 - Preserve idle, queued, nonce, Retry/Copy, and wrong-channel coverage.
@@ -263,7 +244,7 @@ test inventory; current release gates come from `package.json` and `README.md`.
 - Verify the catalog and `scifork-research` instructions distinguish button-step
   authorization from explicit Chat-run authorization.
 - Verify the progressive workflow alternates completed retrieval and graph phases,
-  retains an explicit frontier/visited set, stops explicitly, and never treats a
+  retains one continuation plus a visited set, stops explicitly, and never treats a
   PMID/DOI as reviewed evidence.
 - Run the packaged Skill registration and static workflow tests used by this DSH
   adapter; its Skill body and catalog metadata are registered separately.

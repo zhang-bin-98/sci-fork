@@ -1,14 +1,16 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   CompanionApp,
   DetailsPane,
   EntityNodeCard,
-  EvidenceVisibilityControl,
+  GraphViewControl,
   HeaderIdentity,
+  ResearchExpansionAction,
   ResearchExpansionRecoveryControls,
   copyEntityId,
+  restoreMainView,
   settleEntityIdCopyFeedback,
 } from '../../src/companion/app.js'
 import type { EntityDocument, ProjectionEntitySummary } from '../../src/shared/companion-contract.js'
@@ -22,8 +24,6 @@ const summary = {
   type: 'node',
   kind: 'hypothesis',
   confidence: 'low',
-  referenceCount: 2,
-  reviewedEvidenceCount: 1,
   publicationCount: 2,
   machineReviewedEvidenceCount: 0,
   humanReviewedEvidenceCount: 1,
@@ -38,8 +38,6 @@ const entity = {
 
 const singularSummary = {
   ...summary,
-  referenceCount: 1,
-  reviewedEvidenceCount: 0,
   publicationCount: 1,
   machineReviewedEvidenceCount: 1,
   humanReviewedEvidenceCount: 0,
@@ -47,8 +45,6 @@ const singularSummary = {
 
 const singularEntity = {
   ...entity,
-  referenceCount: 1,
-  reviewedEvidenceCount: 0,
   publicationCount: 1,
   machineReviewedEvidenceCount: 1,
   humanReviewedEvidenceCount: 0,
@@ -73,7 +69,6 @@ const literatureEntity = {
       machineReviewRationale: 'Identity, locator, entailment, direction, and limitations checked.',
       reviewStatus: 'machine_reviewed',
     }],
-    candidate: [],
     rejected: [],
     retrievalOnly: [{ doi: '10.1000/second' }],
   },
@@ -146,7 +141,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain(LONG_LABEL)
     expect(html).not.toContain('aria-describedby=')
     expect(html).toContain('HYPOTHESIS')
-    expect(html).toContain('2 publications · 0 machine-reviewed · 1 human-reviewed')
+    expect(html).toContain('Low · 2 pub · 0 machine · 1 human')
   })
 
   it('makes the complete quiet identity row the copy control in open Details', () => {
@@ -264,35 +259,155 @@ describe('Companion graph UI', () => {
     expect(actionClasses).not.toContain('bg-sf-accent')
     expect(actionClasses).not.toContain('text-white')
     expect(actionClasses).not.toContain('shadow-sm')
-    expect(html).toContain('All evidence')
+    expect(html).toContain('Evidence view')
   })
 
-  it('exposes hidden, focused-node, and all Evidence display modes', () => {
+  it('shows only a disabled spinner while research is running', () => {
     const html = renderToStaticMarkup(
-      createElement(EvidenceVisibilityControl, {
-        visibility: 'hidden',
-        focusedNodeId: ENTITY_ID,
+      createElement(ResearchExpansionAction, {
+        state: {
+          phase: 'acknowledged',
+          nonce: 'A'.repeat(22),
+          prompt: 'bounded prompt',
+          acknowledgement: 'queued',
+        },
+        disabled: false,
+        onClick: () => undefined,
+      }),
+    )
+
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('aria-busy="true"')
+    expect(html).toContain('aria-label="Research in progress"')
+    expect(html).toContain('data-research-spinner="true"')
+    expect(html).not.toContain('Started')
+    expect(html).not.toContain('Queued')
+    expect(html).not.toContain('Study')
+    expect(html).not.toContain('Research &amp; Expand')
+  })
+
+  it('offers one contextual button for the other graph view with entry gating', () => {
+    const html = renderToStaticMarkup(
+      createElement(GraphViewControl, {
+        view: 'main',
+        canEnterEvidence: true,
+        transitioning: false,
         onChange: () => undefined,
       }),
     )
 
-    expect(html).toContain('data-evidence-visibility-control="true"')
-    expect(html).toContain('data-evidence-visibility="hidden"')
-    expect(html).toContain('data-evidence-visibility="focused-node"')
-    expect(html).toContain('data-evidence-visibility="all"')
-    expect(html).toContain('aria-label="Focus evidence"')
-    expect(html).not.toContain('title="Focus a Node to show its evidence"')
+    expect(html).toContain('data-graph-view-control="true"')
+    expect(html).toContain('data-graph-view="evidence"')
+    expect(html).toContain('aria-label="Evidence view"')
+    expect(html.match(/<button/g)).toHaveLength(1)
+    expect(html).not.toContain('data-graph-view="main"')
+    expect(html).not.toContain('data-evidence-visibility')
+    expect(html).not.toContain('Hide evidence')
+    expect(html).not.toContain('All evidence')
 
     const disabledHtml = renderToStaticMarkup(
-      createElement(EvidenceVisibilityControl, {
-        visibility: 'hidden',
-        focusedNodeId: undefined,
+      createElement(GraphViewControl, {
+        view: 'main',
+        canEnterEvidence: false,
+        transitioning: false,
         onChange: () => undefined,
       }),
     )
-    expect(disabledHtml).toContain('aria-label="Focus evidence"')
+    expect(disabledHtml).toContain('aria-label="Evidence view"')
     expect(disabledHtml).toContain('disabled=""')
-    expect(disabledHtml).toContain('title="Focus a Node to show its evidence"')
+    expect(disabledHtml).toContain('title="Focus an entity with direct Evidence to enter Evidence view"')
+
+    const evidenceHtml = renderToStaticMarkup(
+      createElement(GraphViewControl, {
+        view: 'evidence',
+        canEnterEvidence: false,
+        transitioning: false,
+        onChange: () => undefined,
+      }),
+    )
+    expect(evidenceHtml.match(/<button/g)).toHaveLength(1)
+    expect(evidenceHtml).toContain('data-graph-view="main"')
+    expect(evidenceHtml).toContain('aria-label="Main view"')
+    expect(evidenceHtml).not.toContain('data-graph-view="evidence"')
+    expect(evidenceHtml).not.toContain('disabled=""')
+
+    const transitioningHtml = renderToStaticMarkup(
+      createElement(GraphViewControl, {
+        view: 'evidence',
+        canEnterEvidence: false,
+        transitioning: true,
+        onChange: () => undefined,
+      }),
+    )
+    expect(transitioningHtml).toContain('aria-busy="true"')
+    expect(transitioningHtml.match(/disabled=""/g)).toHaveLength(1)
+    expect(transitioningHtml).toContain('data-graph-view="main"')
+  })
+
+  it('restores the exact Evidence anchor before returning to Main', async () => {
+    const graph = { entities: [summary], edges: [] }
+    const selectFocus = vi.fn<(entityId: string) => Promise<boolean>>()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: 'ev_cccccccc-3333-4333-8333-333333333333',
+        selectFocus,
+      }),
+    ).resolves.toBe('restored')
+    expect(selectFocus).toHaveBeenNthCalledWith(1, ENTITY_ID)
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: 'ev_dddddddd-4444-4444-8444-444444444444',
+        selectFocus,
+      }),
+    ).resolves.toBe('failed')
+    expect(selectFocus).toHaveBeenNthCalledWith(2, ENTITY_ID)
+  })
+
+  it('waits for queued Focus work before treating Main restoration as complete', async () => {
+    const graph = { entities: [summary], edges: [] }
+    const selectFocus = vi.fn<(entityId: string) => Promise<boolean>>().mockResolvedValue(true)
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: ENTITY_ID,
+        pendingFocusId: 'ev_pending',
+        selectFocus,
+      }),
+    ).resolves.toBe('restored')
+    expect(selectFocus).toHaveBeenCalledWith(ENTITY_ID)
+  })
+
+  it('returns directly when the anchor is already focused or no longer exists', async () => {
+    const graph = { entities: [summary], edges: [] }
+    const selectFocus = vi.fn<(entityId: string) => Promise<boolean>>()
+
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: ENTITY_ID,
+        focusEntityId: ENTITY_ID,
+        selectFocus,
+      }),
+    ).resolves.toBe('restored')
+    await expect(
+      restoreMainView({
+        graph,
+        anchorId: 'node_missing',
+        focusEntityId: undefined,
+        selectFocus,
+      }),
+    ).resolves.toBe('anchor-missing')
+    expect(selectFocus).not.toHaveBeenCalled()
   })
 
   it('shows grouped machine-reviewed and retrieval-only literature in Node Details', () => {
@@ -333,7 +448,7 @@ describe('Companion graph UI', () => {
     expect(html).toContain('2 publications · 1 machine-reviewed · 1 human-reviewed')
   })
 
-  it('reports publication and review-state counts explicitly on cards and in Details', () => {
+  it('uses compact card counts and complete Details counts', () => {
     const card = renderToStaticMarkup(createElement(EntityNodeCard, { entity: singularSummary }))
     const details = renderToStaticMarkup(
       createElement(DetailsPane, {
@@ -344,7 +459,7 @@ describe('Companion graph UI', () => {
       }),
     )
 
-    expect(card).toContain('1 publication · 1 machine-reviewed · 0 human-reviewed')
+    expect(card).toContain('Low · 1 pub · 1 machine · 0 human')
     expect(details).toContain('1 publication · 1 machine-reviewed · 0 human-reviewed')
   })
 

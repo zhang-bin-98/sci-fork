@@ -21,7 +21,7 @@ export const PACKAGED_SKILLS = [
   {
     name: 'scifork-research',
     description:
-      'Format actual retrieval or PDF results already present in the current DSH Chat context into Research Import Drafts for automatic review; retain connected branches for a one-step Research Expansion or an explicitly requested Progressive Research Run; critique a graph or safely delete an exact branch, resolving current/selected/focused references from SciFork Focus first; this Skill does not perform retrieval.',
+      'Explicit current-Chat 深度研究, 深度调研, deep research, progressive, iterative, or multi-round requests mean a multi-level Progressive Research Run, not Evidence-only enrichment: plan at least two levels and continue through exactly one new Hypothesis without another click or import confirmation. Otherwise format retrieval/PDF results already in the current DSH Chat context for one-step Research Expansion/import; critique or delete exact current/selected/focused branches. This Skill does not retrieve.',
     whenToUse:
       'Use after a completed retrieval phase for Research Expansion or evidence import, for an explicit current-Chat request to orchestrate Progressive Research on an existing graph, or directly for graph critique or deletion including requests about the current, selected, or focused entity.',
     file: 'scifork-research/SKILL.md',

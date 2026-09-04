@@ -153,13 +153,7 @@ describe('validateProject', () => {
     expect(project.diagnostics.some((d) => d.code === 'unknown_reference')).toBe(true)
   })
 
-  it('flags references to unreviewed and rejected evidence', () => {
-    const candidate = build([
-      evidenceFile(EV, 'candidate', 'supports'),
-      nodeFile(NODE, 'hypothesis', SUPPORTING_REFS),
-    ])
-    expect(candidate.diagnostics.some((d) => d.code === 'evidence_not_reviewed')).toBe(true)
-
+  it('flags references to rejected evidence', () => {
     const rejected = build([
       evidenceFile(EV, 'rejected', 'supports'),
       nodeFile(NODE, 'hypothesis', SUPPORTING_REFS),
@@ -231,12 +225,12 @@ describe('validateProject', () => {
     expect(unsupported.diagnostics.some((d) => d.code === 'finding_lacks_support')).toBe(true)
   })
 
-  it('does not count candidate evidence or draft results toward support', () => {
-    const candidateEvidence = build([
-      evidenceFile(EV, 'candidate', 'supports'),
+  it('does not count machine-reviewed evidence or draft results toward Finding support', () => {
+    const machineReviewedEvidence = build([
+      evidenceFile(EV, 'machine_reviewed', 'supports'),
       nodeFile(NODE, 'finding', SUPPORTING_REFS),
     ])
-    expect(candidateEvidence.diagnostics.some((d) => d.code === 'finding_lacks_support')).toBe(true)
+    expect(machineReviewedEvidence.diagnostics.some((d) => d.code === 'finding_lacks_support')).toBe(true)
 
     const draftResult = build([
       resultFile(RES, 'draft'),
@@ -264,7 +258,7 @@ describe('validateProject', () => {
     expect(unknown).toHaveLength(2)
   })
 
-  it('flags edge evidence refs that are unknown or unreviewed', () => {
+  it('flags edge evidence refs that are unknown', () => {
     const unknown = build([
       nodeFile(NODE, 'hypothesis', ''),
       nodeFile(NODE_B, 'hypothesis', ''),
@@ -275,16 +269,6 @@ describe('validateProject', () => {
     ])
     expect(unknown.diagnostics.some((d) => d.code === 'unknown_reference')).toBe(true)
 
-    const unreviewed = build([
-      evidenceFile(EV, 'candidate', 'supports'),
-      nodeFile(NODE, 'hypothesis', ''),
-      nodeFile(NODE_B, 'hypothesis', ''),
-      edgeJsonFile(EDGE, NODE, NODE_B, {
-        basis: 'literature',
-        evidence_refs: [{ id: EV, role: 'supports' }],
-      }),
-    ])
-    expect(unreviewed.diagnostics.some((d) => d.code === 'evidence_not_reviewed')).toBe(true)
   })
 
   it('merges parser and validator diagnostics through parseAndValidateProject', () => {

@@ -80,10 +80,7 @@ function entityExists(project: LoadedProject, entityId: string): boolean {
   return false
 }
 
-interface ReferenceCounts {
-  /** Deprecated v1 aliases retained for first-party bundle reload compatibility. */
-  referenceCount: number
-  reviewedEvidenceCount: number
+interface LiteratureCounts {
   publicationCount: number
   machineReviewedEvidenceCount: number
   humanReviewedEvidenceCount: number
@@ -118,7 +115,7 @@ function questionLiteratureInputs(project: LoadedProject, questionId: string): L
   return { evidenceRefs, publicationRefs }
 }
 
-function referenceCounts(project: LoadedProject, inputs: LiteratureInputs): ReferenceCounts {
+function literatureCounts(project: LoadedProject, inputs: LiteratureInputs): LiteratureCounts {
   const evidenceIds = new Set(inputs.evidenceRefs.map((ref) => ref.id))
   const publications = [...inputs.publicationRefs]
   let machineReviewedEvidenceCount = 0
@@ -132,16 +129,14 @@ function referenceCounts(project: LoadedProject, inputs: LiteratureInputs): Refe
   }
   const publicationCount = distinctPublicationReferenceCount(publications)
   return {
-    referenceCount: publicationCount,
-    reviewedEvidenceCount: humanReviewedEvidenceCount,
     publicationCount,
     machineReviewedEvidenceCount,
     humanReviewedEvidenceCount,
   }
 }
 
-function nodeReferenceCounts(project: LoadedProject, nodeId: string): ReferenceCounts {
-  return referenceCounts(project, nodeLiteratureInputs(project, nodeId))
+function nodeLiteratureCounts(project: LoadedProject, nodeId: string): LiteratureCounts {
+  return literatureCounts(project, nodeLiteratureInputs(project, nodeId))
 }
 
 function samePublication(left: PublicationReference, right: PublicationReference): boolean {
@@ -182,7 +177,6 @@ function literatureProjection(project: LoadedProject, inputs: LiteratureInputs):
   return {
     humanReviewed: items.filter((item) => item.reviewStatus === 'reviewed'),
     machineReviewed: items.filter((item) => item.reviewStatus === 'machine_reviewed'),
-    candidate: items.filter((item) => item.reviewStatus === 'candidate'),
     rejected: items.filter((item) => item.reviewStatus === 'rejected'),
     retrievalOnly,
   }
@@ -199,7 +193,7 @@ function graphSnapshot(project: LoadedProject): SnapshotGraph {
       }
     }
     if (entity.type === 'node') {
-      const counts = nodeReferenceCounts(project, entity.id)
+      const counts = nodeLiteratureCounts(project, entity.id)
       return {
         id: entity.id,
         type: entity.type,
@@ -253,7 +247,7 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
       .filter((link) => link.from === entityId)
       .map((link) => link.to)
       .sort()
-    const counts = referenceCounts(project, questionLiteratureInputs(project, entityId))
+    const counts = literatureCounts(project, questionLiteratureInputs(project, entityId))
     return {
       id: question.id,
       type,
@@ -282,7 +276,7 @@ function entityDocument(project: LoadedProject, entityId: string): EntityDocumen
           kind: node.kind,
           confidence: node.confidence,
           evidenceRefs: node.evidence_refs ?? [],
-          ...nodeReferenceCounts(project, node.id),
+          ...nodeLiteratureCounts(project, node.id),
           literature: literatureProjection(project, nodeLiteratureInputs(project, node.id)),
           body: node.body,
         }

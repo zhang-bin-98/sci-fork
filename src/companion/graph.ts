@@ -28,7 +28,9 @@ export interface GraphLayout {
   edges: LayoutEdge[]
 }
 
-export type EvidenceVisibility = 'hidden' | 'focused-node' | 'all'
+export type GraphView =
+  | { mode: 'main' }
+  | { mode: 'evidence'; anchorId: string }
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
@@ -50,37 +52,64 @@ function sortEdges(edges: readonly ProjectionEdgeSummary[]): ProjectionEdgeSumma
   )
 }
 
-export function selectGraphView(input: SnapshotGraph): SnapshotGraph {
-  return {
-    entities: sortEntities(input.entities),
-    edges: sortEdges(input.edges),
+export function evidenceAnchorForFocus(
+  input: SnapshotGraph,
+  focusEntityId?: string,
+): string | undefined {
+  if (focusEntityId === undefined) return undefined
+  const entityTypes = new Map(input.entities.map((entity) => [entity.id, entity.type]))
+  if (entityTypes.get(focusEntityId) !== 'node') {
+    return undefined
   }
+  const hasExistingEvidence = input.edges.some(
+    (edge) =>
+      edge.source === 'evidence_ref' &&
+      edge.to === focusEntityId &&
+      entityTypes.get(edge.from) === 'evidence',
+  )
+  return hasExistingEvidence ? focusEntityId : undefined
 }
 
-export function evidenceVisibilityGraph(
+export function selectGraphView(
   input: SnapshotGraph,
-  visibility: EvidenceVisibility,
-  focusEntityId?: string,
+  view: GraphView,
 ): SnapshotGraph {
-  if (visibility === 'all') return input
-  const visibleEvidenceIds = new Set<string>()
-  if (visibility === 'focused-node' && focusEntityId !== undefined) {
-    for (const edge of input.edges) {
-      if (edge.source === 'evidence_ref' && edge.to === focusEntityId) {
-        visibleEvidenceIds.add(edge.from)
-      }
+  if (view.mode === 'main') {
+    const entities = input.entities.filter((entity) => entity.type !== 'evidence')
+    const entityIds = new Set(entities.map((entity) => entity.id))
+    return {
+      entities: sortEntities(entities),
+      edges: sortEdges(
+        input.edges.filter(
+          (edge) =>
+            edge.source !== 'evidence_ref' &&
+            entityIds.has(edge.from) &&
+            entityIds.has(edge.to),
+        ),
+      ),
     }
   }
-  const retainedEntityIds = new Set(
-    input.entities
-      .filter((entity) => entity.type !== 'evidence' || visibleEvidenceIds.has(entity.id))
-      .map((entity) => entity.id),
+
+  const anchor = input.entities.find(
+    (entity) => entity.id === view.anchorId && entity.type === 'node',
   )
+  if (anchor === undefined) return { entities: [], edges: [] }
+
+  const entityTypes = new Map(input.entities.map((entity) => [entity.id, entity.type]))
+  const edges = input.edges.filter(
+    (edge) =>
+      edge.source === 'evidence_ref' &&
+      edge.to === view.anchorId &&
+      entityTypes.get(edge.from) === 'evidence',
+  )
+  const evidenceIds = new Set(edges.map((edge) => edge.from))
   return {
-    entities: input.entities.filter((entity) => retainedEntityIds.has(entity.id)),
-    edges: input.edges.filter(
-      (edge) => retainedEntityIds.has(edge.from) && retainedEntityIds.has(edge.to),
+    entities: sortEntities(
+      input.entities.filter(
+        (entity) => entity.id === view.anchorId || evidenceIds.has(entity.id),
+      ),
     ),
+    edges: sortEdges(edges),
   }
 }
 
@@ -93,12 +122,11 @@ function stableCoordinate(value: number): number {
   return Object.is(rounded, -0) ? 0 : rounded
 }
 
-export function layoutGraph(
-  graph: SnapshotGraph,
-  direction: 'LR' | 'TB' = 'LR',
-): GraphLayout {
-  const entities = sortEntities(graph.entities)
-  const edges = sortEdges(graph.edges)
+function layoutDagre(
+  entities: readonly ProjectionEntitySummary[],
+  edges: readonly ProjectionEdgeSummary[],
+  direction: 'LR' | 'TB',
+): Graph {
   const dagre = new Graph({ directed: true, multigraph: true })
   dagre.setGraph({
     rankdir: direction,
@@ -121,6 +149,16 @@ export function layoutGraph(
     dagre.setEdge(edge.from, edge.to, {}, graphEdgeId(edge))
   }
   layout(dagre)
+  return dagre
+}
+
+export function layoutGraph(
+  graph: SnapshotGraph,
+  direction: 'LR' | 'TB' = 'LR',
+): GraphLayout {
+  const entities = sortEntities(graph.entities)
+  const edges = sortEdges(graph.edges)
+  const dagre = layoutDagre(entities, edges, direction)
 
   return {
     nodes: entities.map((entity) => {

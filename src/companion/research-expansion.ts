@@ -4,6 +4,7 @@ import {
   type ProjectionEdgeSummary,
   type ProjectionEntitySummary,
   type ResearchExpansionAckMessage,
+  type ResearchExpansionCompleteMessage,
   type ResearchExpansionErrorMessage,
   type ResearchExpansionRequestMessage,
 } from '../shared/companion-contract.js'
@@ -93,8 +94,9 @@ export function buildResearchExpansionPrompt(input: ResearchExpansionPromptInput
     '- After retrieval, load scifork-research. Re-read the latest Focus and entity. For a Research Question, use its framedEntities and outgoing framing neighbors; otherwise use research_graph_read neighbors with incoming, outgoing, or both as scientifically relevant.\n' +
     '- If Focus is an Edge, read it with entity and choose the relevant Node/Result endpoint before using neighbors. Use find to reject semantic duplicates.\n' +
     '- Retain only explicit claims supported as a defensible inference by an actual retrieved abstract or an explicitly user-provided bounded PDF/full-text passage. A title-only or metadata-only record never qualifies. Use zero branches if none qualify.\n' +
-    '- For every retained branch, first run create_evidence_assertion with reviewStatus: machine_reviewed, the exact PMID/normalized DOI, precise assertion, locator, direction, limitations, a minimal citation containing title and optional journal/year, and a non-empty machineReviewRationale covering identity, locator, entailment, direction, and limitations.\n' +
-    '- After Evidence is saved, run create_node to create the new Node with confidence: low and its exact Evidence id. For a Research Question Focus, create only a Hypothesis plus create_framing_link from that Question to the Hypothesis; do not invent a scientific Edge. For other anchors, immediately run create_edge to create the narrowest valid scientific Edge. Never leave an orphan.\n' +
+    '- For every retained branch, first run create_evidence_assertion with the exact PMID/normalized DOI, precise assertion, locator, direction, limitations, a minimal citation containing title and optional journal/year, and a non-empty machineReviewRationale covering identity, locator, entailment, direction, and limitations. The command assigns machine_reviewed automatically.\n' +
+    '- When creating any Node or Result body, write exactly one first non-empty Markdown paragraph as a single **bold summary sentence**. Put rationale, methods, observations, limitations, assumptions, and evidence details in later paragraphs or headings. Do not put Evidence Assertion metadata, publication identifiers, locators, or review rationale in that summary sentence. The graph uses this first bold paragraph as the label and Details renders the complete body.\n' +
+    '- After Evidence is saved, run create_node to create the new Node with confidence: low and its exact Evidence id. Apply the same bold summary sentence format to Finding, Hypothesis, and Prediction. For a Research Question Focus, create only a Hypothesis plus create_framing_link from that Question to the Hypothesis; do not invent a scientific Edge. For other anchors, immediately run create_edge with from: the existing Node/Result anchor and to: the new Node, so the expansion reads from the existing anchor to the new node; never reverse these endpoints and never leave an orphan.\n' +
     '- Use predicts only for Finding/Hypothesis -> Prediction; otherwise choose the narrowest valid scientific relation.\n' +
     '- Every generated scientific Edge uses basis: ai_inference with non-empty provenance, an Evidence Gap, publicationRefs copied from the exact consulted records, and applicable machine Evidence refs. Do not create human reviewed Evidence, a validated Result, or a Finding.\n' +
     '- Persist only PMID/DOI, title, optional journal/year, derived assertion/locator/direction/limitations/review state, machine-review rationale, and bounded Edge provenance. Never write authors, publication types, retrieval URL/time, abstract/full text, PDF, parsed source text, complete metadata, or raw provider output into SciFork files, Git, logs, or caches.\n\n' +
@@ -154,9 +156,16 @@ function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): 
 
 function parseReply(
   value: unknown,
-): ResearchExpansionAckMessage | ResearchExpansionErrorMessage | undefined {
+): ResearchExpansionAckMessage | ResearchExpansionErrorMessage | ResearchExpansionCompleteMessage | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
   const record = value as Record<string, unknown>
+  if (
+    record.type === 'complete' &&
+    hasExactKeys(record, ['type', 'nonce']) &&
+    typeof record.nonce === 'string'
+  ) {
+    return { type: 'complete', nonce: record.nonce }
+  }
   if (
     record.type === 'ack' &&
     hasExactKeys(record, ['type', 'nonce', 'status']) &&
@@ -264,15 +273,26 @@ export class ResearchExpansionChannel {
 
   private readonly onMessage = (event: { data: unknown }): void => {
     const reply = parseReply(event.data)
+    const state = this.state
     if (
       reply === undefined ||
-      this.state.phase !== 'pending' ||
-      reply.nonce !== this.state.nonce
+      (state.phase !== 'pending' && state.phase !== 'acknowledged') ||
+      reply.nonce !== state.nonce
     ) {
       return
     }
-    const { nonce, prompt } = this.state
+    if (reply.type === 'complete') {
+      this.clearTimer()
+      this.update({ phase: 'idle' })
+      return
+    }
+    const { nonce, prompt } = state
     this.clearTimer()
+    if (reply.type === 'error') {
+      this.update({ phase: 'failed', nonce, prompt, reason: reply.code })
+      return
+    }
+    if (state.phase !== 'pending') return
     if (reply.type === 'ack') {
       this.update({
         phase: 'acknowledged',
@@ -282,7 +302,6 @@ export class ResearchExpansionChannel {
       })
       return
     }
-    this.update({ phase: 'failed', nonce, prompt, reason: reply.code })
   }
 
   private clearTimer(): void {

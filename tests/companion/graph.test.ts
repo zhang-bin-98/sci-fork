@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  evidenceVisibilityGraph,
+  evidenceAnchorForFocus,
   focusViewportCenter,
   graphDirectionForViewport,
   layoutGraph,
@@ -9,10 +9,10 @@ import {
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
 const entities = [
-  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', referenceCount: 1, reviewedEvidenceCount: 1, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'A' },
-  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', referenceCount: 2, reviewedEvidenceCount: 0, publicationCount: 2, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'B' },
-  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 0, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'C' },
-  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', referenceCount: 1, reviewedEvidenceCount: 1, publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'D' },
+  { id: 'node_a', type: 'node', kind: 'finding', confidence: 'high', publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'A' },
+  { id: 'node_b', type: 'node', kind: 'hypothesis', confidence: 'low', publicationCount: 2, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'B' },
+  { id: 'node_c', type: 'node', kind: 'prediction', confidence: 'moderate', publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 0, label: 'C' },
+  { id: 'node_d', type: 'node', kind: 'finding', confidence: 'moderate', publicationCount: 1, machineReviewedEvidenceCount: 0, humanReviewedEvidenceCount: 1, label: 'D' },
   {
     id: 'node_e',
     type: 'result',
@@ -43,9 +43,10 @@ const edges = [
 ] satisfies SnapshotGraph['edges']
 
 describe('Companion graph', () => {
-  it('hides Evidence entities and their projection edges unless explicitly shown', () => {
+  it('derives Main with every non-Evidence entity and only visible-endpoint edges', () => {
     const graph = {
       entities: [
+        entities[0]!,
         entities[1]!,
         {
           id: 'ev_hidden',
@@ -56,6 +57,13 @@ describe('Companion graph', () => {
         },
       ],
       edges: [
+        edges[0]!,
+        {
+          from: 'node_a',
+          to: 'node_b',
+          relation: 'supports' as const,
+          source: 'evidence_ref' as const,
+        },
         {
           id: 'ev_hidden->node_b',
           from: 'ev_hidden',
@@ -66,14 +74,13 @@ describe('Companion graph', () => {
       ],
     } satisfies SnapshotGraph
 
-    expect(evidenceVisibilityGraph(graph, 'hidden')).toEqual({
-      entities: [entities[1]],
-      edges: [],
+    expect(selectGraphView(graph, { mode: 'main' })).toEqual({
+      entities: [entities[0], entities[1]],
+      edges: [edges[0]],
     })
-    expect(evidenceVisibilityGraph(graph, 'all')).toBe(graph)
   })
 
-  it('shows only the focused Node evidence while retaining the non-Evidence graph', () => {
+  it('derives Evidence with one locked anchor and only its existing direct Evidence', () => {
     const graph = {
       entities: [
         entities[0]!,
@@ -100,18 +107,95 @@ describe('Companion graph', () => {
       ],
     } satisfies SnapshotGraph
 
-    expect(evidenceVisibilityGraph(graph, 'focused-node', 'node_a')).toEqual({
-      entities: [entities[0], entities[1], graph.entities[2]],
-      edges: [graph.edges[0], graph.edges[1]],
+    expect(selectGraphView(graph, { mode: 'evidence', anchorId: 'node_a' })).toEqual({
+      entities: [graph.entities[2], entities[0]],
+      edges: [graph.edges[1]],
     })
-    expect(evidenceVisibilityGraph(graph, 'focused-node', 'node_missing')).toEqual({
-      entities: [entities[0], entities[1]],
-      edges: [graph.edges[0]],
+  })
+
+  it('recognizes every valid direct non-Evidence anchor and rejects invalid anchors', () => {
+    const evidence = (id: string) => ({
+      id,
+      type: 'evidence' as const,
+      direction: 'supports' as const,
+      reviewStatus: 'machine_reviewed' as const,
+      label: id,
     })
-    expect(evidenceVisibilityGraph(graph, 'focused-node', 'ev_a')).toEqual({
-      entities: [entities[0], entities[1]],
-      edges: [graph.edges[0]],
+    const graph = {
+      entities: [...entities, evidence('ev_a'), evidence('ev_b'), evidence('ev_c')],
+      edges: [
+        { from: 'ev_a', to: 'node_a', relation: 'supports' as const, source: 'evidence_ref' as const },
+        { from: 'ev_b', to: 'node_b', relation: 'supports' as const, source: 'evidence_ref' as const },
+        { from: 'ev_c', to: 'node_c', relation: 'supports' as const, source: 'evidence_ref' as const },
+        { from: 'ev_missing', to: 'node_d', relation: 'supports' as const, source: 'evidence_ref' as const },
+      ],
+    } satisfies SnapshotGraph
+
+    expect(evidenceAnchorForFocus(graph, 'node_a')).toBe('node_a')
+    expect(evidenceAnchorForFocus(graph, 'node_b')).toBe('node_b')
+    expect(evidenceAnchorForFocus(graph, 'node_c')).toBe('node_c')
+    expect(evidenceAnchorForFocus(graph, 'node_d')).toBeUndefined()
+    expect(evidenceAnchorForFocus(graph, 'node_e')).toBeUndefined()
+    expect(evidenceAnchorForFocus(graph, 'ev_a')).toBeUndefined()
+    expect(evidenceAnchorForFocus(graph, 'node_missing')).toBeUndefined()
+    expect(evidenceAnchorForFocus(graph, undefined)).toBeUndefined()
+  })
+
+  it('does not admit Questions or Results as Evidence anchors', () => {
+    const evidence = {
+      id: 'ev_for_non_node',
+      type: 'evidence' as const,
+      direction: 'supports' as const,
+      reviewStatus: 'machine_reviewed' as const,
+      label: 'Evidence with an invalid endpoint',
+    }
+    const graph = {
+      entities: [
+        { id: 'question_anchor', type: 'question' as const, label: 'Question' },
+        entities[4]!,
+        evidence,
+      ],
+      edges: [
+        {
+          from: evidence.id,
+          to: 'question_anchor',
+          relation: 'supports' as const,
+          source: 'evidence_ref' as const,
+        },
+        {
+          from: evidence.id,
+          to: entities[4]!.id,
+          relation: 'supports' as const,
+          source: 'evidence_ref' as const,
+        },
+      ],
+    } satisfies SnapshotGraph
+
+    expect(evidenceAnchorForFocus(graph, 'question_anchor')).toBeUndefined()
+    expect(evidenceAnchorForFocus(graph, entities[4]!.id)).toBeUndefined()
+    expect(selectGraphView(graph, { mode: 'evidence', anchorId: 'question_anchor' })).toEqual({
+      entities: [],
+      edges: [],
     })
+    expect(selectGraphView(graph, { mode: 'evidence', anchorId: entities[4]!.id })).toEqual({
+      entities: [],
+      edges: [],
+    })
+  })
+
+  it('retains a surviving Evidence anchor after its Evidence is removed', () => {
+    expect(
+      selectGraphView(
+        { entities: [entities[1]!], edges: [] },
+        { mode: 'evidence', anchorId: 'node_b' },
+      ),
+    ).toEqual({ entities: [entities[1]], edges: [] })
+    expect(
+      selectGraphView(
+        { entities: [entities[1]!], edges: [] },
+        { mode: 'evidence', anchorId: 'node_missing' },
+      ),
+    ).toEqual({ entities: [], edges: [] })
   })
 
   it('maps viewport width mode to the documented graph direction', () => {
@@ -119,11 +203,8 @@ describe('Companion graph', () => {
     expect(graphDirectionForViewport(true)).toBe('LR')
   })
 
-  it('keeps the complete projection visible when Focus changes', () => {
-    const selected = selectGraphView({
-      entities,
-      edges,
-    })
+  it('keeps Main membership stable when Focus changes', () => {
+    const selected = selectGraphView({ entities, edges }, { mode: 'main' })
 
     expect(selected.entities.map(({ id }) => id)).toEqual([
       'node_a',
@@ -162,11 +243,51 @@ describe('Companion graph', () => {
     expect(focusViewportCenter(laidOut, 'node_missing')).toBeUndefined()
   })
 
+  it('places an edge target after its source in both responsive directions', () => {
+    const graph = {
+      entities: [entities[0]!, entities[1]!],
+      edges: [edges[0]!],
+    } satisfies SnapshotGraph
+    const wide = layoutGraph(graph, 'LR')
+    const narrow = layoutGraph(graph, 'TB')
+    const wideSource = wide.nodes.find(({ id }) => id === 'node_a')!
+    const wideTarget = wide.nodes.find(({ id }) => id === 'node_b')!
+    const narrowSource = narrow.nodes.find(({ id }) => id === 'node_a')!
+    const narrowTarget = narrow.nodes.find(({ id }) => id === 'node_b')!
+
+    expect(wideSource.position.x).toBeLessThan(wideTarget.position.x)
+    expect(narrowSource.position.y).toBeLessThan(narrowTarget.position.y)
+  })
+
+  it('places a dedicated Evidence subgraph upstream of its anchor', () => {
+    const graph = {
+      entities: [
+        entities[1]!,
+        {
+          id: 'ev_b',
+          type: 'evidence' as const,
+          direction: 'supports' as const,
+          reviewStatus: 'machine_reviewed' as const,
+          label: 'Evidence for B',
+        },
+      ],
+      edges: [
+        { from: 'ev_b', to: 'node_b', relation: 'supports' as const, source: 'evidence_ref' as const },
+      ],
+    } satisfies SnapshotGraph
+
+    const evidenceView = selectGraphView(graph, { mode: 'evidence', anchorId: 'node_b' })
+    const wide = layoutGraph(evidenceView, 'LR')
+    const narrow = layoutGraph(evidenceView, 'TB')
+    const widePosition = new Map(wide.nodes.map(({ id, position }) => [id, position]))
+    const narrowPosition = new Map(narrow.nodes.map(({ id, position }) => [id, position]))
+
+    expect(widePosition.get('ev_b')!.x).toBeLessThan(widePosition.get('node_b')!.x)
+    expect(narrowPosition.get('ev_b')!.y).toBeLessThan(narrowPosition.get('node_b')!.y)
+  })
+
   it('produces the same finite global layout regardless of projection input order', () => {
-    const selected = selectGraphView({
-      entities,
-      edges,
-    })
+    const selected = selectGraphView({ entities, edges }, { mode: 'main' })
     const reversed = {
       entities: [...selected.entities].reverse(),
       edges: [...selected.edges].reverse(),

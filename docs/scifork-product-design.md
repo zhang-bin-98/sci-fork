@@ -1,7 +1,7 @@
-# SciFork 产品设计 v0.19
+# SciFork 产品设计 v0.20
 
 > 状态：Implemented（MVP baseline）
-> 日期：2026-08-31
+> 日期：2026-09-03
 
 ## 1. 产品结论
 
@@ -26,7 +26,7 @@ MVP 边界：
 - SciFork 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件。
 - 开放式研究目标先保存为 Research Question，不伪装成 Hypothesis；Research Question 通过非科学关系的 Framing Link (`frames`) 连接其范围内的 Hypothesis 或 Finding。
 - 点击 `Research & Expand` 后，提示自动提交到对应 DSH Chat；Chat 空闲时立即开始，运行中则进入 Queue。一次真实点击只授权以当前 Focus 为锚点、先检索、自动提取 machine-reviewed Evidence、再保存的单层 Research Expansion Step，最多保留五条直接相连的低置信分支。
-- 多轮 Progressive Research Run 只能由用户在当前 DSH Chat 中明确请求；按钮、页面和已保存节点都不能自动递归。
+- 多轮 Progressive Research Run 只能由用户在当前 DSH Chat 中明确请求；每层保存与按钮相同的全部合格直接分支，但只自动选择一个新 Hypothesis 继续下一层，按钮、页面和已保存节点都不能自动递归。
 - SciFork 只保留一个统一的 `SciFork Research` Skill；PubMed 是独立、可替换的通用检索 Skill。
 - PubMed Skill 支持完整查询语法、单批最多 300 条元数据、分页和 PMID/DOI 查找。
 - 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
@@ -81,7 +81,7 @@ DSH 或用户。
 ```text
 ┌──────────────────────────────┐  ┌──────────────────────────────┐
 │ DeepSeek Harness Web         │  │ SciFork Graph Companion      │
-│ Sessions / Chat / Tools      │  │ Global graph + Details       │
+│ Sessions / Chat / Tools      │  │ View toggle + Details        │
 │                              │  │                              │
 │ ...                          │  │ Research & Expand  Details   │
 │ [Graph] Research Graph       │  │                              │
@@ -89,12 +89,18 @@ DSH 或用户。
 └──────────────────────────────┘  └──────────────────────────────┘
 ```
 
-页面默认显示不含 Evidence 层的完整主张、Result、Question 与关系投影，并高亮当前 Focus
-路径；Evidence 显示控件提供隐藏、仅显示当前 Focus Node 的 Evidence、显示全部 Evidence 三种
-临时状态，不改变项目文件。只读 Details 默认打开，
+页面在两个互斥的本地视图之间切换。`Main` 是默认视图，显示完整的非 Evidence
+实体及其关系；`Evidence` 视图只显示进入时锁定的一个锚点实体、该实体直接引用且
+实际存在的 Evidence Assertion，以及对应的 `evidence_ref`。视图状态不持久化，不改变
+项目文件。只读 Details 默认打开，
 用户可以通过抽屉拉手收起或重新打开。页面提供 `Research & Expand`、`Details`
-两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心，不改变图谱内容；
-用户可以在保持全局上下文的同时沿关系思考。Git 历史恢复通过对应 DSH Chat 完成。
+两个英语操作。Focus 只高亮 Host 已确认的目标并移动视图中心。在 Main 中，只有当前
+Focus 是至少一条有效 `evidence_ref` 的非 Evidence 实体且没有待确认 Focus 时，
+才能进入 Evidence。视图切换只有一个按钮：Main 中显示 `Evidence`，Evidence 中显示
+`Main`。进入后的 Evidence 点击可更新 Focus 和 Details，但不替换锁定锚点。
+返回 Main 时恢复锚点 Focus；Host 确认前保持 Evidence 视图并禁用新选择，恢复失败则
+停留并显示现有错误。若锚点已从投影消失，则直接返回 Main。Git 历史恢复通过对应
+DSH Chat 完成。
 
 实体点击期间显示独立的 pending 状态；连续点击按顺序完成并以最后一次点击为最终
 Focus，不把 React Flow 的临时选择态伪装成已持久的 Focus。Details 显示所选 Research
@@ -105,10 +111,17 @@ Focus 路径继续在全局图中高亮。图中截断的实体标签在鼠标�
 
 Companion 使用颜色圆点和文字共同区分实体：Research Question 为中性灰、Finding 为绿色、
 Hypothesis 为琥珀色、Prediction 为紫色、Evidence Assertion 显示为 `EVIDENCE` 并使用蓝色、Result 为青色。
-颜色不是唯一语义载体。Node 卡片显示去重的 Publication 数，并分别显示
-machine-reviewed 与人工 reviewed Evidence 数；Framing Link 和 Question 本身不贡献文献
-计数。相关 Node 和已保存科学 Edge 的 Details 按人工 reviewed、machine-reviewed、
-candidate、rejected 以及仅检索引用分组展示文献来源，rejected 默认收起。
+颜色不是唯一语义载体。Node 卡片用紧凑标签显示去重的 Publication 数，并分别显示
+machine-reviewed 与人工 reviewed Evidence 数（例如 `Low · 1 pub · 1 machine · 0 human`）；
+完整术语保留在 Details 中。Framing Link 和 Question 本身不贡献文献计数。相关 Node
+和已保存科学 Edge 的 Details 按人工 reviewed、machine-reviewed、
+rejected 以及仅检索引用分组展示文献来源，rejected 默认收起。
+
+Node 与 Result 的正文采用统一的 Markdown 摘要约定：正文第一段必须只有一句加粗的
+主张或观察摘要（`**一句摘要**`），后续段落再写解释、方法、限制、假设和证据细节。
+图谱卡片只展示这句摘要及类型、置信度和证据计数；Details 先展示完整正文，再展示结构化
+Evidence 列表。Finding、Hypothesis 和 Prediction 均遵守该约定；Evidence Assertion
+的文献标识、定位和审核理由不得写进摘要句。
 
 Companion 的通用视觉系统由 Tailwind theme tokens 和 utilities 统一负责，包括页面骨架、
 顶栏、按钮、通知、卡片、Details、间距、字号、边框、圆角、阴影和响应式布局。保留深
@@ -163,13 +176,14 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 → DSH Bridge 调用公开 submit
 → Chat 空闲：立即开始
 → Chat 运行中：进入 Queue
-→ Companion 显示 Started 或 Queued
+→ Companion 禁用按钮并显示无文字的等待转圈
 → 大模型读取当前 Chat 研究目的、最新 Focus 与方向邻居
 → 默认先用 PubMed Search 检索并 lookup 高价值记录
 → 从真实 abstract 或用户提供的有界 PDF 段落提取并自动审核 Evidence Assertion
 → 生成最多五条不重复、可解释且有 machine-reviewed Evidence 的直接扩展分支
-→ 普通 Focus：以低置信 Hypothesis/Prediction + 明确科学 Edge 保存
-→ Question Focus：以低置信 Hypothesis + frames Framing Link 保存，不伪造科学 Edge
+→ 普通 Focus：以低置信 Hypothesis/Prediction + 从已有 Node/Result 锚点指向新 Node 的科学 Edge 保存
+→ Question Focus：以低置信 Hypothesis + Question → Hypothesis frames Framing Link 保存，不伪造科学 Edge
+→ 对应 Session 从运行态恢复空闲后，Companion 复位按钮
 ```
 
 自动运行只能由真实用户点击触发，不能由页面加载、轮询、模型输出或后台事件触发。
@@ -180,11 +194,18 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 若当前 Chat 没有明确研究目的，或检索后没有科学上可辩护的明确关系，则不创建实体
 并说明原因。单步完成后 Focus 保持不变，用户可选择一个新节点后再次点击。
 
+Bridge acknowledgement 只表示提交成功；之后 Bridge 观察它捕获的原始 Session。
+由于钉住的 DSH 公开契约没有 per-turn 完成事件，Companion 将该 Session 已被观察为
+running、随后恢复 `running=false` 定义为本次界面运行完成。同一 Session 的其他排队工作
+可以延迟按钮复位；该定义不改变一次点击只授权一个 Research Expansion Step 的边界。
+
 用户也可以在 DSH Chat 中明确请求 Progressive Research Run。该请求而不是按钮授权
-大模型围绕一个研究目的维护 frontier/visited state，逐轮完成“检索 → 阅读 → 识别缺口
-→ 保存明确关系 → 选择下一 frontier”。每一轮仍先完成独立检索 Skill，再加载
-`SciFork Research`；Skill 不互相调用。大模型在达到用户范围、没有新关系、耗尽已声明
-计划或需要改变目标时停止，不能转为后台任务。
+大模型围绕一个研究目的逐层重复相同的单层扩展。每层仍保存全部零至五条合格直接
+Hypothesis/Prediction 分支，但模型只自动选择其中一个新 Hypothesis 作为下一层的唯一
+continuation；其他 Hypothesis 和全部 Prediction 作为本次运行的终止旁支保留。每一轮
+仍先完成独立检索 Skill，再加载 `SciFork Research`；Skill 不互相调用。没有新的
+Hypothesis 可继续，或达到用户范围、耗尽已声明计划、遇到不可恢复错误或需要改变目标时
+停止并汇报，不逐层等待用户确认，也不能转为后台任务。
 
 若 DSH 页面、Session 或 Bridge 不可用，Companion 保留提示并显示 `Retry` 和 `Copy`，不能静默丢失，也不能另建 Session 或发送到其他 Chat。
 
@@ -225,8 +246,8 @@ rejected is terminal
 
 普通导入、一次获授权的 Research Expansion Step 与 Progressive Research Run 都从真实
 abstract/PDF 段落创建 `machine_reviewed` Evidence，并保存 title 与可选 journal/year 的
-Citation Snapshot 及机器审核理由。已有 `candidate` 仍可读取和审核，但正常创建与导入不再
-产生新 candidate。只有用户明确接受后才成为 `reviewed`；拒绝前必须先移除其活动引用，
+Citation Snapshot 及机器审核理由。`candidate` 只表示 Research Import Draft 中尚未持久化的
+Evidence Candidate，不是 Evidence review state。只有用户明确接受后才成为 `reviewed`；拒绝前必须先移除其活动引用，
 rejected Evidence 保留作审计记录。
 
 ### Result
@@ -263,8 +284,9 @@ draft | validated | superseded
 ### Progressive Research Run
 
 用户在 DSH Chat 中明确发起、围绕同一研究目的连续执行的多个 Research Expansion
-Step。运行可分叉和汇合，但每个新节点都必须连接到已访问研究状态；它不由 Companion
-按钮、已保存节点或后台事件触发。
+Step。每层可以保存多个分支，图谱整体仍可分叉和汇合，但本次运行只自动选择一个新
+Hypothesis 继续下一层；未选择的 Hypothesis 和全部 Prediction 是终止旁支。每个新节点
+都必须连接到已访问研究状态；运行不由 Companion 按钮、已保存节点或后台事件触发。
 
 ### Edge
 
@@ -284,8 +306,9 @@ basis: literature | experiment | ai_inference
 ### Focus
 
 用户当前讨论的 Research Question、Node、Result、Evidence Assertion、Framing Link 或
-Edge，也是 Research Graph 中的视觉中心。Focus 影响视口位置、高亮、Details 和 Chat context；
-当用户选择“当前 Focus Node 的 Evidence”时，它也决定临时显示的 Evidence 子集，但不修改科研文件。
+Edge，也是 Research Graph 中的视觉中心。Focus 影响视口位置、高亮、Details 和 Chat context。
+Main 中 Host 已确认的 Focus 只决定能否以它为锚点进入 Evidence 视图；进入后的视图成员
+由锁定锚点决定，不跟随后续 Evidence Focus 变化。
 
 ### Confidence Band
 
@@ -449,7 +472,8 @@ research_graph_focus
 
 点击实体更新 Focus 并在保持当前缩放的前提下把该实体或关系移动到视图中心；只有
 Host 确认后的 Focus 使用正式高亮，连续点击不会被静默丢弃。
-默认主张图内容保持不变，Evidence 的显示开关只影响当前页面投影。点击
+默认 Main 保持完整非 Evidence 上下文，Evidence 视图只保留锁定锚点及其直接 Evidence。切换
+只影响当前页面投影。点击
 `Research & Expand` 后，Companion 生成只包含 Focus
 ID/摘要、当前 Chat 研究目的约束、单步任务和明确保存授权的提示，并自动提交到启动
 该页面的 DSH Session。提示不预装邻域正文；大模型使用 `research_graph_read` 的
@@ -466,7 +490,7 @@ MVP 只发布一个 SciFork 专用的 `SciFork Research` Skill：
 - **Research expansion step**：读取 Focus/方向邻居，先完成检索，从真实 abstract/PDF
   段落提取 machine-reviewed Evidence，再生成最多五条不重复的直接分支；普通 Focus
   保存低置信 Node + 科学 Edge，Question Focus 保存低置信 Hypothesis + Framing Link。
-- **Progressive research**：仅在用户通过 Chat 明确请求时维护 frontier/visited state，按检索与图谱阶段逐轮扩展并在达到停止条件后汇报。
+- **Progressive research**：仅在用户通过 Chat 明确请求时维护一个 current continuation 与 visited state；每层保存全部合格分支并自动选择一个新 Hypothesis 继续，在达到停止条件后汇报。
 - **Branch deletion**：用户说“当前”“选中”或“聚焦”实体时，先通过
   `research_graph_read focus` 解析准确 ID 并回报；随后读取目标及关系，先删除 Framing Link
   与科学 Edge，
@@ -508,7 +532,8 @@ Skill 遵守 NCBI 请求频率；大于约 200 个 PMID 的批量元数据请求
 大模型先加载并完成一个检索 Skill；默认可以选择 `pubmed-search`，也可以选择其他数据库检索或 PDF 解析 Skill。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把结果格式化为 Research Import Draft，并使用与获授权扩展相同的规则从真实来源文字提取和自动审核 Evidence Assertion；有 Focus 与研究目标时再判断是否存在可保存的明确关系。不得在检索尚未执行时预先或同时加载两个 packaged Skill；若 `SciFork Research` 被过早加载，它必须等待真实检索上下文，不能补造 Draft、Evidence 或扩展分支。
 
 Progressive Research Run 可以重复上述顺序，但每轮都必须先完成检索阶段，再进入
-图谱读取/持久化阶段。大模型而不是 Skill 负责选择下一 frontier 和再次加载哪个 Skill；
+图谱读取/持久化阶段。大模型而不是 Skill 负责选择唯一的下一 Hypothesis continuation
+和再次加载哪个 Skill；
 SciFork 不建立跨 Skill 私有协议或 provider 生命周期。
 
 Skill 之间没有直接调用关系。检索 Skill 不需要理解 SciFork schema，也不能直接写 Research Project；只有格式化后的 Draft 进入 SciFork 校验。
@@ -636,7 +661,7 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 1. 用户在 DSH 打开研究目录并执行 /research init
 2. 点击 Open Research Graph
 3. 用户给出开放式目标时，大模型先创建 Research Question 并设为 Focus
-4. Companion 默认隐藏 Evidence 层；可切换为当前 Focus Node Evidence 或全部 Evidence，Details 可查看来源分组
+4. Companion 默认显示 Main；选中有直接 Evidence 的实体后可进入只含该锚点及其 Evidence 的视图
 5. 用户点击 Research & Expand
 6. 对应 DSH Chat 自动开始或进入 Queue
 7. 大模型读取最新 Question/方向邻居并选择 PubMed Search 或其他检索/PDF Skill
@@ -655,8 +680,8 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 
 - 无第三方 DSH 插件即可打开独立 Companion。
 - 页面能窄窗悬放，也能系统并列，并自动响应宽度。
-- Companion 默认显示完整的 Question/主张/Result 主图并隐藏 Evidence 层；Evidence 控件可切换
-  隐藏、当前 Focus Node Evidence 或全部 Evidence，Focus 仍改变高亮、Details 和视图中心。
+- Companion 默认显示完整非 Evidence 主图；单一视图按钮在 Main 中显示 `Evidence`、
+  在 Evidence 中显示 `Main`，且只允许从有直接 Evidence 的 Host-confirmed Focus 进入。
 - Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID
   可见，ID 本身支持点击/键盘复制和轻量状态反馈。
 - Details 默认打开且可收起；`<xl` 时位于 Graph 下方，`xl` 及以上与 Graph 并列，两行
@@ -669,14 +694,15 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
   规则保留少量手写 CSS。
 - `Research & Expand` 使用暖白底、绿色文字的反色样式，而不是绿色实心按钮。
 - Graph、文件、Focus 和 DSH Chat context 一致。
-- 点击 Research & Expand 后对应 Chat 自动开始；运行中正确进入 Queue。
+- 点击 Research & Expand 后对应 Chat 自动开始；运行中正确进入 Queue；按钮在原 Session
+  恢复空闲前保持禁用转圈，随后复位。
 - 开放式输入能保存为 Research Question；Question 通过独立 `frames` Framing Link
 连接 Hypothesis/Finding，Question 不携带 confidence 且 Framing Link 不参与科学支持。
 - 一次点击先检索真实 abstract/PDF 文字、保存 machine-reviewed Evidence，再最多保存五条
   直接低置信 Hypothesis/Prediction；普通 Focus 使用明确科学 Edge，Question Focus 使用
   Framing Link，不移动 Focus 且不会自动递归。
-- 用户可在 Chat 中明确发起 provider-neutral Progressive Research Run；大模型逐轮选择
-  上下文与 frontier，不逐条等待人工确认，并在明确条件下停止。
+- 用户可在 Chat 中明确发起 provider-neutral Progressive Research Run；大模型每层保存
+  全部合格分支并只选择一个新 Hypothesis 继续，不逐层等待人工确认，并在明确条件下停止。
 - `machine_reviewed` 与人工 `reviewed` 分开计数；前者可支撑探索分支但不能满足 Finding
   或 `basis: literature`，title-only 记录不能成为 machine-reviewed Evidence。
 - 大模型能用单实体 typed commands 先删除 Framing Link/科学 Edge，再删除无关联的

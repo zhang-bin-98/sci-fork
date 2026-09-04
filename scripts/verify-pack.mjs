@@ -44,7 +44,6 @@ const required = [
   'docs/specs/m3-research.md',
   'docs/specs/research-questions-machine-review.md',
   'docs/specs/contextual-evidence-and-question-intake.md',
-  'docs/specs/simulation-branches.md',
   'skills/pubmed-search/helper.mjs',
   'skills/pubmed-search/SKILL.md',
   'skills/scifork-research/SKILL.md',

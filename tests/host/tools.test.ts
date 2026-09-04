@@ -241,6 +241,16 @@ describe('registerResearchTools', () => {
       expect(branch.properties['relation']?.enum).toContain('predicts')
       expect(branch.properties).toHaveProperty('publicationRefs')
     }
+    const nodeBranches = command.oneOf as Array<{
+      properties: { kind?: { const?: string }; body?: { description?: string } }
+    }>
+    for (const branch of nodeBranches.filter(({ properties }) => {
+      const kind = properties.kind?.const
+      return kind === 'create_node' || kind === 'update_node'
+    })) {
+      expect(branch.properties.body?.description).toContain('first non-empty paragraph')
+      expect(branch.properties.body?.description).toContain('bold summary sentence')
+    }
     const focus = tools.definitions.find((d) => d.name === 'research_graph_focus')!
     expect(focus.output.schema).toEqual({})
     dispose()
@@ -320,7 +330,7 @@ describe('research_graph_read', () => {
     expect(checkpoint).toEqual(JSON.parse(JSON.stringify(checkpoint)))
   })
 
-  it('returns entities and neighborhoods', async () => {
+  it('returns entities', async () => {
     const { byName } = await registered({
       '/proj/research.json': MANIFEST,
       [`/proj/nodes/${NODE}.md`]: NODE_FILE,
@@ -335,11 +345,6 @@ describe('research_graph_read', () => {
     })
     const missing = await read.execute({ operation: 'entity', entityId: `node_${UUID_B.replace('b', 'c')}` }, execFor())
     expect(missing).toMatchObject({ ok: false, code: 'INVALID_ENTITY' })
-    const neighborhood = await read.execute({ operation: 'neighborhood', entityId: NODE }, execFor())
-    expect(neighborhood).toMatchObject({ ok: true })
-    const edges = (neighborhood as { edges: unknown[] }).edges
-    expect(edges).toHaveLength(1)
-    expect(edges[0]).toMatchObject({ from: EV, to: NODE, source: 'evidence_ref' })
   })
 
   it('reads open Questions and keeps framing out of scientific Node neighborhoods', async () => {

@@ -125,7 +125,7 @@ describe('locator', () => {
       publication_ref: { pmid: '12345678' },
       assertion: 'a',
       direction: 'supports',
-      review_status: 'candidate',
+      review_status: 'reviewed',
     }
     expect(parseEvidenceData({ ...data, locator: { kind: 'pubmed_abstract' } }).ok).toBe(true)
     expect(parseEvidenceData({ ...data, locator: { kind: 'pdf', page: 3 } }).ok).toBe(true)
@@ -139,7 +139,7 @@ describe('locator', () => {
       publication_ref: { pmid: '12345678' },
       assertion: 'a',
       direction: 'supports',
-      review_status: 'candidate',
+      review_status: 'reviewed',
     }
     expect(parseEvidenceData({ ...data, locator: { kind: 'pdf' } }).ok).toBe(false)
     expect(parseEvidenceData({ ...data, locator: { kind: 'pdf', page: 0 } }).ok).toBe(false)
@@ -158,7 +158,7 @@ describe('evidence assertion data', () => {
     locator: { kind: 'pubmed_abstract' as const },
     assertion: 'STAT3 is phosphorylated.',
     direction: 'supports' as const,
-    review_status: 'candidate' as const,
+    review_status: 'reviewed' as const,
   }
 
   it('accepts a full valid record', () => {
@@ -177,6 +177,7 @@ describe('evidence assertion data', () => {
     }).ok).toBe(false)
     expect(parseEvidenceData({ ...base, direction: 'other' }).ok).toBe(false)
     expect(parseEvidenceData({ ...base, review_status: 'accepted' }).ok).toBe(false)
+    expect(parseEvidenceData({ ...base, review_status: 'candidate' }).ok).toBe(false)
   })
 
   it('rejects limitation lists beyond the caps', () => {
