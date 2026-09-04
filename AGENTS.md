@@ -166,6 +166,12 @@ operations and destructive history operations remain separate decisions.
 
 ## Git workflows
 
+Repository development uses `develop` as the integration branch. `main` is
+reserved for release preparation and release tags; it is not the normal target
+for feature work. The local and remote `main` branches are retained as the
+release line while ongoing changes are developed and reviewed through
+`develop`.
+
 Keep the two Git contexts distinct:
 
 - **SciFork runtime:** operate on the user's current branch, checkpoint only
@@ -173,12 +179,14 @@ Keep the two Git contexts distinct:
   rebase. SciFork does not provide Back/Forward or destructive rollback;
   checkpoint failures preserve the written file and return structured
   diagnostics. History recovery belongs to DSH Chat or the user.
-- **Repository development:** use work branches and explicit merge commits under
-  the rules below.
+- **Repository development:** start work from `develop`, use work branches and
+  explicit merge commits under the rules below, and integrate completed work
+  into `develop`.
 
-Never modify or commit directly on `main`. An agent may create an isolated branch
-or worktree for an authorized task. Use `design/*`, `feat/*`, `fix/*`, `docs/*`,
-or `chore/*`; the existing `design` branch keeps its name until first integration.
+Never modify or commit directly on `main` or `develop`. An agent may create an
+isolated branch or worktree for an authorized task. Use `design/*`, `feat/*`,
+`fix/*`, `docs/*`, or `chore/*`; create those branches from `develop` unless a
+task explicitly targets release preparation on `main`.
 
 Make clear, reviewable Conventional Commits. Do not create WIP, `fixup!`, or
 meaningless checkpoint commits, and do not mix unrelated changes. Stage explicit
@@ -192,8 +200,8 @@ Before integration:
 - provide evidence of Red, Green, Refactor, and final verification where TDD
   applies;
 - ensure the worktree is clean and no conflicts remain;
-- if `main` advanced, merge it into the work branch, resolve and retest there;
-  do not rebase shared history;
+- if `develop` advanced, merge it into the work branch, resolve and retest
+  there; do not rebase shared history;
 - inspect the spec, source branch and HEAD, commit list, diff, and check results;
 - confirm there is no unresolved user decision, known defect, failed check,
   conflict, or unrelated change; and
@@ -203,19 +211,28 @@ When every gate passes, the agent may decide and execute integration without a
 separate confirmation. Do not merge when the user explicitly forbids it or when
 any gate is uncertain; leave the branch intact and report what remains.
 
-Integrate with `git merge --no-ff <work-branch>`. Do not squash. The first-parent
-history of `main` should contain only reviewed outcome merge commits, while the
-second parent preserves the complete meaningful branch topology. The merge
-message must record the outcome, spec path when one exists, validation results,
-`Source-Branch`, and `Source-Head`. Resolve integration conflicts on the work
-branch and retest; do not patch them ad hoc on `main`.
+Integrate completed work into `develop` with `git merge --no-ff <work-branch>`.
+Do not squash. The first-parent history of `develop` should contain only
+reviewed outcome merge commits, while the second parent preserves the complete
+meaningful branch topology. The merge message must record the outcome, spec
+path when one exists, validation results, `Source-Branch`, and `Source-Head`.
+Resolve integration conflicts on the work branch and retest; do not patch them
+ad hoc on `develop` or `main`.
 
-After a successful merge, verify that the source HEAD is an ancestor of `main`
-and rerun the final relevant checks on `main`. Remove any temporary worktree,
-then delete the local branch with safe deletion. If Git refuses, stop and
-investigate; do not force-delete it. Remote pushes and remote branch deletion
-always require explicit authorization. Deleting the local branch does not remove
-the topology retained by the `--no-ff` merge.
+When preparing a release, merge the reviewed `develop` state into `main` with a
+separate explicit `git merge --no-ff develop` outcome commit, then create the
+matching release tag from `main`. Release-only changes may target `main` when
+the task explicitly authorizes them; otherwise all implementation changes go
+through `develop` first.
+
+After a successful development merge, verify that the source HEAD is an
+ancestor of `develop` and rerun the final relevant checks there. After a
+release merge, verify that `develop` is an ancestor of `main` and rerun the
+release checks on `main`. Remove any temporary worktree, then delete the local
+branch with safe deletion. If Git refuses, stop and investigate; do not
+force-delete it. Remote pushes and remote branch deletion always require
+explicit authorization. Deleting the local branch does not remove the topology
+retained by the `--no-ff` merge.
 
 ## Current verification commands
 
