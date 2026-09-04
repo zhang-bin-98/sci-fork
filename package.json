@@ -2,6 +2,14 @@
   "name": "dsh-scifork",
   "version": "0.0.1",
   "description": "A Git-native research graph for literature-grounded research expansion inside DeepSeek Harness.",
+  "homepage": "https://github.com/zhang-bin-98/sci-fork#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhang-bin-98/sci-fork.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhang-bin-98/sci-fork/issues"
+  },
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -35,9 +43,18 @@
   ],
   "keywords": [
     "dsh-plugin",
+    "dsh",
     "deepseek-harness",
     "research-graph",
-    "biomedicine"
+    "knowledge-graph",
+    "biomedical-research",
+    "biomedicine",
+    "literature-grounded",
+    "pubmed",
+    "evidence-graph",
+    "scientific-research",
+    "local-first",
+    "git-native"
   ],
   "license": "MIT",
   "engines": {

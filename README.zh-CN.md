@@ -1,6 +1,6 @@
 # SciFork
 
-[![发布工作流](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml) [![许可证：MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![发布工作流](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml) [![DSH 插件](https://img.shields.io/badge/DeepSeek_Harness-plugin-0f766e.svg)](https://github.com/topics/dsh-plugin) [![许可证：MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ![SciFork — Git 原生生物医学研究图谱：文献驱动、本地优先、历史可追溯。](docs/assets/scifork-banner.png)
 
@@ -19,6 +19,18 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 云同步。
 
 > **早期版本：** SciFork `0.0.1` 锁定 DSH `0.1.1-rc.2` 的公开接口。
+
+## DSH 生态与分发
+
+SciFork 遵循 DSH 的公开 bundle 规范：包导出 `name` 和 `apply(ctx)`，在
+`package.json#dsh.bundle` 中声明 `cordis.patch.yml`，并可通过 DSH 插件命令安装。
+DSH 建议公开插件仓库添加官方推荐的
+[`dsh-plugin` 话题](https://github.com/topics/dsh-plugin)，以便在生态中被发现。
+
+独立社区目录 [DSH Plugin Hub](https://dsh-plugin.org) 会扫描该话题，并可能收录
+符合条件的仓库。它由社区维护，不是 DeepSeek AI 运营或背书的官方市场。
+SciFork `0.0.1` 以 GitHub Release 预构建 tarball 分发，请按下方发布版本安装说明操作，
+不要直接从 GitHub 源码安装。
 
 ## 你可以做什么
 
