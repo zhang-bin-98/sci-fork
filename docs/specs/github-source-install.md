@@ -70,7 +70,9 @@ the `prepare` hook and source-install verification.
 - `prepare` and `prepack` call the existing `build` script; no second build path
   or checked-in generated representation is introduced.
 - The source build uses the Node range and pnpm version declared in
-  `package.json` through Corepack.
+  `package.json` through Corepack. Release runners enable the pnpm Corepack shim
+  before installation because pnpm invokes `pnpm install` while preparing a Git
+  dependency.
 - Verification uses a local Git URL and a temporary consumer. It does not call
   DSH, publish a package, push a branch, or access Research Project data.
 - The GitHub Release continues to contain exactly one `.tgz` and its checksum.
