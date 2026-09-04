@@ -122,4 +122,15 @@ describe('GitHub release workflow', () => {
 
     expect(verification).toContain('corepack pnpm verify:source')
   })
+
+  it('enables the pnpm shim before installing a tagged Git dependency', () => {
+    const enableIndex = verifySteps.findIndex((step) => step.name === 'Enable package manager shims')
+    const installIndex = verifySteps.findIndex((step) => step.name === 'Install locked dependencies')
+    const verifyIndex = verifySteps.findIndex((step) => step.name === 'Verify source and dry-run package')
+
+    expect(enableIndex).toBeGreaterThanOrEqual(0)
+    expect(verifySteps[enableIndex]?.run).toBe('corepack enable pnpm')
+    expect(installIndex).toBeGreaterThan(enableIndex)
+    expect(verifyIndex).toBeGreaterThan(installIndex)
+  })
 })
