@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.corepack/
+.pnpm-store/
 coverage/
 *.tgz
 
@@ -10,3 +12,4 @@ coverage/
 pnpm-debug.log*
 .DS_Store
 Thumbs.db
+/.e2e-artifacts/

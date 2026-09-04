@@ -1,0 +1,212 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(".");
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  --color-sf-canvas: #f2f4f2;
+  --color-sf-surface: #ffffff;
+  --color-sf-surface-muted: #f7f9f7;
+  --color-sf-ink: #202522;
+  --color-sf-heading: #18201b;
+  --color-sf-muted: #68716c;
+  --color-sf-border: #d4d9d5;
+  --color-sf-border-strong: #abb2ad;
+  --color-sf-node-border: #9da7a0;
+  --color-sf-header: #33463f;
+  --color-sf-header-border: #26352f;
+  --color-sf-header-foreground: #f8faf8;
+  --color-sf-header-muted: #cbd2cd;
+  --color-sf-header-chip: #dce5df;
+  --color-sf-header-control: #40574e;
+  --color-sf-header-control-border: #71857d;
+  --color-sf-header-control-hover: #4a6258;
+  --color-sf-header-control-hover-border: #b4c3bd;
+  --color-sf-header-disabled: #35483f;
+  --color-sf-header-disabled-border: #53645d;
+  --color-sf-header-disabled-foreground: #a8b4af;
+  --color-sf-header-focus: #9fd8ca;
+  --color-sf-header-success: #9fe0c6;
+  --color-sf-accent: #146c5a;
+  --color-sf-accent-border: #42a18d;
+  --color-sf-accent-hover: #197a65;
+  --color-sf-accent-hover-border: #7fc2b3;
+  --color-sf-accent-soft: #e9f4ef;
+  --color-sf-focus: #75b7a8;
+  --color-sf-disabled: #ecefec;
+  --color-sf-disabled-foreground: #8a918d;
+  --color-sf-warning-soft: #fff4d6;
+  --color-sf-warning-border: #d5a744;
+  --color-sf-warning-foreground: #5b430e;
+  --color-sf-danger-soft: #fff0f0;
+  --color-sf-danger-border: #d8a8a8;
+  --color-sf-danger-foreground: #7b2828;
+  --color-sf-finding: #198754;
+  --color-sf-hypothesis: #c48418;
+  --color-sf-prediction: #7558b3;
+  --color-sf-evidence: #2978b5;
+  --color-sf-result: #168a99;
+  --color-sf-edge: #6b746f;
+  --color-sf-handle: #59655e;
+  --color-sf-markdown-accent: #88a59a;
+  --color-sf-graph-focus-border: #16735f;
+  --color-sf-graph-focus-ring: rgb(36 139 113 / 14%);
+  --color-sf-graph-pending-border: #b0781e;
+  --color-sf-graph-pending-ring: rgb(190 133 42 / 14%);
+  --color-sf-graph-path-border: #477c9f;
+  --color-sf-graph-node-shadow: rgb(31 42 35 / 22%);
+  --color-sf-graph-edge-default: #707a74;
+  --color-sf-graph-edge-supports: #218467;
+  --color-sf-graph-edge-contradicts: #b44747;
+  --color-sf-graph-edge-causes: #3f7194;
+  --color-sf-graph-edge-predicts: #7257a8;
+  --color-sf-graph-edge-label: #3e4842;
+  --color-sf-graph-grid: #d4d8d5;
+  --color-sf-graph-controls-border: #c6ccc8;
+  --color-sf-graph-controls-divider: #d8ddda;
+}
+
+@layer base {
+  :root {
+    color: var(--color-sf-ink);
+    background: var(--color-sf-canvas);
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      sans-serif;
+    font-synthesis: none;
+    letter-spacing: 0;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    min-width: 320px;
+    overflow: hidden;
+  }
+
+  button {
+    font: inherit;
+    letter-spacing: 0;
+    cursor: pointer;
+  }
+}
+
+.react-flow__node-entity {
+  width: 224px;
+  height: 88px;
+  overflow: visible;
+  border: 0;
+  color: var(--color-sf-ink);
+  background: transparent;
+  box-shadow: none;
+}
+
+.react-flow__node-entity.graph-node-focus .entity-node-content {
+  border: 2px solid var(--color-sf-graph-focus-border);
+  box-shadow: 0 0 0 3px var(--color-sf-graph-focus-ring);
+}
+
+.react-flow__node-entity.graph-node-pending .entity-node-content {
+  border: 2px dashed var(--color-sf-graph-pending-border);
+  box-shadow: 0 0 0 3px var(--color-sf-graph-pending-ring);
+}
+
+.react-flow__node-entity.graph-node-path:not(.graph-node-focus) .entity-node-content {
+  border-color: var(--color-sf-graph-path-border);
+}
+
+.react-flow__node-entity:hover,
+.react-flow__node-entity:focus-within {
+  z-index: 10 !important;
+}
+
+.entity-node-card:hover .entity-node-content,
+.entity-node-content:focus-visible {
+  height: auto;
+  min-height: 100%;
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  box-shadow: 0 9px 28px var(--color-sf-graph-node-shadow);
+}
+
+.entity-node-card:hover .entity-node-label,
+.entity-node-content:focus-visible .entity-node-label {
+  display: block;
+  overflow: visible;
+  align-self: start;
+  -webkit-line-clamp: unset;
+}
+
+.react-flow__edge-path {
+  stroke: var(--color-sf-graph-edge-default);
+  stroke-width: 1.6;
+}
+
+.graph-edge-supports .react-flow__edge-path {
+  stroke: var(--color-sf-graph-edge-supports);
+}
+
+.graph-edge-contradicts .react-flow__edge-path {
+  stroke: var(--color-sf-graph-edge-contradicts);
+}
+
+.graph-edge-causes .react-flow__edge-path {
+  stroke: var(--color-sf-graph-edge-causes);
+}
+
+.graph-edge-predicts .react-flow__edge-path {
+  stroke: var(--color-sf-graph-edge-predicts);
+  stroke-dasharray: 6 4;
+}
+
+.graph-edge-focus .react-flow__edge-path {
+  stroke-width: 3;
+}
+
+.graph-edge-pending .react-flow__edge-path {
+  stroke: var(--color-sf-graph-pending-border);
+  stroke-width: 3;
+  stroke-dasharray: 5 3;
+}
+
+.react-flow__edge-text {
+  fill: var(--color-sf-graph-edge-label);
+  font-size: 10px;
+}
+
+.react-flow__edge-textbg {
+  fill: var(--color-sf-surface-muted);
+  fill-opacity: 0.9;
+}
+
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--color-sf-graph-controls-border);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.react-flow__controls-button {
+  min-height: 28px;
+  border: 0;
+  border-bottom: 1px solid var(--color-sf-graph-controls-divider);
+  border-radius: 0;
+}
+
+.details-image-alt::before {
+  content: "[image: ";
+}
+
+.details-image-alt::after {
+  content: "]";
+}

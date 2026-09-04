@@ -1,16 +1,37 @@
 {
   "name": "dsh-scifork",
-  "version": "0.0.0",
-  "description": "A Git-native research graph for evidence-grounded scientific simulation inside DeepSeek Harness.",
+  "version": "0.0.1",
+  "description": "A Git-native research graph for literature-grounded research expansion inside DeepSeek Harness.",
   "type": "module",
   "main": "./index.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "index.js",
+    "dist/",
+    "skills/",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTEXT.md",
+    "docs/assets/scifork-banner.png",
+    "docs/scifork-product-design.md",
+    "docs/scifork-software-architecture.md",
+    "docs/specs/m0-compatibility-spike.md",
+    "docs/specs/m1-core-git.md",
+    "docs/specs/m2-companion.md",
+    "docs/specs/m3-research.md",
+    "docs/specs/progressive-research-expansion.md",
+    "docs/specs/evidence-layout-research-lifecycle-and-linear-progression.md",
+    "docs/specs/research-questions-machine-review.md",
+    "docs/specs/contextual-evidence-and-question-intake.md",
+    "docs/specs/invariant-safe-updates.md",
+    "docs/specs/session-scoped-filesystem-writes.md"
   ],
   "keywords": [
     "dsh-plugin",
@@ -18,13 +39,50 @@
     "research-graph",
     "biomedicine"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
+  },
+  "packageManager": "pnpm@11.23.0",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs && tailwindcss -i src/companion/styles.css -o dist/companion/styles.css --minify",
+    "test": "vitest run",
+    "prepack": "corepack pnpm build",
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
+    "check": "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
     }
+  },
+  "devDependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@deepseek-ai/cordis": "4.0.1",
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.2.5",
+    "@xyflow/react": "^12.11.5",
+    "esbuild": "^0.25.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.0"
+  },
+  "dependencies": {
+    "gray-matter": "4.0.3",
+    "js-yaml": "4.1.0",
+    "zod": "4.4.3"
   }
 }

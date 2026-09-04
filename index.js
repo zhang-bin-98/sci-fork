@@ -1,10 +1,6 @@
-export const name = 'scifork'
-
 /**
- * Minimal DeepSeek Harness plugin entry point.
- *
- * Product capabilities will be added after the compatibility spike defined on
- * the design branch. Keeping the initial entry point dependency-free makes the
- * repository installable from a local checkout while the API surface is pinned.
+ * SciFork bundle entry point. The Host plugin is built from src/host by
+ * `pnpm build`; run it before installing the package from a checkout. The
+ * release tarball always ships the built dist/ output.
  */
-export function apply() {}
+export * from './dist/host/index.js'
