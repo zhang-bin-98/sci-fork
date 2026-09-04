@@ -1,7 +1,15 @@
 {
   "name": "dsh-scifork",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A Git-native research graph for literature-grounded research expansion inside DeepSeek Harness.",
+  "homepage": "https://github.com/zhang-bin-98/sci-fork#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhang-bin-98/sci-fork.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhang-bin-98/sci-fork/issues"
+  },
   "type": "module",
   "main": "./index.js",
   "exports": {
@@ -35,9 +43,18 @@
   ],
   "keywords": [
     "dsh-plugin",
+    "dsh",
     "deepseek-harness",
     "research-graph",
-    "biomedicine"
+    "knowledge-graph",
+    "biomedical-research",
+    "biomedicine",
+    "literature-grounded",
+    "pubmed",
+    "evidence-graph",
+    "scientific-research",
+    "local-first",
+    "git-native"
   ],
   "license": "MIT",
   "engines": {
@@ -48,7 +65,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs && tailwindcss -i src/companion/styles.css -o dist/companion/styles.css --minify",
     "test": "vitest run",
+    "prepare": "corepack pnpm build",
     "prepack": "corepack pnpm build",
+    "verify:source": "node scripts/verify-source-install.mjs",
     "verify:pack": "node scripts/verify-pack.mjs",
     "verify:release": "node scripts/verify-release.mjs",
     "check": "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"

@@ -65,6 +65,7 @@ jobs:
         run: |
           corepack pnpm check
           node --check index.js
+          corepack pnpm verify:source
           corepack pnpm verify:pack
           git diff --check
           git diff --exit-code

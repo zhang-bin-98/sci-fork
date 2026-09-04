@@ -1,6 +1,6 @@
 # SciFork
 
-[![Release workflow](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release workflow](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml) [![DSH Plugin](https://img.shields.io/badge/DeepSeek_Harness-plugin-0f766e.svg)](https://github.com/topics/dsh-plugin) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ![SciFork — Git-native biomedical Research Graph. Literature-grounded, local-first, and auditable.](docs/assets/scifork-banner.png)
 
@@ -18,7 +18,7 @@ Your Research Project remains a collection of ordinary Markdown and JSON files
 in a local Git repository. The graph is a rebuildable view of those files, not
 a separate database, and SciFork does not upload the project or add cloud sync.
 
-> **Early release:** SciFork `0.0.1` is pinned to the public interfaces in DSH
+> **Early release:** SciFork `0.0.2` is pinned to the public interfaces in DSH
 > `0.1.1-rc.2`.
 
 ## What you can do
@@ -46,29 +46,53 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 - Git with `user.name` and `user.email` configured
 - DSH Web configured for local loopback access (`127.0.0.1`)
 
+### Install from GitHub source
+
+Source installation is supported starting with `v0.0.2`. DSH Plugin Hub
+uses this route when SciFork has no npm package. The install builds `dist/`
+locally from the Git source:
+
+```sh
+dsh plugin --profile web add git+https://github.com/zhang-bin-98/sci-fork.git
+```
+
+If pnpm blocks the Git dependency's `prepare` script, use the exact
+`allowBuilds` key and profile `pnpm-workspace.yaml` path printed by DSH, then
+run the same command again. Do not guess or broaden the allowed key.
+
+After installation, restart DSH if it is already running. Start DSH from the
+directory you want to use as the Research Project:
+
+```sh
+dsh --profile web
+```
+
 ### Install from GitHub Releases
 
-1. Download `dsh-scifork-0.0.1.tgz` and
-   `dsh-scifork-0.0.1.tgz.sha256` from the
+Use the prebuilt archive when you want to verify the published checksum or
+avoid running the source build locally.
+
+1. Download `dsh-scifork-0.0.2.tgz` and
+   `dsh-scifork-0.0.2.tgz.sha256` from the
    [GitHub Releases page](https://github.com/zhang-bin-98/sci-fork/releases).
 2. Put both files in the same directory and verify the archive.
 
 Linux:
 
 ```sh
-sha256sum -c dsh-scifork-0.0.1.tgz.sha256
+sha256sum -c dsh-scifork-0.0.2.tgz.sha256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 -c dsh-scifork-0.0.1.tgz.sha256
+shasum -a 256 -c dsh-scifork-0.0.2.tgz.sha256
 ```
 
 Windows PowerShell:
 
 ```powershell
-$archive = 'dsh-scifork-0.0.1.tgz'
+$archive = 'dsh-scifork-0.0.2.tgz'
 $expected = (Get-Content "$archive.sha256").Split()[0].ToLowerInvariant()
 $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
@@ -77,7 +101,7 @@ if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
 3. Install the verified archive into the DSH Web profile.
 
 ```sh
-dsh plugin --profile web add ./dsh-scifork-0.0.1.tgz
+dsh plugin --profile web add ./dsh-scifork-0.0.2.tgz
 ```
 
 4. Start DSH from the directory you want to use as the Research Project.
@@ -140,6 +164,20 @@ abstracts or PDFs in the Research Project.
 Before committing or sharing a Research Project, check it for PHI, PII, or
 controlled-access data. See [SECURITY.md](SECURITY.md) for the complete data and
 network boundaries.
+
+## DSH ecosystem and distribution
+
+SciFork follows the public DSH bundle contract: the package exports `name` and
+`apply(ctx)`, declares its `cordis.patch.yml` through `package.json#dsh.bundle`,
+and can be installed with the DSH plugin command. DSH recommends adding the
+official [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) to public
+plugin repositories for ecosystem discovery.
+
+The independent community directory [DSH Plugin Hub](https://dsh-plugin.org)
+scans that topic and may list matching repositories. It is not operated by or
+endorsed by DeepSeek AI. The released `v0.0.1` tag remains tarball-only;
+`v0.0.2` and later support both a GitHub source build and the checksum-backed
+GitHub Release tarball. SciFork is not published to npm.
 
 ## License
 

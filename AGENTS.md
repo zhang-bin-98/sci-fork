@@ -244,6 +244,8 @@ Use `corepack pnpm` when pnpm is not installed globally.
 - Every change: inspect scope and run `git diff --check`.
 - Entry and bundles: `node --check index.js`; `pnpm build` must regenerate
   `dist/host` and `dist/client.js`.
+- Git source distribution: run `pnpm verify:source`; the isolated install must
+  build its own `dist/` and import the package entry successfully.
 - Bundle metadata: run `pnpm pack --dry-run` and inspect the tarball file list.
 - Design documents: verify terminology, version references, README summaries,
   product design, and architecture remain consistent.
