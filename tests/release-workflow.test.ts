@@ -116,4 +116,10 @@ describe('GitHub release workflow', () => {
     expect(archive).toContain('package/README.zh-CN.md')
     expect(archive).toContain('package/LICENSE')
   })
+
+  it('verifies installation from tagged Git source before packaging', () => {
+    const verification = verifySteps.find((step) => step.name === 'Verify source and dry-run package')?.run ?? ''
+
+    expect(verification).toContain('corepack pnpm verify:source')
+  })
 })
