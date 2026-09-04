@@ -602,7 +602,8 @@ Companion `Research & Expand` user click
   深度一层、Focus 不变且不得递归。Question Focus 只创建 Hypothesis + Framing Link，
   其他锚点使用科学 Edge；任何路径均不得创建 Finding。
 - Bridge 只接受自己打开的 Page Key channel。
-- nonce 在页面内只使用一次，重复消息被丢弃。
+- 每个 channel 保留最近 256 个已接受 nonce 的有限 FIFO 窗口，窗口内的重复消息被丢弃；
+  被淘汰的旧 nonce 理论上可能再次被接受，这是有限内存占用与严格防重放窗口之间的明确取舍。
 - Session 空闲时 submit 启动；运行中使用 DSH 默认 Queue，不执行 steer 或 cancel。
 - Bridge ack 只表示已交给 DSH input transaction；发送拒绝由 DSH 在对应 composer 中显示并保留 draft。
 - 从发送到完成期间 Companion 只显示禁用的无文字转圈按钮，不显示 Started/Queued/Study。
@@ -951,7 +952,7 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
   区分 Question/普通 Focus、保持 Focus 且不递归。
 - idle Session 启动、busy Session 排队。
 - 错误 Session/channel 不发送，ack timeout 显示 Retry/Copy。
-- 重复 nonce 不重复提交。
+- 最近 256 个 nonce 内重复 nonce 不重复提交；更早 nonce 被淘汰后不再提供永久去重保证。
 
 ### 15.4 E2E
 

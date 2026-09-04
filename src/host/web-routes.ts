@@ -80,11 +80,6 @@ const PAGE_KEY_INVALID: CompanionFailure = {
   recoverable: true,
 }
 
-/** Registered route paths must be absolute and carry no trailing slash. */
-export function isAbsoluteNoTrailingSlash(path: string): boolean {
-  return path.startsWith('/') && path.length > 1 && !path.endsWith('/')
-}
-
 function isValidPort(value: string | undefined): boolean {
   if (value === undefined || value.length === 0) return true
   if (!/^\d+$/u.test(value)) return false

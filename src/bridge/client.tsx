@@ -16,6 +16,7 @@ export const name = 'scifork'
 export const inject = ['slots', 'sessions', 'conversation'] as const
 
 const MAX_PROMPT_BYTES = 16 * 1024
+const MAX_ACCEPTED_NONCES = 256
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{22}$/
 const OPEN_FAILURE_MESSAGE = 'SciFork could not open the Research Graph. Try again from DSH.'
 const OPEN_ACTION_LABEL = 'Open Research Graph'
@@ -62,6 +63,7 @@ interface ConversationPort {
 interface ChannelBinding {
   readonly channel: BroadcastChannel
   readonly acceptedNonces: Set<string>
+  readonly acceptedNonceQueue: string[]
   readonly listener: (event: MessageEvent<unknown>) => void
   completion: {
     nonce: string
@@ -182,6 +184,11 @@ function handleResearchExpansion(
   const wasRunning = session.running
   const status: ResearchExpansionAckMessage['status'] = wasRunning ? 'queued' : 'started'
   binding.acceptedNonces.add(value.nonce)
+  binding.acceptedNonceQueue.push(value.nonce)
+  if (binding.acceptedNonceQueue.length > MAX_ACCEPTED_NONCES) {
+    const expiredNonce = binding.acceptedNonceQueue.shift()
+    if (expiredNonce !== undefined) binding.acceptedNonces.delete(expiredNonce)
+  }
   try {
     const input = state.conversation.input.for(sessionScope)
     input.setDraft(value.prompt)
@@ -210,6 +217,7 @@ function closeBinding(state: BridgeState, binding: ChannelBinding): void {
   binding.channel.removeEventListener('message', binding.listener)
   binding.channel.close()
   binding.acceptedNonces.clear()
+  binding.acceptedNonceQueue.length = 0
   state.channels.delete(binding)
 }
 
@@ -250,9 +258,11 @@ async function finishLaunch(
 
     const channel = new BroadcastChannel(channelNameForPageKey(pageKey))
     const acceptedNonces = new Set<string>()
+    const acceptedNonceQueue: string[] = []
     binding = {
       channel,
       acceptedNonces,
+      acceptedNonceQueue,
       completion: undefined,
       listener: (event) => {
         if (binding !== undefined) {

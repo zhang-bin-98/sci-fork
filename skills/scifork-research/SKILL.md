@@ -50,22 +50,6 @@ paragraph as the entity label; the Companion Details panel renders the complete
 body and the structured Evidence list below it. Keep the same format for
 `Finding`, `Hypothesis`, and `Prediction` Nodes.
 
-## Initial question intake
-
-After the user message is submitted, classify the initial statement before
-retrieval or before creating a scientific Node. For an open inquiry, use
-`find`, then apply `create_question` before retrieval and set the resulting
-Research Question as Focus. If an exact normalized matching Question already
-exists, focus that Question instead of creating a duplicate. Preserve material
-scope assumptions but do not assign confidence or invent Evidence.
-
-If the statement is a truth-valued proposition that can be supported or
-contradicted, keep it as a Hypothesis candidate and do not rewrite it as a
-Question. Complete retrieval before creating machine-reviewed Evidence; create
-machine-reviewed Evidence before creating any dependent Hypothesis. If no
-qualifying source text is available, leave the Question as the only new graph
-entity and report that no Hypothesis was persisted.
-
 ## Start from an open Research Question
 
 Classify the user's initial statement before creating a scientific Node. An
@@ -73,10 +57,17 @@ interrogative or exploratory imperative such as “what drives bone aging?” or
 “identify the key drivers of bone aging” is an open inquiry, not a proposition.
 Use `find`, then apply `create_question` and set the new Research Question as
 Focus. Preserve material scope assumptions but do not assign confidence or
-invent Evidence.
+invent Evidence. If no qualifying source text is available, the Research
+Question may remain the only new graph entity; report that no Hypothesis was
+persisted.
 
 A truth-valued proposition that can be supported or contradicted remains a
-Hypothesis. A Research Question frames a Hypothesis or Finding through
+Hypothesis candidate and is not rewritten as a Question. Complete retrieval
+before creating machine-reviewed Evidence; create machine-reviewed Evidence
+before creating any dependent Hypothesis. If no qualifying source text is
+available, do not persist a new Hypothesis or other scientific entity.
+
+A Research Question frames a Hypothesis or Finding through
 `create_framing_link`; Predictions never directly belong to a Question. The
 `frames` Framing Link is organizational, not a scientific Edge, and carries
 no basis, Evidence, confidence, provenance, or Evidence Gap.

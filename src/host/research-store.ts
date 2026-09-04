@@ -3,7 +3,6 @@ import {
   isFsStaleError,
   type FsDirEntry,
   type FsPort,
-  type FsTarget,
   type SandboxExecutionPolicy,
 } from './contracts.js'
 
@@ -118,8 +117,4 @@ export async function writeManagedFile(
     if (isFsWriteDeniedError(error)) return { ok: false, code: 'WRITE_DENIED' }
     return { ok: false, code: 'INVALID_ENTITY' }
   }
-}
-
-export async function resolveProjectTarget(fs: FsPort, root: string, signal?: AbortSignal): Promise<FsTarget> {
-  return fs.resolve(root, signal !== undefined ? { signal } : {})
 }

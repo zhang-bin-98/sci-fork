@@ -15,7 +15,6 @@ import {
   PAGE_KEY_HEADER,
   STATIC_CONTENT_SECURITY_POLICY,
   type CompanionAssets,
-  isAbsoluteNoTrailingSlash,
   isAllowedJsonRequest,
   isJsonContentType,
   isLoopbackAddress,
@@ -175,7 +174,7 @@ describe('M2 route table and request guards', () => {
     ])
     expect(testRoutes().some(({ path }) => path.includes('spike'))).toBe(false)
     for (const path of [ROUTE_COMPANION, ROUTE_LAUNCH, ROUTE_SNAPSHOT, ROUTE_ENTITY, ROUTE_FOCUS]) {
-      expect(isAbsoluteNoTrailingSlash(path)).toBe(true)
+      expect(path.startsWith('/') && path.length > 1 && !path.endsWith('/')).toBe(true)
     }
   })
 
