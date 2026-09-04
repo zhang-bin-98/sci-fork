@@ -20,18 +20,6 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 > **早期版本：** SciFork `0.0.1` 锁定 DSH `0.1.1-rc.2` 的公开接口。
 
-## DSH 生态与分发
-
-SciFork 遵循 DSH 的公开 bundle 规范：包导出 `name` 和 `apply(ctx)`，在
-`package.json#dsh.bundle` 中声明 `cordis.patch.yml`，并可通过 DSH 插件命令安装。
-DSH 建议公开插件仓库添加官方推荐的
-[`dsh-plugin` 话题](https://github.com/topics/dsh-plugin)，以便在生态中被发现。
-
-独立社区目录 [DSH Plugin Hub](https://dsh-plugin.org) 会扫描该话题，并可能收录
-符合条件的仓库。它由社区维护，不是 DeepSeek AI 运营或背书的官方市场。
-SciFork `0.0.1` 以 GitHub Release 预构建 tarball 分发，请按下方发布版本安装说明操作，
-不要直接从 GitHub 源码安装。
-
 ## 你可以做什么
 
 - 把一个开放式研究问题整理成相互连接、便于检查的研究图谱。
@@ -136,6 +124,18 @@ Markdown 都会被视为不可信数据，Companion 不会自动加载远程内�
 
 提交或分享 Research Project 前，请检查其中是否包含 PHI、PII 或受控访问数据。完整的
 数据和网络边界请参阅 [SECURITY.md](SECURITY.md)。
+
+## DSH 生态与分发
+
+SciFork 遵循 DSH 的公开 bundle 规范：包导出 `name` 和 `apply(ctx)`，在
+`package.json#dsh.bundle` 中声明 `cordis.patch.yml`，并可通过 DSH 插件命令安装。
+DSH 建议公开插件仓库添加官方推荐的
+[`dsh-plugin` 话题](https://github.com/topics/dsh-plugin)，以便在生态中被发现。
+
+独立社区目录 [DSH Plugin Hub](https://dsh-plugin.org) 会扫描该话题，并可能收录
+符合条件的仓库。它由社区维护，不是 DeepSeek AI 运营或背书的官方市场。
+SciFork `0.0.1` 以 GitHub Release 预构建 tarball 分发，请按上方发布版本安装说明操作，
+不要直接从 GitHub 源码安装。
 
 ## 许可证
 

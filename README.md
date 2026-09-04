@@ -21,20 +21,6 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 > **Early release:** SciFork `0.0.1` is pinned to the public interfaces in DSH
 > `0.1.1-rc.2`.
 
-## DSH ecosystem and distribution
-
-SciFork follows the public DSH bundle contract: the package exports `name` and
-`apply(ctx)`, declares its `cordis.patch.yml` through `package.json#dsh.bundle`,
-and can be installed with the DSH plugin command. DSH recommends adding the
-official [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) to public
-plugin repositories for ecosystem discovery.
-
-The independent community directory [DSH Plugin Hub](https://dsh-plugin.org)
-scans that topic and may list matching repositories. It is not operated by or
-endorsed by DeepSeek AI. SciFork `0.0.1` is distributed as a prebuilt GitHub
-Release tarball; use the release installation instructions below rather than a
-direct GitHub-source install.
-
 ## What you can do
 
 - Turn an open research question into a connected, inspectable Research Graph.
@@ -154,6 +140,20 @@ abstracts or PDFs in the Research Project.
 Before committing or sharing a Research Project, check it for PHI, PII, or
 controlled-access data. See [SECURITY.md](SECURITY.md) for the complete data and
 network boundaries.
+
+## DSH ecosystem and distribution
+
+SciFork follows the public DSH bundle contract: the package exports `name` and
+`apply(ctx)`, declares its `cordis.patch.yml` through `package.json#dsh.bundle`,
+and can be installed with the DSH plugin command. DSH recommends adding the
+official [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) to public
+plugin repositories for ecosystem discovery.
+
+The independent community directory [DSH Plugin Hub](https://dsh-plugin.org)
+scans that topic and may list matching repositories. It is not operated by or
+endorsed by DeepSeek AI. SciFork `0.0.1` is distributed as a prebuilt GitHub
+Release tarball; use the release installation instructions above rather than a
+direct GitHub-source install.
 
 ## License
 
