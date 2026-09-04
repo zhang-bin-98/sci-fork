@@ -50,13 +50,16 @@ paragraph as the entity label; the Companion Details panel renders the complete
 body and the structured Evidence list below it. Keep the same format for
 `Finding`, `Hypothesis`, and `Prediction` Nodes.
 
-## Start from an open Research Question
+## Initial question intake
 
-Classify the user's initial statement before creating a scientific Node. An
-interrogative or exploratory imperative such as “what drives bone aging?” or
+After the user message is submitted, classify the initial statement before
+retrieval or before creating a scientific Node. An interrogative or exploratory
+imperative such as “what drives bone aging?” or
 “identify the key drivers of bone aging” is an open inquiry, not a proposition.
-Use `find`, then apply `create_question` and set the new Research Question as
-Focus. Preserve material scope assumptions but do not assign confidence or
+Use `find`, then apply `create_question` before retrieval and set the resulting
+Research Question as Focus. If an exact normalized matching Question already
+exists, focus that Question instead of creating a duplicate.
+Preserve material scope assumptions but do not assign confidence or
 invent Evidence. If no qualifying source text is available, the Research
 Question may remain the only new graph entity; report that no Hypothesis was
 persisted.
