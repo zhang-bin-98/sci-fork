@@ -1,9 +1,10 @@
 # SciFork
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[![发布工作流](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml) [![许可证：MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[![发布工作流](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml/badge.svg)](https://github.com/zhang-bin-98/sci-fork/actions/workflows/release.yml)
-[![许可证：MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![SciFork — Git 原生生物医学研究图谱：文献驱动、本地优先、历史可追溯。](docs/assets/scifork-banner.png)
+
+[English](README.md) | [简体中文](README.zh-CN.md)
 
 > 拆分假设，连接证据，推进研究。
 
