@@ -168,3 +168,15 @@ overflow, non-overlapping panes/nodes, and nonblank Main/Evidence graphs. At
 return, the view control and graph were busy/disabled until the exact anchor
 Focus was confirmed. Key screenshots were captured at 320px Main, 768px Evidence,
 and 1280px Main.
+
+2026-09-04 regression repair: the contract cleanup had dropped the explicit
+pre-retrieval question creation and matching-question reuse instructions while
+consolidating intake sections. Restored both in one `Initial question intake`
+section without changing the specification, public interfaces, or test
+assertions. The existing Skill-content test reproduced the failure before the
+repair; the focused Skill suite passed 11 tests afterward. Final verification
+passed all 391 tests, typecheck, build, entry syntax, package verification,
+release preflight for `v0.0.1`, and diff checks. Skill metadata was validated
+with the existing `js-yaml` dependency because the standalone Python validator
+could not import PyYAML. No DSH smoke test was rerun for this instruction-only
+repair.
