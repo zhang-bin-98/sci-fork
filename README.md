@@ -18,7 +18,7 @@ Your Research Project remains a collection of ordinary Markdown and JSON files
 in a local Git repository. The graph is a rebuildable view of those files, not
 a separate database, and SciFork does not upload the project or add cloud sync.
 
-> **Early release:** SciFork `0.0.2` is pinned to the public interfaces in DSH
+> **Early release:** SciFork `0.0.3` is pinned to the public interfaces in DSH
 > `0.1.1-rc.2`.
 
 ## What you can do
@@ -42,11 +42,27 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 
 - DSH `0.1.1-rc.2` with the Web profile
 - Node.js `^22.19.0 || >=24.0.0`
-- pnpm `11.23.0` (Corepack is recommended)
+- pnpm `11.23.0` (Git source builds require Corepack and its pnpm shim)
 - Git with `user.name` and `user.email` configured
 - DSH Web configured for local loopback access (`127.0.0.1`)
 
 ### Install from GitHub source
+
+Enable the Corepack pnpm shim before installing:
+
+```sh
+corepack enable pnpm
+```
+
+If `corepack` is missing (including Node.js 25+ installations), install it
+first with `npm install --global corepack`, then enable the shim. This makes
+nested `pnpm install` calls select the version pinned by SciFork.
+
+An `ERR_PNPM_BAD_PM_VERSION` error can mean that a different global pnpm is
+handling Git preparation even when the outer command uses Corepack. Run
+`corepack enable pnpm` and retry from a terminal using that shim. In a SciFork
+checkout, `corepack pnpm exec pnpm --version` must print `11.23.0`;
+`corepack pnpm verify:source` checks this and performs an isolated source install.
 
 Source installation is supported starting with `v0.0.2`. DSH Plugin Hub
 uses this route when SciFork has no npm package. The install builds `dist/`
@@ -72,27 +88,27 @@ dsh --profile web
 Use the prebuilt archive when you want to verify the published checksum or
 avoid running the source build locally.
 
-1. Download `dsh-scifork-0.0.2.tgz` and
-   `dsh-scifork-0.0.2.tgz.sha256` from the
+1. Download `dsh-scifork-0.0.3.tgz` and
+   `dsh-scifork-0.0.3.tgz.sha256` from the
    [GitHub Releases page](https://github.com/zhang-bin-98/sci-fork/releases).
 2. Put both files in the same directory and verify the archive.
 
 Linux:
 
 ```sh
-sha256sum -c dsh-scifork-0.0.2.tgz.sha256
+sha256sum -c dsh-scifork-0.0.3.tgz.sha256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 -c dsh-scifork-0.0.2.tgz.sha256
+shasum -a 256 -c dsh-scifork-0.0.3.tgz.sha256
 ```
 
 Windows PowerShell:
 
 ```powershell
-$archive = 'dsh-scifork-0.0.2.tgz'
+$archive = 'dsh-scifork-0.0.3.tgz'
 $expected = (Get-Content "$archive.sha256").Split()[0].ToLowerInvariant()
 $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
@@ -101,7 +117,7 @@ if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
 3. Install the verified archive into the DSH Web profile.
 
 ```sh
-dsh plugin --profile web add ./dsh-scifork-0.0.2.tgz
+dsh plugin --profile web add ./dsh-scifork-0.0.3.tgz
 ```
 
 4. Start DSH from the directory you want to use as the Research Project.
