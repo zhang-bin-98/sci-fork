@@ -44,6 +44,21 @@ installation and release packaging use the same `build` script and therefore
 produce the same Host, Client, Companion, and Skill surfaces from one source
 tree. The repository continues to ignore `dist/`.
 
+Before installing from Git source, users enable the pnpm Corepack shim with
+`corepack enable pnpm`. Calling only `corepack pnpm` at the outer level is
+insufficient: Git preparation invokes plain `pnpm install`, which can resolve
+to a different global pnpm. Corepack must be installed separately where it is
+not bundled with Node.js.
+
+The source-install verifier first runs `corepack pnpm exec pnpm --version` in
+the project and compares its trimmed output with the pinned version in
+`package.json#packageManager`. A mismatch or failed probe stops verification
+before copying source or installing the Git dependency, with a diagnostic explaining
+that nested pnpm must use the project version and suggesting
+`corepack enable pnpm`. It does not change the user's shims, package-manager
+version, or build approvals. The normal isolated install remains mandatory
+after the probe succeeds; a matching version alone does not prove installation.
+
 pnpm may require a Git dependency's build script to be explicitly allowed. DSH
 reports the exact `allowBuilds` key and profile workspace file when this occurs;
 after that key is approved, rerunning the same command completes the install.
@@ -86,11 +101,19 @@ the `prepare` hook and source-install verification.
 - Removing or breaking `prepare` causes the source-install verifier to fail.
 - `dist/` remains ignored and absent from Git tracking.
 - Existing package and release verification remains green.
+- A conflicting nested pnpm fails before installation and names the expected
+  version, actual version, and Corepack shim repair command.
 - README files describe GitHub source installation, the package-manager build
   approval failure path, and the checksum-backed Release tarball alternative.
 - No npm publication or DSH compatibility change is introduced.
 
 ## Test plan
+
+- Run the verifier with a conflicting pnpm version returned by a controlled
+  Corepack executable; require an early actionable failure before Git copying
+  or dependency installation. Observe this regression fail before the fix.
+- With the real Corepack shim enabled, require the full isolated source install
+  and public entry import to pass without temporarily changing PATH.
 
 - Run the source-install verifier before adding `prepare` and observe failure
   because the installed Git dependency lacks built runtime artifacts.

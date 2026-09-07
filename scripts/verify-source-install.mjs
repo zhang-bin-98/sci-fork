@@ -15,6 +15,19 @@ import { pathToFileURL } from 'node:url'
 
 const projectRoot = process.cwd()
 const manifest = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
+const shimHelp = 'Install Corepack if needed, run corepack enable pnpm, then retry. '
+  + 'Git preparation invokes plain pnpm install; the outer corepack command alone is insufficient.'
+const nestedVersion = runCorepack(
+  ['pnpm', 'exec', 'pnpm', '--version'],
+  projectRoot,
+  'could not verify nested pnpm. ' + shimHelp,
+).trim()
+const expectedVersion = manifest.packageManager.slice('pnpm@'.length)
+if (nestedVersion !== expectedVersion) {
+  fail('nested pnpm version mismatch: expected ' + expectedVersion + ', received ' + nestedVersion
+    + '. ' + shimHelp)
+}
+
 const tempBase = realpathSync(tmpdir())
 const root = mkdtempSync(join(tempBase, 'scifork-source-install-'))
 const sourceRoot = join(root, 'source')
@@ -105,7 +118,7 @@ function initializeConsumer(directory) {
   writeFileSync(join(directory, 'pnpm-workspace.yaml'), 'dangerouslyAllowAllBuilds: true\n')
 }
 
-function runCorepack(args, cwd) {
+function runCorepack(args, cwd, failureMessage = 'Git dependency installation failed') {
   const command = process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : 'corepack'
   const commandArgs = process.platform === 'win32'
     ? ['/d', '/s', '/c', windowsCorepackCommand(args)]
@@ -119,8 +132,9 @@ function runCorepack(args, cwd) {
   })
   if (result.error !== undefined || result.status !== 0) {
     const detail = [result.stdout, result.stderr, result.error?.message].filter(Boolean).join('\n')
-    fail(`Git dependency installation failed${detail ? `:\n${detail}` : ''}`)
+    fail(`${failureMessage}${detail ? `:\n${detail}` : ''}`)
   }
+  return result.stdout
 }
 
 function windowsCorepackCommand(args) {
