@@ -18,7 +18,7 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 图谱只是这些文件可重建的视图，不是另一个数据库；SciFork 不会上传项目，也不提供
 云同步。
 
-> **早期版本：** SciFork `0.0.2` 锁定 DSH `0.1.1-rc.2` 的公开接口。
+> **早期版本：** SciFork `0.0.3` 锁定 DSH `0.1.1-rc.2` 的公开接口。
 
 ## 你可以做什么
 
@@ -36,11 +36,27 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 - 使用 Web profile 的 DSH `0.1.1-rc.2`
 - Node.js `^22.19.0 || >=24.0.0`
-- pnpm `11.23.0`（建议通过 Corepack 使用）
+- pnpm `11.23.0`（Git 源码构建需要 Corepack 及其 pnpm shim）
 - 已配置 `user.name` 和 `user.email` 的 Git
 - 配置为本机回环访问（`127.0.0.1`）的 DSH Web
 
 ### 从 GitHub 源码安装
+
+安装前先启用 Corepack 的 pnpm 命令入口：
+
+```sh
+corepack enable pnpm
+```
+
+如果没有 `corepack`（包括 Node.js 25+ 的安装环境），先运行
+`npm install --global corepack`，再启用入口。这能让内层
+`pnpm install` 使用 SciFork 固定的版本。
+
+遇到 `ERR_PNPM_BAD_PM_VERSION` 时，可能是 Git 依赖准备阶段调用了另一个
+全局 pnpm，即使外层已使用 Corepack 也会失败。运行 `corepack enable pnpm`，
+然后在使用该入口的终端中重试。在 SciFork 源码目录执行
+`corepack pnpm exec pnpm --version` 应输出 `11.23.0`；
+`corepack pnpm verify:source` 会检查这一点并执行隔离源码安装验证。
 
 从 `v0.0.2` 开始支持源码安装。SciFork 没有 npm 包时，DSH Plugin Hub 会使用
 该安装路径；安装过程会从 Git 源码在本地构建 `dist/`：
@@ -65,25 +81,25 @@ dsh --profile web
 需要校验正式发布的 checksum，或不希望在本机构建源码时，请使用预构建安装包。
 
 1. 从 [GitHub Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases)下载
-   `dsh-scifork-0.0.2.tgz` 和 `dsh-scifork-0.0.2.tgz.sha256`。
+   `dsh-scifork-0.0.3.tgz` 和 `dsh-scifork-0.0.3.tgz.sha256`。
 2. 将两个文件放在同一目录，并校验安装包。
 
 Linux：
 
 ```sh
-sha256sum -c dsh-scifork-0.0.2.tgz.sha256
+sha256sum -c dsh-scifork-0.0.3.tgz.sha256
 ```
 
 macOS：
 
 ```sh
-shasum -a 256 -c dsh-scifork-0.0.2.tgz.sha256
+shasum -a 256 -c dsh-scifork-0.0.3.tgz.sha256
 ```
 
 Windows PowerShell：
 
 ```powershell
-$archive = 'dsh-scifork-0.0.2.tgz'
+$archive = 'dsh-scifork-0.0.3.tgz'
 $expected = (Get-Content "$archive.sha256").Split()[0].ToLowerInvariant()
 $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
@@ -92,7 +108,7 @@ if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
 3. 将已校验的安装包添加到 DSH Web profile。
 
 ```sh
-dsh plugin --profile web add ./dsh-scifork-0.0.2.tgz
+dsh plugin --profile web add ./dsh-scifork-0.0.3.tgz
 ```
 
 4. 从你希望作为 Research Project 的目录启动 DSH。
