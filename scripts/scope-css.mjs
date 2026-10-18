@@ -20,6 +20,36 @@ const NON_SELECTOR_BLOCKS = new Set([
   'page',
 ])
 
+/** Split only top-level commas, preserving escaped Tailwind class names. */
+function splitSelectorList(selectorList) {
+  const selectors = []
+  let start = 0
+  let depth = 0
+  let quote = null
+  for (let i = 0; i < selectorList.length; i += 1) {
+    const char = selectorList[i]
+    if (char === '\\') {
+      i += 1
+    } else if (quote !== null) {
+      if (char === quote) quote = null
+    } else if (char === '"' || char === "'") {
+      quote = char
+    } else if (selectorList.startsWith('/*', i)) {
+      const end = selectorList.indexOf('*/', i + 2)
+      i = end === -1 ? selectorList.length : end + 1
+    } else if (char === '(' || char === '[') {
+      depth += 1
+    } else if (char === ')' || char === ']') {
+      depth -= 1
+    } else if (char === ',' && depth === 0) {
+      selectors.push(selectorList.slice(start, i))
+      start = i + 1
+    }
+  }
+  selectors.push(selectorList.slice(start))
+  return selectors
+}
+
 /**
  * Scope one comma-separated selector list. Selectors that already begin
  * with the root stay as written; `:root`/`:host` (variable and document
@@ -28,19 +58,17 @@ const NON_SELECTOR_BLOCKS = new Set([
  * gets the root prepended as a descendant.
  */
 function prefixSelectorList(selectorList, root) {
-  const mapped = selectorList
-    .split(',')
-    .map((rawSelector) => {
-      const selector = rawSelector.trim()
-      if (selector.length === 0) return rawSelector
-      if (selector === root || selector.startsWith(`${root} `)) {
-        return selector
-      }
-      if (selector === ':root' || selector === ':host') {
-        return root
-      }
-      return `${root} ${selector}`
-    })
+  const mapped = splitSelectorList(selectorList).map((rawSelector) => {
+    const selector = rawSelector.trim()
+    if (selector.length === 0) return rawSelector
+    if (selector === root || selector.startsWith(`${root} `)) {
+      return selector
+    }
+    if (selector === ':root' || selector === ':host') {
+      return root
+    }
+    return `${root} ${selector}`
+  })
   return [...new Set(mapped)].join(',')
 }
 
@@ -54,6 +82,14 @@ function transform(css, root) {
       i += 1
     }
     if (i >= css.length) break
+
+    if (css.startsWith('/*', i)) {
+      const end = css.indexOf('*/', i + 2)
+      const next = end === -1 ? css.length : end + 2
+      out += css.slice(i, next)
+      i = next
+      continue
+    }
 
     if (css[i] === '@') {
       // An at-statement (`@layer a,b;`, `@charset "...";`) ends at `;`

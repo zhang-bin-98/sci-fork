@@ -525,12 +525,12 @@ Graph tab 可见（`tab.visible`）且 document 可见时每 5 秒请求轻量 s
   实体正文不得撑高 pane。
 - 样式交付与隔离：构建把 CSS 内联进 client bundle 并在挂载时注入 `<style>`
   （与 documentpreview 的 JS-only 发布形态一致），不注册静态样式路由；不包含
-  Tailwind Preflight。工具类经 Tailwind v4 官方隔离手段限定在 SciFork 容器根
-  内——整包 `@import 'tailwindcss' prefix(sf)` 或部分导入 + `variant()` 作用域
-  变体二选一（已知坑：`prefix()` 对分开导入的 `utilities.css`/`theme.css` 不
-  生效，而当前源码正是分开导入），以 spike 实测为准；手写 base 归一化（原
-  `:root`/`html, body` 规则）改挂容器根选择器，React Flow 与 Markdown 的手写
-  CSS 同样以容器为作用域，不得实现第二套通用视觉系统。
+  Tailwind Preflight。按右侧栏迁移 spec 已收口的构建期方案，
+  `scripts/scope-css.mjs` 把工具类、React Flow 与 Markdown 选择器限定在
+  `.scifork-root` 容器内；`:root`/`:host` 主题变量直接锚定容器根，已有
+  作用域规则不重复添加前缀。选择器列表只在未转义且位于括号、属性与字符串外的
+  逗号处分割；保留注释、声明及 `@keyframes`/`@property` 等非选择器块。
+  手写 base 归一化同样挂在容器根，不得实现第二套通用视觉系统。
 - 布局确定性：节点位置由确定性 Dagre 重建，不持久化坐标；Main 与 Evidence 子图
   共用同一确定性 Dagre 布局，不保留混合图专用的 barrier/rank/合成关系；不因
   hover 重新布局。
