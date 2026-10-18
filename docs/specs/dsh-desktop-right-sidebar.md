@@ -144,9 +144,19 @@ tab body 挂载
   - `ctx.slots.register({ name: 'sidebar.right.pane.tab', key }, Body)` 与
     `useTabInfo()`
   - `ctx.sidebarRight.openTab(kind, options?)`
-  - `sidebar.footer.action`（沿用 M2 钉住的形态）
+  - `sidebar.footer.action`（master 契约 `packages/client/ui-sidebar/src/client/
+    contract/slots.ts` 确认仍在：root list slot，owner props 仅 `wide`，
+    `wide=false` 为 56 px rail）
+  - `SessionInput` 冻结面与 `SessionInputResolver.for(actx)`（master
+    `packages/client/ui-conversation/src/client/contract/input.ts` 确认仍在：
+    `setDraft(text: string)` / `submit(mode?)` / `notify` / `state`）
+  - `dsh.client` 声明（`platform: 'web'`、`inject` 包名边、`exports["./client"]`）；
+    接入右侧栏需在 `inject` 声明 `@deepseek-ai/dsh-client-ui-sidebar-right`
+    （factory 到达边；参照 documentpreview 的 inject 清单确定最小集合）
   - M0 全部既有契约（webServer、subprocess、skills、sandboxPolicy、
-    SessionInput、client module 装载）在新版本上重钉。
+    client module 装载）在新版本上重钉；client 装载机制已从 M0 钉住的
+    单 classic script 演化为 `__DSH_BOOT__` 图 + `/plugins` combo scripts +
+    lazy-CJS 模块表，`__ModuleLoader__.load` 形状以 spike 实测为准。
 - 单 client bundle：Bridge 与 Companion 组件由 `scripts/build-client.mjs` 打包
   进 `dist/client.js`（classic script，shell 播种 React/Cordis 基线模块）。
 - 安全边界沿用架构 §12.2 修订版：loopback-only、精确同源（桌面 `dsh-app://`
@@ -163,8 +173,12 @@ tab body 挂载
    - client bundle 装载、tab 类型注册、guide 卡片、footer action → `openTab`、
      `keepMounted: false` 卸载/重挂行为。
    - shell 播种的 React 版本；`@xyflow/react` / `react-markdown` / `@dagrejs/dagre`
-     在该 React 下的运行验证。
-   - Host 读取运行时 DSH 版本的公开面。
+     在该 React 下的运行验证。初步证据：官方范例 documentpreview 以
+     `react ^18.2.0` devDependency 编译，shell 播种 React 大概率为 18.x，
+     与本仓库 devDeps 的 React 19 需要对齐评估。
+   - Host 读取运行时 DSH 版本的公开面。候选：client boot 图的
+     `WebBootGraph.release.version`（Host release identity，含 version 与
+     可选 commit）；Host 侧等价面由 spike 确认。
 2. 同版本 Web（优先用桌面捆绑 CLI `resources/runtime/cli/bin/dsh.cmd` 起一次性
    profile；不可独立运行则按钉住版本 npm 安装）：
    - 同一清单回归；浏览器环境同源与轮询行为。
