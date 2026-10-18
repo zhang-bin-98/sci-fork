@@ -41,7 +41,39 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 - Node.js `^22.19.0 || >=24.0.0`
 - pnpm `11.23.0`（Git 源码构建需要 Corepack 及其 pnpm shim）
 - 已配置 `user.name` 和 `user.email` 的 Git
-- 配置为本机回环访问（`127.0.0.1`）的 DSH Web
+- DSH 仅监听本机回环（`127.0.0.1`）——桌面端默认如此；Web profile 从你的
+  项目目录启动
+
+### 安装到 DeepSeek Harness 桌面端（推荐）
+
+桌面端是主要使用表面。修改其插件 profile 前必须完全退出应用（包括托盘图标）——
+应用独占 `~/.dsh/profiles/desktop`，运行期间不可改动。
+
+`dsh` CLI 默认不在 `PATH` 中。可以在桌面应用菜单里注册 CLI（安装后的注册动作），
+或直接调用应用捆绑的 CLI：
+
+```sh
+"C:\Program Files\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .\dsh-scifork-0.0.3.tgz
+```
+
+源码安装使用同一命令、换为 Git 地址：
+
+```sh
+"...\dsh.cmd" plugin --profile desktop add git+https://github.com/zhang-bin-98/sci-fork.git
+```
+
+重新打开应用后，SciFork 出现在右侧栏 guide 卡片和侧栏底部按钮中。桌面端 nightly
+自动更新会把运行时带入未验证状态；此时 Companion 会显示未验证 DSH 版本警告条，
+直至 SciFork 重新钉住版本。
+
+### 安装到 DSH Web profile
+
+Web profile 在回环地址上提供同一个 client bundle。从希望作为 Research Project 的
+目录启动：
+
+```sh
+dsh --profile web
+```
 
 ### 从 GitHub 源码安装
 
@@ -72,12 +104,7 @@ dsh plugin --profile web add git+https://github.com/zhang-bin-98/sci-fork.git
 `allowBuilds` key 写入它提示的 profile `pnpm-workspace.yaml`，然后重新执行同一命令。
 不要猜测或扩大允许范围。
 
-安装完成后，如果 DSH 已经在运行，请重启 DSH。然后从希望作为 Research Project 的
-目录启动 DSH：
-
-```sh
-dsh --profile web
-```
+安装完成后，如果 DSH 已经在运行，请重启 DSH。
 
 ### 从 GitHub Releases 安装
 
@@ -125,6 +152,8 @@ dsh --profile web
 ```sh
 dsh plugin --profile web remove dsh-scifork
 ```
+
+（桌面端请先完全退出应用，再使用 `--profile desktop remove`。）
 
 ## 第一次使用
 

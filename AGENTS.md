@@ -251,9 +251,9 @@ Use `corepack pnpm` when pnpm is not installed globally.
 - Bundle metadata: run `pnpm pack --dry-run` and inspect the tarball file list.
 - Design documents: verify terminology, version references, README summaries,
   product design, and architecture remain consistent.
-- DSH smoke tests: run only against the pinned DSH version recorded in
-  `docs/specs/m0-compatibility-spike.md`, with user approval, in a disposable
-  profile.
+- DSH smoke tests: run only against the pinned DSH baseline recorded in
+  `docs/specs/dsh-desktop-right-sidebar.md` (0.2.1-rc.2; M0's spike is the
+  historical record), with user approval, in a disposable profile.
 
 Note: esbuild on Windows runs its native binary as a child process, so
 `pnpm test` and `pnpm build` need sandbox permissions that allow piped spawns;
