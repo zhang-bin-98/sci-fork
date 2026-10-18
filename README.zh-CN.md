@@ -10,7 +10,7 @@
 
 SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 的生物医学**研究图谱**插件。DSH Chat 始终是唯一的对话界面，SciFork 则在右侧栏提供可视化的研究图谱，把对话与文献检索中获得的信息沉淀为结构化、可追溯的科研知识。
 
-> **当前版本：** SciFork `0.0.5` 适配 DSH `0.2.1-rc.2`（桌面端与同版本 Web）。
+> **当前版本：** SciFork `0.0.6` 适配 DSH `0.2.1-rc.2`（桌面端与同版本 Web）。
 
 ## 你可以做什么
 
@@ -28,13 +28,9 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 ## 安装与文献检索
 
-**从 npm 安装（推荐，预构建——无需构建脚本授权）**：在 DSH 侧栏打开 **插件**，点击 **添加插件**，输入 `dsh-scifork`，安装后点击 **立即启用**。（自 0.0.5 之后的版本起可用；在此之前请用下方压缩包方式。）
+**从插件面板安装（推荐）**：在 DSH 侧栏打开 **插件**，点击 **添加插件**，输入 `dsh-scifork`，安装后点击 **立即启用**。
 
-**用压缩包从插件面板安装**：点击 **添加插件**，粘贴 Release 压缩包链接（从 [Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases) 复制 `dsh-scifork-<版本>.tgz` 的链接），安装后点击 **立即启用**。压缩包是预构建产物，**全程不会请求构建脚本授权**。
-
-**跟踪开发版（Git 地址）**：输入 `zhang-bin-98/sci-fork` 可从源码安装并跟随默认分支，但每次安装/升级都会先被 pnpm 供应链策略拦截本地构建：出现 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 时，把错误信息中的精确 `allowBuilds` key 写入 profile 的 `pnpm-workspace.yaml` 后点 **重试**（key 随 commit 变化）。
-
-**在会话中安装**：直接对模型说——“帮我安装 DSH 插件 `zhang-bin-98/sci-fork`”。
+**在会话中安装**：直接对模型说——“帮我安装 DSH 插件 `dsh-scifork`”。
 
 卸载时在插件页面选择 **移除** 即可，已创建的本地研究项目文件仍可正常阅读。
 
