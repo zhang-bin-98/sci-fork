@@ -442,6 +442,19 @@ function ResearchGraphTabBody(props: { readonly bridge: Bridge }): ReactElement 
 }
 
 export function apply(ctx: Context): void {
+  // slots/sessions/conversation are boot-ready baseline services. The
+  // sidebarRightTabs/sidebarRight services are PROVIDED at runtime by the
+  // ui-sidebar-right client plugin (whose own apply waits on `layout`), so
+  // they may not exist when this apply runs; Cordis re-fires a runtime
+  // `inject` once each named service becomes available (the same mechanism
+  // the shipped dsh-client-modules consumer uses for webServer). Waiting
+  // here removes the load-order race that silently disabled the plugin.
+  ctx.inject(['slots', 'sessions', 'conversation', 'sidebarRightTabs', 'sidebarRight'], () => {
+    applyOnceAvailable(ctx)
+  })
+}
+
+function applyOnceAvailable(ctx: Context): void {
   const slots = ctx.get('slots') as SlotsPort | undefined
   const sessions = ctx.get('sessions') as ClientSessionsPort | undefined
   const conversation = ctx.get('conversation') as ConversationPort | undefined

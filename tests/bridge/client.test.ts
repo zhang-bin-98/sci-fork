@@ -130,6 +130,9 @@ function makeHarness(): {
       if (typeof disposer === 'function') disposers.push(disposer)
       return disposer
     },
+    inject(_keys: readonly string[], callback: () => void): void {
+      callback()
+    },
   } as unknown as Context
   return {
     ctx,
