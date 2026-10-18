@@ -10,7 +10,7 @@
 
 SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 的生物医学**研究图谱**插件。DSH Chat 始终是唯一的对话界面，SciFork 则在右侧栏提供可视化的研究图谱，把对话与文献检索中获得的信息沉淀为结构化、可追溯的科研知识。
 
-> **当前版本：** SciFork `0.0.4` 适配 DSH `0.2.1-rc.2`（桌面端与同版本 Web）。
+> **当前版本：** SciFork `0.0.5` 适配 DSH `0.2.1-rc.2`（桌面端与同版本 Web）。
 
 ## 你可以做什么
 
@@ -28,7 +28,7 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 ## 安装与文献检索
 
-**从插件面板安装（推荐）**：在 DSH 侧栏打开 **插件**，点击 **添加插件**，输入 `zhang-bin-98/sci-fork` 并安装（如提示构建脚本请选择允许），完成后点击 **立即启用**。
+**从插件面板安装（推荐）**：在 DSH 侧栏打开 **插件**，点击 **添加插件**，输入 `zhang-bin-98/sci-fork` 并安装（如提示构建脚本请选择允许），完成后点击 **立即启用**。若安装失败并提示 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`，把错误信息中的精确 `allowBuilds` key 写入 profile 的 `pnpm-workspace.yaml` 后再点 **重试**。
 
 **在会话中安装**：直接对模型说——“帮我安装 DSH 插件 `zhang-bin-98/sci-fork`”。
 

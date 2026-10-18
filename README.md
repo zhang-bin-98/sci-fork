@@ -10,7 +10,7 @@
 
 SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). DSH Chat stays your single conversation surface, while SciFork provides a visual Research Graph in the right sidebar to turn literature findings and discussions into structured, auditable research knowledge.
 
-> **Current release:** SciFork `0.0.4` targets DSH `0.2.1-rc.2` (desktop and same-version Web).
+> **Current release:** SciFork `0.0.5` targets DSH `0.2.1-rc.2` (desktop and same-version Web).
 
 ## What you can do
 
@@ -28,7 +28,7 @@ SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](h
 
 ## Install and literature retrieval
 
-**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `zhang-bin-98/sci-fork`, install (approve build scripts if prompted), and click **Enable now**.
+**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `zhang-bin-98/sci-fork`, install (approve build scripts if prompted), and click **Enable now**. If the install fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, add the exact `allowBuilds` key printed in the error to the profile's `pnpm-workspace.yaml` and select **Retry**.
 
 **From a chat:** ask the model — “install the DSH plugin `zhang-bin-98/sci-fork`”.
 
