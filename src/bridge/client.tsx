@@ -30,6 +30,21 @@ const OPEN_FAILURE_MESSAGE = 'SciFork could not open the Research Graph. Try aga
 const OPEN_ACTION_LABEL = 'Open Research Graph'
 const OPEN_ACTION_TEXT = 'Research Graph'
 const MAX_PROMPT_BYTES = 16 * 1024
+
+/** UTF-8 byte length without assuming TextEncoder exists in the module realm. */
+function byteLengthOf(value: string): number {
+  if (typeof globalThis.TextEncoder === 'function') {
+    return new globalThis.TextEncoder().encode(value).byteLength
+  }
+  let bytes = 0
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i)
+    if (code < 0x80) bytes += 1
+    else if (code < 0x800) bytes += 2
+    else bytes += 3
+  }
+  return bytes
+}
 const RESEARCH_COMPLETION_POLL_MS = 250
 
 export type ResearchExpansionRejection =
@@ -238,7 +253,7 @@ export function createBridge(deps: BridgeDeps): Bridge {
     if (
       typeof prompt !== 'string'
       || prompt.length === 0
-      || new TextEncoder().encode(prompt).byteLength > MAX_PROMPT_BYTES
+      || byteLengthOf(prompt) > MAX_PROMPT_BYTES
     ) {
       return Promise.reject(new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED'))
     }

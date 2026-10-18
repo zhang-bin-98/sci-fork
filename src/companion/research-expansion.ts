@@ -17,9 +17,18 @@ export interface ResearchExpansionPromptInput {
   edges: readonly ProjectionEdgeSummary[]
 }
 
-const encoder = new TextEncoder()
-
 function byteLength(value: string): number {
+  // Lazily resolve TextEncoder: the DSH client module realm may not expose it
+  // as a global at module-evaluation time (load-time crash guard).
+  const encoder = globalThis.TextEncoder ? new globalThis.TextEncoder() : null
+  if (encoder === null) {
+    let bytes = 0
+    for (let i = 0; i < value.length; i += 1) {
+      const code = value.charCodeAt(i)
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code >= 0xd800 && code <= 0xdbff && i + 1 < value.length ? 2 : 3
+    }
+    return bytes
+  }
   return encoder.encode(value).byteLength
 }
 
