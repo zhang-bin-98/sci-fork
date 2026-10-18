@@ -107,11 +107,7 @@ jobs:
             package/LICENSE
             package/dist/host/index.js
             package/dist/client.js
-            package/dist/companion/index.html
-            package/dist/companion/app.js
-            package/dist/companion/styles.css
-            package/skills/pubmed-search/helper.mjs
-            package/skills/pubmed-search/SKILL.md
+            package/dist/client.css
             package/skills/scifork-research/SKILL.md
           )
           for path in "${required[@]}"; do
