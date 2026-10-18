@@ -10,7 +10,7 @@
 
 SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). DSH Chat stays your single conversation surface, while SciFork provides a visual Research Graph in the right sidebar to turn literature findings and discussions into structured, auditable research knowledge.
 
-> **Current release:** SciFork `0.0.7` targets DSH `0.2.1-rc.2` (desktop and same-version Web).
+> **Current release:** SciFork `0.0.8` targets DSH `0.2.1-rc.2` (desktop and same-version Web).
 
 ## What you can do
 
