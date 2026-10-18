@@ -166,13 +166,13 @@ export function HeaderIdentity(props: {
 }): React.ReactElement {
   return (
     <div className="header-identity flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap @min-[640px]:gap-3">
-      <h1 className="m-0 shrink-0 text-xl leading-none font-semibold tracking-tight">SciFork</h1>
+      <h1 className="m-0 min-w-0 truncate text-xl leading-none font-semibold tracking-tight">SciFork</h1>
       <span className="hidden min-w-0 max-w-[24vw] truncate text-sm text-sf-header-muted @min-[768px]:block @min-[1280px]:max-w-[min(34vw,360px)]">
         {props.projectName}
       </span>
       {props.branch === undefined ? null : (
         <span
-          className="hidden min-w-0 max-w-[30vw] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2 py-1 text-xs font-semibold text-sf-header-chip @min-[640px]:inline-flex @min-[768px]:max-w-[28vw] @min-[768px]:px-2.5 @min-[1280px]:max-w-[min(32vw,280px)]"
+          className="inline-flex min-w-8 max-w-[30vw] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2 py-1 text-xs font-semibold text-sf-header-chip @min-[768px]:max-w-[28vw] @min-[768px]:px-2.5 @min-[1280px]:max-w-[min(32vw,280px)]"
           aria-label="Current branch"
           title={props.head === undefined ? props.branch : props.branch + ' @ ' + props.head}
         >
@@ -870,7 +870,7 @@ export function ResearchExpansionAction(props: {
   return (
     <button
       type="button"
-      className={BUTTON_PRIMARY + ' size-9 px-0 @min-[640px]:size-auto @min-[640px]:px-3'}
+      className={BUTTON_PRIMARY + ' h-9'}
       disabled={props.disabled || running}
       aria-label={label}
       title={label}
@@ -889,20 +889,7 @@ export function ResearchExpansionAction(props: {
           <path className="opacity-90" d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
         </svg>
       ) : (
-        <>
-          <svg
-            className="size-4 @min-[640px]:hidden"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden="true"
-          >
-            <circle cx="6.75" cy="6.75" r="3.75" />
-            <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
-          </svg>
-          <span className="hidden @min-[640px]:inline">{RESEARCH_EXPANSION_ACTION_LABEL}</span>
-        </>
+        RESEARCH_EXPANSION_ACTION_LABEL
       )}
     </button>
   )

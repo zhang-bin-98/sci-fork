@@ -128,6 +128,10 @@ tab body 挂载
   `@min-[640px]` 等任意值变体实现，或在 `@theme` 覆盖 `--container-*`（注意
   连带影响 `max-w-*`），二选一由 spike 定。normal 窄面板通常处于 `<md`（TB 图 +
   Details 下方），全屏呈现处于宽区间（LR + Details 并列）；两种呈现共享内容树。
+- 顶栏遵守产品设计 §3：普通窄栏保留当前 Git 分支 chip 与完整文字的
+  `Research & Expand`，不再由 640px 断点隐藏分支或替换为单独的研究图标；
+  保留 0.0.5 完整顶栏的配色、按钮样式与 `Main`/`Evidence` 上下文操作。长分支
+  在同一行截断并通过 tooltip 保留完整名称；顶栏操作不能溢出或互相覆盖。
 - Graph 方向的 ResizeObserver 必须观察已挂载的 `.scifork-root` 容器根；小于
   768px 时为 TB，从 768px 起为 LR。不能观察未绑定的 ref 或使用 Graph 子区域宽度。
 - body 填充 DSH 提供的 pane 盒模型；顶栏、Details 两行 header 与正文滚动边界
@@ -282,6 +286,9 @@ tab body 挂载
 
 ## Test plan
 
+- 顶栏回归：先在真实普通右栏的约 575px 容器复现分支隐藏与研究按钮文字消失；
+  修复后在 360/420/575/640/768/1280px 检查分支可见、完整按钮文字、单行无重叠
+  与长分支截断，并在 DSH 实际普通右栏安装验证。运行态仍只有禁用 spinner。
 - CSS 构建回归：先用真实 Tailwind grid 类名、函数/属性内的逗号和 license 注释
   复现作用域转换失败，再验证修复；以构建产物的静态 Chromium 夹具检查窄/宽
   容器中的 Graph 高度、Details 滚动、主题颜色及容器外样式；在 767/768px 验证
@@ -298,6 +305,17 @@ CSS 布局回归记录（2026-10-19；构建产物 + 合成 API 的静态 Chromi
   page error，完整生成 CSS 的解析警告为零。完整 `pnpm check` 为 389 项测试通过，
   `verify:source`、`verify:pack`、入口语法检查与 `git diff --check` 通过。
 - 该记录验证本轮布局修复，不替代桌面一次性 profile 与同版本 Web 的完整 DSH E2E。
+
+顶栏可见性回归记录（2026-10-19；用户以 0.0.5 完整顶栏视觉为参考）：
+
+- Red：分支可见性与完整研究按钮文字的两项渲染断言先失败；浏览器补充复现
+  360px 下分支图标被空 badge 裁掉。修复后保留分支图标、完整 tooltip 和文字操作。
+- 静态 Chromium 以真实 client bundle 验证 360/420/575/639/640/768/1280px：
+  分支与按钮文字可见、顶栏单行且无重叠；长分支在 360/575/768px 截断并保留 tooltip。
+- DSH `0.2.1-rc.2` 桌面安装验证：实际普通 pane 宽约 575.33px、device scale 1.5，
+  `master`、`Evidence` 与完整 `Research & Expand` 同行显示，15 个实体和 14 条连线
+  保持可见；58 个科研受管文件内容未变。验证后恢复普通启动并关闭临时调试入口。
+- `pnpm check`（389 项测试）、`verify:source`、`verify:pack`、入口语法与 diff 检查通过。
 
 - 单元/集成（Vitest，node 环境）：
   - tab 注册参数（id/kind/guide/keepMounted）、footer action 联动 `openTab`
