@@ -153,11 +153,12 @@ owner。右侧栏表面按 Session 独立：没有当前 Session 时没有右侧
 页面按 tab pane 的容器宽度自动调整（面板宽度不等于浏览器视口宽度，不得使用
 viewport media queries）：
 
-- Companion 只使用 Tailwind 默认断点数值的 container queries：mobile/base 为
+- Companion 按 tab pane 容器宽度使用 container queries：mobile/base 为
   `<sm`（小于 640 px），`sm` 从 640 px 开始，`md` 从 768 px 开始，`xl` 从
   1280 px 开始；不再定义 360/480/760/1120 px 等自定义响应式阈值，也不监听
-  视口宽度。右侧栏的 normal 窄面板通常落在 `<md`，全屏呈现落在宽区间；
-  两种呈现共享同一内容树，切换不重挂载。
+  视口宽度。不得把 Tailwind v4 容器变体的默认档位（`@sm/@md/@xl` =
+  384/448/576 px）当作这些断点使用。右侧栏的 normal 窄面板通常落在 `<md`，
+  全屏呈现落在宽区间；两种呈现共享同一内容树，切换不重挂载。
 - Graph 在 `<md` 使用上下（TB）布局，在 `md` 及以上使用左右（LR）布局。
 - Details 在 `<xl` 位于 Graph 下方，在 `xl` 及以上与 Graph 并列；收起拉手和箭头方向
   使用同一个 `xl` 切换点。

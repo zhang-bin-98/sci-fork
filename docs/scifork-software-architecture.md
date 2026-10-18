@@ -53,8 +53,9 @@ MVP 采用以下决策：
 - `ctx.sidebarRightTabs.register()`：把 SciFork 注册为 page 类型的右侧栏 tab
   （唯一 `kind`，无 resource patterns，guide 入口卡片，`keepMounted: false`）。
 - `sidebar.right.pane.tab` slot：按 tab 类型 `id` 键注册 body 组件；
-  `useTabInfo()` 提供 `{ sidebar, panel, tab }`，其中 `tab.visible` 驱动轮询暂停、
-  abort signal 标识 tab 生命周期。
+  `useTabInfo()` 提供 `{ sidebar, panel, tab }`，其中 `tab.visible` 驱动轮询暂停；
+  tab abort signal 仅在 tab 记录移除（关闭 tab）或插件卸载时触发，隐藏与切换
+  Session 保留记录不触发，挂起请求的清理由 body 卸载的 effect cleanup 负责。
 - `ctx.sidebarRight.openTab()`：guide 入口与 footer action 的导航入口。
 - `conversation.input.for(scope).setDraft()`：写入对应 Session composer。
 - `conversation.input.for(scope).submit()`：按 DSH 标准 Queue 模式提交并开始运行。
@@ -135,7 +136,6 @@ SciFork/
 │   │   ├── commands.ts
 │   │   ├── web-routes.ts
 │   │   ├── companion-service.ts
-│   │   ├── companion-assets.ts
 │   │   ├── page-keys.ts
 │   │   ├── skills.ts
 │   │   ├── labels.ts
@@ -150,7 +150,6 @@ SciFork/
 │   │   ├── graph.ts
 │   │   ├── details.tsx
 │   │   ├── focus-selection.ts
-│   │   ├── page-key.ts
 │   │   ├── polling.ts
 │   │   ├── research-expansion.ts
 │   │   └── styles.css
@@ -514,16 +513,24 @@ Graph tab 可见（`tab.visible`）且 document 可见时每 5 秒请求轻量 s
 高亮与居中、Details 内容、卡片与计数展示、顶栏内容、按钮样式）以
 [产品设计 v0.21](./scifork-product-design.md) §3 为权威；本节只钉实现约束：
 
-- 布局按 tab pane 容器宽度响应，不监听视口：只使用 Tailwind 默认断点数值的
-  container queries（`sm=40rem/640px`、`md=48rem/768px`、`xl=80rem/1280px`），
-  不得引入任意 container/viewport threshold。右侧栏 normal 窄面板通常处于 `<md`，
-  全屏呈现处于宽区间；两种呈现共享同一内容树，切换不重挂载。
+- 布局按 tab pane 容器宽度响应，不监听视口。断点数值沿用 `sm=640px`、
+  `md=768px`、`xl=1280px`，但不得直接使用 Tailwind v4 容器变体的默认档位
+  （`@sm/@md/@xl` 是 384/448/576 px，与视口断点无关，字面使用会静默错位）：
+  以 `@min-[640px]`/`@min-[768px]`/`@min-[1280px]` 任意值变体实现，或在
+  `@theme` 覆盖 `--container-*`（注意会连带影响 `max-w-*` 工具类），二选一由
+  spike 实测定。右侧栏 normal 窄面板通常处于 `<md`，全屏呈现处于宽区间；两种
+  呈现共享同一内容树，切换不重挂载。
 - tab body 填充 DSH docking surface 提供的 pane 盒模型，无 `100dvh` 或视口级
   定位假设；单行顶栏位于滚动区域之外，Details 两行 header 固定且正文独立滚动，
   实体正文不得撑高 pane。
-- 嵌入构建不包含 Tailwind Preflight，utilities 通过 `@layer`/前缀限定在 SciFork
-  根容器内，不污染 DSH 全局样式；React Flow 与 Markdown 的少量手写 CSS 同样
-  以 SciFork 容器为作用域，不得实现第二套通用视觉系统。
+- 样式交付与隔离：构建把 CSS 内联进 client bundle 并在挂载时注入 `<style>`
+  （与 documentpreview 的 JS-only 发布形态一致），不注册静态样式路由；不包含
+  Tailwind Preflight。工具类经 Tailwind v4 官方隔离手段限定在 SciFork 容器根
+  内——整包 `@import 'tailwindcss' prefix(sf)` 或部分导入 + `variant()` 作用域
+  变体二选一（已知坑：`prefix()` 对分开导入的 `utilities.css`/`theme.css` 不
+  生效，而当前源码正是分开导入），以 spike 实测为准；手写 base 归一化（原
+  `:root`/`html, body` 规则）改挂容器根选择器，React Flow 与 Markdown 的手写
+  CSS 同样以容器为作用域，不得实现第二套通用视觉系统。
 - 布局确定性：节点位置由确定性 Dagre 重建，不持久化坐标；Main 与 Evidence 子图
   共用同一确定性 Dagre 布局，不保留混合图专用的 barrier/rank/合成关系；不因
   hover 重新布局。

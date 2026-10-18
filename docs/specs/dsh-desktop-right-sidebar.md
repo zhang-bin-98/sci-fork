@@ -97,7 +97,9 @@ tab body 挂载
 - API 不变：`snapshot` / `entity` / `focus`，POST + Page Key；Companion API
   仍不接受调用方提供 cwd、project root 或任意 sessionId。
 - 轮询条件：`useTabInfo()` 的 `tab.visible` 为 true 且 document 可见时每 5 秒
-  snapshot；任一为 false 暂停，恢复可见立即刷新。tab abort signal 终止挂起请求。
+  snapshot；任一为 false 暂停，恢复可见立即刷新。tab abort signal 仅在 tab 记录
+  移除（关闭 tab）或插件卸载时触发，隐藏与切换 Session 保留记录不触发；挂起
+  请求的清理由 body 卸载时的 effect cleanup 负责。
 
 ### 4. Research & Expand（进程内直接调用）
 
@@ -112,14 +114,23 @@ tab body 挂载
 
 ### 5. 布局与样式
 
-- 响应式断点为作用在 tab pane 容器上的 container queries，数值沿用 Tailwind
-  默认 `sm=640px`、`md=768px`、`xl=1280px`；不监听视口宽度，不新增阈值。
-  normal 窄面板通常处于 `<md`（TB 图 + Details 下方），全屏呈现处于宽区间
-  （LR + Details 并列）；两种呈现共享内容树。
+- 响应式断点为作用在 tab pane 容器上的 container queries，数值沿用
+  `sm=640px`、`md=768px`、`xl=1280px`；不监听视口宽度，不新增阈值。不得直接
+  使用 Tailwind v4 容器变体的默认档位（`@sm/@md/@xl` = 384/448/576 px）：以
+  `@min-[640px]` 等任意值变体实现，或在 `@theme` 覆盖 `--container-*`（注意
+  连带影响 `max-w-*`），二选一由 spike 定。normal 窄面板通常处于 `<md`（TB 图 +
+  Details 下方），全屏呈现处于宽区间（LR + Details 并列）；两种呈现共享内容树。
 - body 填充 DSH 提供的 pane 盒模型；顶栏、Details 两行 header 与正文滚动边界
   按架构 §8.4，无 `100dvh` 或视口级假设。
-- 嵌入构建不包含 Tailwind Preflight；utilities 与少量手写 CSS（React Flow、
-  Markdown pseudo-element、卡片展开）全部限定在 SciFork 根容器作用域内。
+- 样式交付：构建把 CSS 内联进 client bundle、挂载时注入 `<style>`
+  （documentpreview 的 JS-only 发布形态），Host 不注册静态样式路由。
+- 样式隔离：不包含 Tailwind Preflight（当前源码本就未引入，仅分开导入
+  theme/utilities）；工具类经 v4 官方隔离手段限定在 SciFork 容器根（如
+  `.scifork-root`）内——整包 `@import 'tailwindcss' prefix(sf)` 或部分导入 +
+  `variant()` 作用域变体，二选一（已知坑：`prefix()` 对分开导入的
+  `utilities.css`/`theme.css` 不生效），以 spike 实测为准；手写 base 归一化
+  （原 `:root`/`html, body` 规则）改挂容器根选择器；React Flow、Markdown
+  pseudo-element、卡片展开的手写 CSS 同样以容器为作用域。
 
 ### 6. 版本守卫
 
@@ -169,9 +180,13 @@ tab body 挂载
 
 1. 桌面端（disposable desktop profile；完全退出应用后经 CLI 安装、验证后恢复）：
    - `dsh-app://` 渲染进程 fetch `/scifork/api/*` 的实际 Origin/Host；同源校验
-     原样成立或确定桌面特定行为（不允许放宽校验迁就）。
+     原样成立或确定桌面特定行为（不允许放宽校验迁就）。预期结果：桌面转发器
+     Origin 为固定值，实测后加入精确允许集合；Web 保持 Origin 与 Host 精确一致。
    - client bundle 装载、tab 类型注册、guide 卡片、footer action → `openTab`、
      `keepMounted: false` 卸载/重挂行为。
+   - Tailwind v4 隔离方案实测：整包 `prefix(sf)` 与部分导入 + `variant()` 作用域
+     二选一，验证零泄漏且不被宿主样式命中；容器查询档位（`@min-[...]` 任意值
+     变体或 `--container-*` 覆盖）同场验证。
    - shell 播种的 React 版本；`@xyflow/react` / `react-markdown` / `@dagrejs/dagre`
      在该 React 下的运行验证。初步证据：官方范例 documentpreview 以
      `react ^18.2.0` devDependency 编译，shell 播种 React 大概率为 18.x，
