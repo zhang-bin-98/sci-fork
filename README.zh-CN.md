@@ -28,7 +28,9 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 ## 安装与文献检索
 
-**从插件面板安装（推荐）**：在 DSH 侧栏打开 **插件**，点击 **添加插件**，粘贴 Release 压缩包链接（从 [Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases) 复制 `dsh-scifork-<版本>.tgz` 的链接，如 `https://github.com/zhang-bin-98/sci-fork/releases/download/v0.0.5/dsh-scifork-0.0.5.tgz`），安装后点击 **立即启用**。压缩包是预构建产物，**全程不会请求构建脚本授权**。
+**从 npm 安装（推荐，预构建——无需构建脚本授权）**：在 DSH 侧栏打开 **插件**，点击 **添加插件**，输入 `dsh-scifork`，安装后点击 **立即启用**。（自 0.0.5 之后的版本起可用；在此之前请用下方压缩包方式。）
+
+**用压缩包从插件面板安装**：点击 **添加插件**，粘贴 Release 压缩包链接（从 [Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases) 复制 `dsh-scifork-<版本>.tgz` 的链接），安装后点击 **立即启用**。压缩包是预构建产物，**全程不会请求构建脚本授权**。
 
 **跟踪开发版（Git 地址）**：输入 `zhang-bin-98/sci-fork` 可从源码安装并跟随默认分支，但每次安装/升级都会先被 pnpm 供应链策略拦截本地构建：出现 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 时，把错误信息中的精确 `allowBuilds` key 写入 profile 的 `pnpm-workspace.yaml` 后点 **重试**（key 随 commit 变化）。
 
