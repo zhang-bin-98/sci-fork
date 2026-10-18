@@ -8,87 +8,49 @@
 
 > Fork hypotheses. Connect evidence. Advance research.
 
-SciFork is a local, Git-native biomedical Research Graph plugin for
-[DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). DSH
-Chat remains the only conversation surface; SciFork renders a Research Graph
-tab in the DSH right sidebar (desktop and same-version Web) for organizing
-research questions, hypotheses, evidence, results, and findings.
-
-Your Research Project remains a collection of ordinary Markdown and JSON files
-in a local Git repository. The graph is a rebuildable view of those files, not
-a separate database, and SciFork does not upload the project or add cloud sync.
+SciFork is a local, Git-native biomedical **Research Graph** plugin for
+[DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness).
+Retrieval plugins like `dsh-pubmed` find papers; SciFork turns what they find
+into auditable research knowledge: every assertion is bound to a PMID/DOI and
+a precise locator, machine review is separated from human review, claims can
+only become Findings through an explicit evidence gate, and every change is a
+local Git checkpoint over plain Markdown/JSON files. SciFork performs no
+retrieval itself and is bound to no retrieval plugin — it consumes whatever
+source you give it (an installed retrieval plugin, harness web search, or
+pasted source text), and renders the whole project as a Research Graph tab in
+the DSH right sidebar.
 
 > **Early release:** SciFork `0.0.3` is pinned to the public interfaces in DSH
-> `0.2.1-rc.2` (DeepSeek Harness desktop `0.2.1-rc.2`, nightly channel, or the
-> same-version Web profile). A desktop auto-update leaves the runtime unverified;
-> the Companion then shows an Unverified DSH version banner until re-pinned.
+> `0.2.1-rc.2`. A desktop auto-update leaves the runtime unverified; the
+> Companion then shows an Unverified DSH version banner until re-pinned.
 
 ## What you can do
 
-- Turn an open research question into a connected, inspectable Research Graph.
-- Bring in literature evidence identified by PMID or DOI, including material
-  from an installed retrieval plugin (for example `dsh-pubmed`), the harness
-  web search fallback, or user-pasted source text.
-- Keep research-team Results separate from interpretations and untested
-  Hypotheses.
-- Inspect the whole project in **Main** view or focus on an entity's direct
-  assertions in **Evidence** view.
-- Click **Research & Expand** to run one literature-grounded expansion from the
-  current Focus. Each click is limited to one step and at most five direct,
-  low-confidence branches.
-- After a successful research change, attempt a local Git checkpoint containing
-  only files that SciFork manages.
+- **Deep research** — ask for it in chat and SciFork runs a bounded
+  multi-level research program: each level retrieves, saves machine-reviewed
+  Evidence, keeps every qualifying branch, and automatically continues
+  through exactly one new Hypothesis until your scope is covered.
+- **One-click expansion** — select any entity and press **Research & Expand**
+  for a single grounded step (at most five direct low-confidence branches).
+- **Evidence you can audit** — every assertion carries its PMID/DOI, locator,
+  and review rationale; machine-reviewed and human-reviewed are counted
+  separately, and only human-reviewed Evidence (or a validated Result) can
+  support a Finding.
+- **A graph you can read** — organize Questions, Hypotheses, Predictions,
+  Results, and Findings in the sidebar's **Main** and **Evidence** views.
+- **Plain files + Git** — the project is ordinary Markdown/JSON; every change
+  attempts a local Git checkpoint. No database, no cloud sync.
 
 ## Install
 
-SciFork ships as a DSH plugin bundle (`dsh-scifork`). Install it from inside
-DeepSeek Harness — no command line required.
+**From the Plugins panel (recommended):** open **Plugins** in the sidebar,
+select **Add plugin**, enter `zhang-bin-98/sci-fork`, install (approve build
+scripts if asked), then **Enable now**.
 
-Requirements: DSH `0.2.1-rc.2` (desktop or same-version Web) listening on
-loopback only, and Git with `user.name` and `user.email` configured.
+**From a chat:** ask the model — “install the DSH plugin `zhang-bin-98/sci-fork`”.
 
-### Install from the Plugins panel (desktop and Web, recommended)
-
-1. Open **Plugins** in the sidebar and select **Add plugin**.
-2. Enter the Git repository address:
-
-   ```text
-   zhang-bin-98/sci-fork
-   ```
-
-3. Select **Install**. When a registry prompt appears, the mainland China
-   mirror is offered automatically when GitHub is unreachable; if pnpm asks
-   about build scripts, use the **Allow these scripts and retry** button the
-   dialog offers. The install builds the bundle locally from the Git source.
-4. Select **Enable now** when the install finishes. If the Research Graph
-   entry does not appear right away, restart the app once.
-
-If your setup enables the plugin-management agent tool, you can instead ask
-the model in a chat to install `zhang-bin-98/sci-fork` for you.
-
-### Install a verified release archive (optional)
-
-1. Download `dsh-scifork-0.0.3.tgz` and its `.sha256` from the
-   [GitHub Releases page](https://github.com/zhang-bin-98/sci-fork/releases)
-   and verify the checksum (`sha256sum -c` on Linux, `shasum -a 256 -c` on
-   macOS, or `Get-FileHash` on Windows).
-2. In **Add plugin**, enter the archive's absolute local path.
-
-### CLI (advanced)
-
-The `dsh plugin` command installs into a named profile and is useful for
-automation. Quit the desktop app completely before touching its profile; the
-Web profile can be updated while running (restart DSH afterwards).
-
-```sh
-dsh plugin --profile desktop add git+https://github.com/zhang-bin-98/sci-fork.git
-dsh plugin --profile web add ./dsh-scifork-0.0.3.tgz
-```
-
-Building the Git source locally requires Corepack's pnpm shim
-(`corepack enable pnpm`; `corepack pnpm verify:source` in a checkout verifies
-the isolated source install). To uninstall, use **Remove** on the plugin's
-page, or `dsh plugin --profile <name> remove dsh-scifork`.
+Both paths build the bundle locally from the Git source. To remove, use
+**Remove** on the plugin's page.
 
 ## First use
 
@@ -116,8 +78,8 @@ A typical research flow is:
 3. Open **Research Graph** to inspect the question, evidence, hypotheses,
    results, findings, and their relationships.
 4. Select an entity and click **Research & Expand** when you want one bounded
-   follow-up step. Multi-level exploration starts only when you explicitly ask
-   for a Progressive Research Run in the current DSH Chat.
+   follow-up step. Multi-level exploration (deep research) starts only when
+   you explicitly ask for a Progressive Research Run in the current DSH Chat.
 5. Review machine-reviewed Evidence before accepting it as human-reviewed.
    Only human-reviewed Evidence or validated Results can support a Finding.
 6. Check the project whenever needed:
@@ -126,7 +88,7 @@ A typical research flow is:
 /research validate
 ```
 
-The Graph Companion is for navigation and inspection. Continue asking for
+The Research Graph tab is for navigation and inspection. Continue asking for
 research, corrections, or graph changes in DSH Chat.
 
 ## Data and safety
