@@ -144,12 +144,14 @@ jobs:
     permissions:
       actions: read
       contents: write
+      id-token: write
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       GH_REPO: ${{ github.repository }}
       TAG_NAME: ${{ github.ref_name }}
       VERIFIED_COMMIT: ${{ needs.verify.outputs.commit }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     defaults:
       run:
         shell: bash
@@ -367,3 +369,14 @@ jobs:
 
           release_id=""
           trap - EXIT
+
+      - name: Publish to npm
+        if: env.NPM_TOKEN != ''
+        env:
+          TARBALL: ${{ steps.package.outputs.tarball }}
+        run: |
+          tar -xzf "$TARBALL" -C release package/package.json
+          published_version="$(node -p "JSON.parse(require('node:fs').readFileSync('release/package/package.json', 'utf8')).version")"
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm publish "release/$(basename "$TARBALL")" --access public --provenance
+          echo "Published dsh-scifork@${published_version} to npm."
