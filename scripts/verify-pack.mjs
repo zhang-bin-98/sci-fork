@@ -40,6 +40,8 @@ const required = [
   'README.zh-CN.md',
   'SECURITY.md',
   'docs/specs/m3-research.md',
+  'docs/specs/dsh-desktop-right-sidebar.md',
+  'docs/specs/external-retrieval-skills.md',
   'docs/specs/research-questions-machine-review.md',
   'docs/specs/contextual-evidence-and-question-intake.md',
   'skills/scifork-research/SKILL.md',
