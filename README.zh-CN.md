@@ -18,12 +18,15 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 图谱只是这些文件可重建的视图，不是另一个数据库；SciFork 不会上传项目，也不提供
 云同步。
 
-> **早期版本：** SciFork `0.0.3` 锁定 DSH `0.1.1-rc.2` 的公开接口。
+> **早期版本：** SciFork `0.0.3` 锁定 DSH `0.2.1-rc.2`（DeepSeek Harness 桌面端
+> `0.2.1-rc.2`，nightly 渠道，或同版本 Web profile）的公开接口。桌面端自动更新后
+> 运行时进入未验证状态，Companion 会显示未验证版本警告条，直至重新钉住版本。
 
 ## 你可以做什么
 
 - 把一个开放式研究问题整理成相互连接、便于检查的研究图谱。
-- 导入以 PMID 或 DOI 标识的文献证据，也可以使用随插件提供的 Skill 检索 PubMed。
+- 导入以 PMID 或 DOI 标识的文献证据：检索来源为已安装的外部检索插件（如
+  `dsh-pubmed`）、DSH web 检索降级或手动粘贴的来源文字。
 - 将研究团队产生的结果、对结果的解释和未经验证的假设清楚地区分开。
 - 在 **Main** 视图查看整个项目，或在 **Evidence** 视图聚焦某个实体的直接证据断言。
 - 点击 **Research & Expand**，从当前焦点（Focus）执行一次文献驱动的扩展。每次点击只执行
@@ -34,7 +37,7 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 ### 前置条件
 
-- 使用 Web profile 的 DSH `0.1.1-rc.2`
+- DSH `0.2.1-rc.2`：DeepSeek Harness 桌面端 `0.2.1-rc.2`，或同版本 Web profile
 - Node.js `^22.19.0 || >=24.0.0`
 - pnpm `11.23.0`（Git 源码构建需要 Corepack 及其 pnpm shim）
 - 已配置 `user.name` 和 `user.email` 的 Git
@@ -133,14 +136,16 @@ Chat 中对当前目录执行一次初始化：
 ```
 
 SciFork 会创建项目文件；如果当前目录还不是 Git 仓库，则初始化一个本地仓库；然后记录
-基线检查点。完成后，点击 DSH 侧栏中的 **Research Graph** 打开图谱 Companion。
+基线检查点。完成后，从 DSH 右侧栏 guide 卡片或侧栏底部按钮打开 **Research
+Graph**。
 
 一个典型的研究流程是：
 
 1. 在 DSH Chat 中描述开放式生物医学问题。SciFork 会把它记录为研究问题，而不是直接
    当作已成立的主张。
-2. 请 DSH 检索相关文献，再将有依据的断言导入项目。随插件提供的 PubMed Skill 支持
-   PubMed 查询，也可以按 PMID 或 DOI 查找。
+2. 请 DSH 检索相关文献，再将有依据的断言导入项目。检索是外置的：使用已安装的
+   检索插件（如 `dsh-pubmed`）、DSH web 检索降级，或手动粘贴来源文字；解析不出
+   合格 PMID/DOI 与真实来源文字的记录会被跳过。
 3. 打开 **Research Graph**，检查问题、证据、假设、结果、发现及其关系。
 4. 选中一个实体，需要继续探索时点击 **Research & Expand**，执行一次有界扩展。
    只有在当前 DSH Chat 中明确请求 Progressive Research Run，才会开始多层探索。

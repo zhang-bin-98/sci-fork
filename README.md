@@ -10,22 +10,25 @@
 
 SciFork is a local, Git-native biomedical Research Graph plugin for
 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). DSH
-Chat remains the only conversation surface; SciFork opens a same-origin Graph
-Companion for organizing research questions, hypotheses, evidence, results, and
-findings.
+Chat remains the only conversation surface; SciFork renders a Research Graph
+tab in the DSH right sidebar (desktop and same-version Web) for organizing
+research questions, hypotheses, evidence, results, and findings.
 
 Your Research Project remains a collection of ordinary Markdown and JSON files
 in a local Git repository. The graph is a rebuildable view of those files, not
 a separate database, and SciFork does not upload the project or add cloud sync.
 
 > **Early release:** SciFork `0.0.3` is pinned to the public interfaces in DSH
-> `0.1.1-rc.2`.
+> `0.2.1-rc.2` (DeepSeek Harness desktop `0.2.1-rc.2`, nightly channel, or the
+> same-version Web profile). A desktop auto-update leaves the runtime unverified;
+> the Companion then shows an Unverified DSH version banner until re-pinned.
 
 ## What you can do
 
 - Turn an open research question into a connected, inspectable Research Graph.
 - Bring in literature evidence identified by PMID or DOI, including material
-  retrieved from PubMed with the bundled Skill.
+  from an installed retrieval plugin (for example `dsh-pubmed`), the harness
+  web search fallback, or user-pasted source text.
 - Keep research-team Results separate from interpretations and untested
   Hypotheses.
 - Inspect the whole project in **Main** view or focus on an entity's direct
@@ -40,7 +43,7 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 
 ### Requirements
 
-- DSH `0.1.1-rc.2` with the Web profile
+- DSH `0.2.1-rc.2` — DeepSeek Harness desktop `0.2.1-rc.2`, or the same-version Web profile
 - Node.js `^22.19.0 || >=24.0.0`
 - pnpm `11.23.0` (Git source builds require Corepack and its pnpm shim)
 - Git with `user.name` and `user.email` configured
@@ -144,15 +147,18 @@ Git repository root. In DSH Chat, initialize the current directory once:
 
 SciFork creates the project files, initializes a local Git repository when the
 directory does not already have one, and records a baseline checkpoint. Then
-click **Research Graph** in the DSH sidebar to open the companion.
+open **Research Graph** from the DSH right-sidebar guide or the sidebar footer
+action.
 
 A typical research flow is:
 
 1. Describe the open biomedical question in DSH Chat. SciFork records it as a
    Research Question rather than treating it as an established claim.
 2. Ask DSH to retrieve relevant literature, then import supported assertions
-   into the project. The bundled PubMed Skill can search by PubMed query and
-   look up a PMID or DOI.
+   into the project. Retrieval is external: complete an installed retrieval
+   plugin such as `dsh-pubmed`, fall back to the harness web search, or paste
+   source text; records without a qualifying PMID/DOI and real source text are
+   skipped.
 3. Open **Research Graph** to inspect the question, evidence, hypotheses,
    results, findings, and their relationships.
 4. Select an entity and click **Research & Expand** when you want one bounded
@@ -171,7 +177,7 @@ research, corrections, or graph changes in DSH Chat.
 
 ## Data and safety
 
-SciFork is designed for local use on the DSH loopback Web server. Literature,
+SciFork is designed for local use on the DSH loopback server. Literature,
 PDFs, model output, and project Markdown are treated as untrusted data, and the
 Companion does not automatically load remote content. Retrieval output may
 remain in the current DSH Chat even though SciFork does not store complete
