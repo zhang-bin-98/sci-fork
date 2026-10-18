@@ -12,6 +12,7 @@ import {
   copyEntityId,
   restoreMainView,
   settleEntityIdCopyFeedback,
+  UnverifiedVersionBanner,
 } from '../../src/companion/app.js'
 import type { EntityDocument, ProjectionEntitySummary } from '../../src/shared/companion-contract.js'
 
@@ -492,5 +493,15 @@ describe('Companion graph UI', () => {
     )
 
     expect(html).toContain('data-drawer-action="close"')
+  })
+})
+
+
+describe('version guard', () => {
+  it('renders the unverified-version banner with the runtime version', () => {
+    const html = renderToStaticMarkup(createElement(UnverifiedVersionBanner, { actual: '0.3.0-nightly' }))
+    expect(html).toContain('Unverified DSH version')
+    expect(html).toContain('0.3.0-nightly')
+    expect(html).toContain('data-unverified-dsh-version="0.3.0-nightly"')
   })
 })

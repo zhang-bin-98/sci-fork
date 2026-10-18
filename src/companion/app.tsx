@@ -34,6 +34,7 @@ import {
   selectGraphView,
 } from './graph.js'
 import { startVisiblePolling } from './polling.js'
+import { bootReleaseVersion, unverifiedDshVersion } from './version-guard.js'
 import {
   RESEARCH_EXPANSION_ACTION_LABEL,
   ResearchExpansionSubmitter,
@@ -833,6 +834,19 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
   )
 }
 
+export function UnverifiedVersionBanner(props: { readonly actual: string }): React.ReactElement {
+  return (
+    <section
+      aria-label="Unverified DSH version"
+      data-unverified-dsh-version={props.actual}
+      className="flex min-h-8 shrink-0 items-center gap-2 border-b border-sf-warning-border bg-sf-warning-soft px-4 py-1.5 text-xs text-sf-warning-foreground"
+    >
+      <strong className="font-bold">Unverified DSH version</strong>
+      <span className="min-w-0 truncate">{props.actual}</span>
+    </section>
+  )
+}
+
 export function InvalidKeyView(): React.ReactElement {
   return (
     <main className="flex size-full min-h-0 items-center justify-center gap-3 bg-sf-surface-muted p-6 text-center text-sf-muted">
@@ -1164,8 +1178,14 @@ export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.
 
   const project = snapshot?.project
   const focus = snapshot?.focus
+  const unverifiedVersion = React.useMemo(
+    () => unverifiedDshVersion(bootReleaseVersion()),
+    [],
+  )
+
   return (
     <main className="scifork-root companion-app flex min-h-0 w-full flex-1 flex-col bg-sf-canvas text-sf-ink">
+      {unverifiedVersion !== null ? <UnverifiedVersionBanner actual={unverifiedVersion} /> : null}
       <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground @min-[640px]:gap-3 @min-[640px]:px-4">
         <HeaderIdentity
           projectName={project?.name ?? 'Research Graph'}
