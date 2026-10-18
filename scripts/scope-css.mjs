@@ -21,11 +21,14 @@ const NON_SELECTOR_BLOCKS = new Set([
 ])
 
 /**
- * Scope one comma-separated selector list. Each selector that does not
- * already begin with the root gets the root prepended as a descendant.
+ * Scope one comma-separated selector list. Selectors that already begin
+ * with the root stay as written; `:root`/`:host` (variable and document
+ * anchors) are re-anchored ONTO the root — prefixing them as descendants
+ * would match nothing and leave every var() unresolved; everything else
+ * gets the root prepended as a descendant.
  */
 function prefixSelectorList(selectorList, root) {
-  return selectorList
+  const mapped = selectorList
     .split(',')
     .map((rawSelector) => {
       const selector = rawSelector.trim()
@@ -33,9 +36,12 @@ function prefixSelectorList(selectorList, root) {
       if (selector === root || selector.startsWith(`${root} `)) {
         return selector
       }
+      if (selector === ':root' || selector === ':host') {
+        return root
+      }
       return `${root} ${selector}`
     })
-    .join(',')
+  return [...new Set(mapped)].join(',')
 }
 
 function transform(css, root) {

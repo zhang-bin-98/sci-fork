@@ -42,6 +42,15 @@ describe('scopeCss', () => {
     )
   })
 
+  it('anchors root-scoped variable blocks (:root/:host) on the container', () => {
+    // Tailwind v4 emits theme variables under ':root, :host'; prefixing them
+    // as descendants would match nothing and leave every var() unresolved.
+    expect(scopeCss(':root,:host{--x:1}', '.sf')).toBe('.sf{--x:1}')
+    expect(scopeCss(':root{--a:1}.b{color:red}', '.sf')).toBe(
+      '.sf{--a:1}.sf .b{color:red}',
+    )
+  })
+
   it('handles pseudo elements and attribute selectors as ordinary selectors', () => {
     const css = '.a::before{content:"x"}[data-y="1"] .b{color:red}'
     expect(scopeCss(css, '.sf')).toBe(
