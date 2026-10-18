@@ -258,18 +258,22 @@ interface GraphPaneProps {
   onSelect(entityId: string): void
 }
 
-const TAILWIND_MD_QUERY = '(min-width: 48rem)'
-
-function useWideGraphLayout(): boolean {
-  const [wide, setWide] = React.useState(
-    () => typeof window !== 'undefined' && window.matchMedia(TAILWIND_MD_QUERY).matches,
-  )
+/**
+ * Pane-width responsive switch (M4): the tab pane, not the viewport, is the
+ * layout context; 48rem matches the md breakpoint value. The observed
+ * element is the app root (the container-query context).
+ */
+function useWideGraphLayout(paneRef: React.RefObject<HTMLElement | null>): boolean {
+  const [wide, setWide] = React.useState(false)
   React.useEffect(() => {
-    const media = window.matchMedia(TAILWIND_MD_QUERY)
-    const update = (): void => setWide(media.matches)
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
+    const element = paneRef.current
+    if (element === null || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) setWide(entry.contentRect.width >= 768)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [paneRef])
   return wide
 }
 
@@ -309,7 +313,8 @@ export function GraphViewControl(props: {
 }
 
 function GraphPane(props: GraphPaneProps): React.ReactElement {
-  const wide = useWideGraphLayout()
+  const rootRef = React.useRef<HTMLElement | null>(null)
+  const wide = useWideGraphLayout(rootRef)
   const direction = graphDirectionForViewport(wide)
   const paneRef = React.useRef<HTMLElement | null>(null)
   const [flow, setFlow] = React.useState<
@@ -1160,7 +1165,7 @@ export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.
   const project = snapshot?.project
   const focus = snapshot?.focus
   return (
-    <main className="companion-app flex h-dvh min-h-0 w-full flex-col bg-sf-canvas text-sf-ink">
+    <main className="scifork-root companion-app flex min-h-0 w-full flex-1 flex-col bg-sf-canvas text-sf-ink">
       <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground sm:gap-3 sm:px-4">
         <HeaderIdentity
           projectName={project?.name ?? 'Research Graph'}
