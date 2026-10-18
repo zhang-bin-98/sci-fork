@@ -47,7 +47,42 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 - Node.js `^22.19.0 || >=24.0.0`
 - pnpm `11.23.0` (Git source builds require Corepack and its pnpm shim)
 - Git with `user.name` and `user.email` configured
-- DSH Web configured for local loopback access (`127.0.0.1`)
+- DSH listening on local loopback only (`127.0.0.1`) — the desktop app does
+  this by default; the Web profile is started from your project directory
+
+### Install into the DeepSeek Harness desktop app (recommended)
+
+The desktop app is the primary surface. Quit it completely (including the
+tray icon) before changing its plugin profile — the app owns
+`~/.dsh/profiles/desktop` and must not be modified while running.
+
+The `dsh` CLI is not on `PATH` by default. Either register it from the
+desktop app's menu (the post-install CLI registration action), or call the
+bundled CLI directly:
+
+```sh
+"C:\Program Files\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .\dsh-scifork-0.0.3.tgz
+```
+
+Source installation uses the same command with the Git URL:
+
+```sh
+"...\dsh.cmd" plugin --profile desktop add git+https://github.com/zhang-bin-98/sci-fork.git
+```
+
+Reopen the app. SciFork appears in the right-sidebar guide and the sidebar
+footer action. A desktop nightly auto-update moves the runtime to an
+unverified version; the Companion then shows an Unverified DSH version
+banner until SciFork is re-pinned.
+
+### Install into the DSH Web profile
+
+The Web profile serves the same client bundle at loopback. Start it from the
+directory you want to use as the Research Project:
+
+```sh
+dsh --profile web
+```
 
 ### Install from GitHub source
 
@@ -79,12 +114,7 @@ If pnpm blocks the Git dependency's `prepare` script, use the exact
 `allowBuilds` key and profile `pnpm-workspace.yaml` path printed by DSH, then
 run the same command again. Do not guess or broaden the allowed key.
 
-After installation, restart DSH if it is already running. Start DSH from the
-directory you want to use as the Research Project:
-
-```sh
-dsh --profile web
-```
+After installation, restart DSH if it is already running.
 
 ### Install from GitHub Releases
 
@@ -130,11 +160,13 @@ dsh --profile web
 ```
 
 If DSH was already running, restart it after installation. To uninstall the
-plugin later, run:
+plugin later, run the same command with `remove`:
 
 ```sh
 dsh plugin --profile web remove dsh-scifork
 ```
+
+(For the desktop app, quit it first and use `--profile desktop remove`.)
 
 ## First use
 
