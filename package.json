@@ -83,9 +83,14 @@
       "inject": []
     }
   },
+  "dependencies": {
+    "gray-matter": "4.0.3",
+    "js-yaml": "4.1.0",
+    "zod": "4.4.3",
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
   "devDependencies": {
     "@dagrejs/dagre": "^3.1.1",
-    "@deepseek-ai/cordis": "4.0.1",
     "@tailwindcss/cli": "^4.3.3",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.0",
@@ -100,10 +105,5 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vitest": "^3.2.0"
-  },
-  "dependencies": {
-    "gray-matter": "4.0.3",
-    "js-yaml": "4.1.0",
-    "zod": "4.4.3"
   }
 }

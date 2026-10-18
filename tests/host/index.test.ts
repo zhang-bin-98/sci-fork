@@ -101,6 +101,10 @@ function fakeContext(host: '127.0.0.1' | '0.0.0.0' = '127.0.0.1') {
         disposers.push(disposer)
         return disposer
       },
+      inject(_keys: readonly string[], callback: () => void) {
+        callback()
+        return () => undefined
+      },
     },
     disposers,
     registeredSkills,
@@ -119,10 +123,12 @@ describe('host apply', () => {
     expect(name).toBe('scifork')
   })
 
-  it('declares the nine host services as hard dependencies', () => {
+  it('declares the boot-ready services as hard dependencies and waits for webServer at runtime', () => {
+    // DSH 0.2.1 creates the webServer service after the boot graph mounts;
+    // hard-injecting it deadlocks the web app dispatch, so the routes wait
+    // through ctx.inject (the shipped dsh-client-modules pattern).
     expect([...inject]).toEqual([
       'skills',
-      'webServer',
       'subprocess',
       'fs',
       'storageDomain',
@@ -133,10 +139,10 @@ describe('host apply', () => {
     ])
   })
 
-  it('fails closed before registration when DSH Web listens on all interfaces', async () => {
+  it('fails closed without registering routes when DSH Web listens on all interfaces', async () => {
     const fake = fakeContext('0.0.0.0')
     await expect(apply(fake.ctx as never)).rejects.toThrow(/127\.0\.0\.1/)
-    expect(fake.registeredSkills).toHaveLength(0)
+    expect(fake.registeredRoutes).toHaveLength(0)
     expect(fake.registeredRoutes).toHaveLength(0)
     expect(fake.tools.definitions).toHaveLength(0)
   })
