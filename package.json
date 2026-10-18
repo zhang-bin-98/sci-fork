@@ -63,7 +63,7 @@
   "packageManager": "pnpm@11.23.0",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
-    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs && tailwindcss -i src/companion/styles.css -o dist/companion/styles.css --minify",
+    "build": "tsc -p tsconfig.build.json && tailwindcss -i src/companion/styles.css -o dist/client.css --minify && node scripts/build-client.mjs",
     "test": "vitest run",
     "prepare": "corepack pnpm build",
     "prepack": "corepack pnpm build",

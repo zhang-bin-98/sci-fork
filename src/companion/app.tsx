@@ -21,7 +21,7 @@ import type {
   LiteratureEvidenceItem,
   LiteratureProjection,
 } from '../shared/companion-contract.js'
-import { channelNameForPageKey } from '../shared/page-key.js'
+import type { Bridge } from '../bridge/client.js'
 import { CompanionApiClient, CompanionApiError } from './api.js'
 import { DetailsMarkdown } from './details.js'
 import { FocusSelectionQueue } from './focus-selection.js'
@@ -33,11 +33,10 @@ import {
   layoutGraph,
   selectGraphView,
 } from './graph.js'
-import { clearStoredPageKey } from './page-key.js'
 import { startVisiblePolling } from './polling.js'
 import {
   RESEARCH_EXPANSION_ACTION_LABEL,
-  ResearchExpansionChannel,
+  ResearchExpansionSubmitter,
   buildResearchExpansionPrompt,
   type ResearchExpansionState,
 } from './research-expansion.js'
@@ -831,10 +830,8 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
 
 export function InvalidKeyView(): React.ReactElement {
   return (
-    <main className="flex size-full min-h-0 items-center justify-center gap-3 bg-sf-surface-muted text-sf-muted">
-      <button type="button" className={BUTTON_NEUTRAL} onClick={() => window.close()}>
-        Reopen from DSH
-      </button>
+    <main className="flex size-full min-h-0 items-center justify-center gap-3 bg-sf-surface-muted p-6 text-center text-sf-muted">
+      <p>The Research Graph session key is no longer valid. Reopen the Research Graph tab from DSH.</p>
     </main>
   )
 }
@@ -850,7 +847,7 @@ export function ResearchExpansionAction(props: {
   disabled: boolean
   onClick(): void
 }): React.ReactElement {
-  const running = props.state.phase === 'pending' || props.state.phase === 'acknowledged'
+  const running = props.state.phase === 'pending'
   const label = running ? 'Research in progress' : RESEARCH_EXPANSION_ACTION_LABEL
   return (
     <button
@@ -910,7 +907,7 @@ export async function restoreMainView(inputs: {
   return (await inputs.selectFocus(inputs.anchorId)) ? 'restored' : 'failed'
 }
 
-export function CompanionApp(props: { pageKey: string }): React.ReactElement {
+export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.ReactElement {
   const [invalidKey, setInvalidKey] = React.useState(false)
   const [snapshot, setSnapshot] = React.useState<SnapshotSuccess>()
   const [graph, setGraph] = React.useState<SnapshotGraph>()
@@ -934,7 +931,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const snapshotInFlightRef = React.useRef(false)
   const viewTransitioningRef = React.useRef(false)
   const researchExpansionRef =
-    React.useRef<ResearchExpansionChannel | undefined>(undefined)
+    React.useRef<ResearchExpansionSubmitter | undefined>(undefined)
 
   React.useEffect(
     () => () => {
@@ -949,7 +946,6 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
       new CompanionApiClient({
         pageKey: props.pageKey,
         onPageKeyInvalid: () => {
-          clearStoredPageKey(window.sessionStorage)
           if (mountedRef.current) setInvalidKey(true)
         },
       }),
@@ -1072,33 +1068,8 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   React.useEffect(() => {
     if (invalidKey) return undefined
-    let browserChannel: BroadcastChannel | undefined
-    try {
-      browserChannel =
-        typeof BroadcastChannel === 'function'
-          ? new BroadcastChannel(channelNameForPageKey(props.pageKey))
-          : undefined
-    } catch {
-      browserChannel = undefined
-    }
-    const channel =
-      browserChannel === undefined
-        ? undefined
-        : {
-            postMessage: (message: Parameters<BroadcastChannel['postMessage']>[0]) =>
-              browserChannel.postMessage(message),
-            addEventListener: (
-              _type: 'message',
-              listener: (event: { data: unknown }) => void,
-            ) => browserChannel.addEventListener('message', listener),
-            removeEventListener: (
-              _type: 'message',
-              listener: (event: { data: unknown }) => void,
-            ) => browserChannel.removeEventListener('message', listener),
-            close: () => browserChannel.close(),
-          }
-    const researchExpansion = new ResearchExpansionChannel({
-      ...(channel === undefined ? {} : { channel }),
+    const researchExpansion = new ResearchExpansionSubmitter({
+      submit: (prompt) => props.bridge.submitResearchExpansion(props.pageKey, prompt),
       onStateChange: (state) => {
         if (mountedRef.current) setResearchExpansionState(state)
       },
@@ -1109,7 +1080,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
       researchExpansionRef.current = undefined
       researchExpansion.dispose()
     }
-  }, [invalidKey, props.pageKey])
+  }, [invalidKey, props.pageKey, props.bridge])
 
   const selectEntity = React.useCallback((entityId: string): void => {
     if (viewTransitioningRef.current) return

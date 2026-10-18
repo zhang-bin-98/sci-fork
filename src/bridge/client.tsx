@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import { createElement, useEffect, useState } from 'react'
+import { CompanionApp } from '../companion/app.js'
 import { isPageKey } from '../shared/page-key.js'
 import { ROUTE_LAUNCH } from '../shared/routes.js'
 
@@ -396,23 +397,22 @@ function openGraphButtonElement(props: {
 }
 
 /**
- * Placeholder tab body: it mints and releases the Page Key for the current
- * session across its mount lifecycle. M4-5 replaces the placeholder markup
- * with the full Companion component tree (which keeps the same key lifecycle
- * and receives the bridge submit face).
+ * Tab body: mounts the Companion tree with a bridge-held Page Key. The key
+ * is minted on mount and released on unmount (keepMounted: false), so the
+ * body lifecycle owns the key lifecycle.
  */
 function ResearchGraphTabBody(props: { readonly bridge: Bridge }): ReactElement {
-  const [state, setState] = useState<'pending' | 'ready' | 'unavailable'>('pending')
+  const [pageKey, setPageKey] = useState<string | undefined>(undefined)
   useEffect(() => {
     let active = true
     let heldKey: string | undefined
     props.bridge.requestPageKey().then(
-      (pageKey) => {
-        heldKey = pageKey
-        if (active) setState('ready')
+      (key) => {
+        heldKey = key
+        if (active) setPageKey(key)
       },
       () => {
-        if (active) setState('unavailable')
+        if (active) setPageKey(undefined)
       },
     )
     return () => {
@@ -420,11 +420,10 @@ function ResearchGraphTabBody(props: { readonly bridge: Bridge }): ReactElement 
       if (heldKey !== undefined) props.bridge.releasePageKey(heldKey)
     }
   }, [props.bridge])
-  return createElement(
-    'div',
-    { 'data-scifork-research-graph-tab': state },
-    TAB_TITLE,
-  )
+  if (pageKey === undefined) {
+    return createElement('div', { 'data-scifork-research-graph-tab': 'unavailable' })
+  }
+  return createElement(CompanionApp, { pageKey, bridge: props.bridge })
 }
 
 export function apply(ctx: Context): void {

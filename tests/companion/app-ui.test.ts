@@ -86,6 +86,13 @@ const questionEntity = {
   humanReviewedEvidenceCount: 1,
 } satisfies EntityDocument
 
+const fakeBridge = (): unknown => ({
+  requestPageKey: async () => 'K'.repeat(43),
+  releasePageKey: () => undefined,
+  submitResearchExpansion: async () => undefined,
+  dispose: () => undefined,
+})
+
 describe('Companion graph UI', () => {
   it('keeps project and branch identity in one header row', () => {
     const html = renderToStaticMarkup(
@@ -244,7 +251,7 @@ describe('Companion graph UI', () => {
 
   it('uses a calm inverted treatment for the research action', () => {
     const html = renderToStaticMarkup(
-      createElement(CompanionApp, { pageKey: 'K'.repeat(43) }),
+      createElement(CompanionApp, { pageKey: 'K'.repeat(43), bridge: fakeBridge() }),
     )
     const action = html.match(/<button[^>]*aria-label="Research &amp; Expand"[\s\S]*?<\/button>/)?.[0]
     const actionClasses = action?.match(/class="([^"]+)"/)?.[1]?.split(' ')
@@ -265,12 +272,7 @@ describe('Companion graph UI', () => {
   it('shows only a disabled spinner while research is running', () => {
     const html = renderToStaticMarkup(
       createElement(ResearchExpansionAction, {
-        state: {
-          phase: 'acknowledged',
-          nonce: 'A'.repeat(22),
-          prompt: 'bounded prompt',
-          acknowledgement: 'queued',
-        },
+        state: { phase: 'pending', prompt: 'bounded prompt' },
         disabled: false,
         onClick: () => undefined,
       }),
