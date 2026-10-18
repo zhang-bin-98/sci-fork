@@ -1,7 +1,9 @@
-# SciFork 产品设计 v0.20
+# SciFork 产品设计 v0.21
 
-> 状态：Implemented（MVP baseline）
-> 日期：2026-09-03
+> 状态：Approved（桌面端右侧栏迁移；implementation pending）
+> 日期：2026-10-18
+> 迁移设计：[DSH 桌面端右侧栏迁移](./specs/dsh-desktop-right-sidebar.md)；
+> 同批次调整：[检索外置](./specs/external-retrieval-skills.md)
 
 ## 1. 产品结论
 
@@ -12,23 +14,30 @@ DSH Chat
    ↕
 SciFork tools / Focus
    ↕
-Standalone Graph Companion
+Graph Companion（DSH 右侧栏 tab）
    ↕
 Markdown / JSON + local Git
 ```
 
 MVP 边界：
 
-- Graph 在 DSH 同源的独立浏览器页面打开，不在 `sidebar`、`conversation` 或
-  `details` 内渲染；DSH 侧栏底部只贡献一个公开的启动 action。
-- 页面只有一套响应式布局；窄窗口适合悬放，宽窗口适合系统分屏。
-- 浏览器不承诺系统级“始终置顶”，悬浮和并列由操作系统窗口管理。
-- SciFork 不依赖 `dsh-better-sidebar` 或其他第三方 DSH 插件。
+- Graph 在 DSH 桌面端/Web 的公开右侧栏扩展面（`sidebar.right`）内渲染为一个
+  tab，不提供独立浏览器窗口，也不进入 `conversation` 或 `details`。入口是右栏
+  guide 卡片和左栏底部的公开启动 action，二者都调用公开的 tab 打开操作。
+- 页面只有一套响应式布局，按 tab pane 的容器宽度适配；右侧栏自身的窄态、
+  全屏与浮出呈现由 DSH docking surface 提供，切换不重挂载内容树。
+- DSH 基线钉住 `0.2.1-rc.2`（DeepSeek Harness 桌面端 `0.2.1-rc.2`，nightly
+  频道，及同版本 Web）。桌面端自动更新后版本变为未验证状态：Companion 显示
+  警告条，按重钉流程处理，不静默失败。
+- SciFork 不依赖任何第三方 DSH 插件。
 - 开放式研究目标先保存为 Research Question，不伪装成 Hypothesis；Research Question 通过非科学关系的 Framing Link (`frames`) 连接其范围内的 Hypothesis 或 Finding。
 - 点击 `Research & Expand` 后，提示自动提交到对应 DSH Chat；Chat 空闲时立即开始，运行中则进入 Queue。一次真实点击只授权以当前 Focus 为锚点、先检索、自动提取 machine-reviewed Evidence、再保存的单层 Research Expansion Step，最多保留五条直接相连的低置信分支。
 - 多轮 Progressive Research Run 只能由用户在当前 DSH Chat 中明确请求；每层保存与按钮相同的全部合格直接分支，但只自动选择一个新 Hypothesis 继续下一层，按钮、页面和已保存节点都不能自动递归。
-- SciFork 只保留一个统一的 `SciFork Research` Skill；PubMed 是独立、可替换的通用检索 Skill。
-- PubMed Skill 支持完整查询语法、单批最多 300 条元数据、分页和 PMID/DOI 查找。
+- SciFork 只保留一个统一的 `SciFork Research` Skill，不再自带检索 Skill；论文检索
+  由用户安装的外部 DSH 检索插件承担，参考实现为 dsh-pubmed（README 记录
+  tested-with 版本，非依赖非保证）。
+- 检索降级阶梯：外部检索插件 → DSH web 检索 → 用户手动粘贴；每级通过标准相同
+  （合格 PMID/DOI 与真实来源文字），解析不出合格标识即中止，不降低标准。
 - 大模型先使用检索 Skill，再使用 `SciFork Research` 格式化 `Research Import Draft`；Skill 之间不互相调用。
 - Git 只负责当前分支受管文件的最小本地提交尝试；历史恢复、分支和远端操作交给 DSH 或用户。
 
@@ -79,14 +88,15 @@ DSH 或用户。
 ## 3. Companion 页面
 
 ```text
-┌──────────────────────────────┐  ┌──────────────────────────────┐
-│ DeepSeek Harness Web         │  │ SciFork Graph Companion      │
-│ Sessions / Chat / Tools      │  │ View toggle + Details        │
-│                              │  │                              │
-│ ...                          │  │ Research & Expand  Details   │
-│ [Graph] Research Graph       │  │                              │
-│ [Gear] Settings              │  │                              │
-└──────────────────────────────┘  └──────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ DeepSeek Harness（桌面端 / Web）                               │
+│ Sessions / Chat / Tools              ┌───────────────────────┐ │
+│                                       │ SciFork Graph tab     │ │
+│ ...                                   │ View toggle + Details │ │
+│ [Graph] Research Graph（左栏底部）     │ Research & Expand     │ │
+│ [Gear] Settings                       │ （右栏 docking surface）│ │
+│                                       └───────────────────────┘ │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 页面在两个互斥的本地视图之间切换。`Main` 是默认视图，显示完整的非 Evidence
@@ -130,27 +140,34 @@ Preflight 禁用所需的最小文档基础归一化、React Flow 外部 DOM/Edg
 以及 utilities 无法安全表达的 Markdown pseudo-element；不保留一套并行的通用组件样式。
 顶栏 `Research & Expand` 使用暖白 surface 与绿色 accent 文字，不使用实心绿色 CTA。
 
-DSH 入口使用公开的 `sidebar.footer.action`：展开时在 Settings 上方显示 Graph
-图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，并保留
-`Open Research Graph` tooltip/accessible name。点击仍打开独立 Companion，
-不会把 Graph 嵌入侧栏。若将来存在其他 footer actions，它们的相对布局服从
-DSH 的 list-slot owner，不用私有 DOM/CSS 强制重排。
+DSH 入口有两个，都走公开扩展面：右侧栏 guide 页的 `Research Graph` 入口卡片，
+以及左栏底部 `sidebar.footer.action` 的启动 action（展开时在 Settings 上方显示
+Graph 图标和 `Research Graph`，折叠时跟随侧栏变成 36 px 图标按钮，保留
+`Open Research Graph` tooltip/accessible name）。二者都调用公开的 tab 打开操作
+在当前 Session 的右侧栏打开 SciFork tab 并展开面板，不使用私有 DOM/CSS 或
+窗口导航。若将来存在其他 footer actions，它们的相对布局服从 DSH 的 list-slot
+owner。右侧栏表面按 Session 独立：没有当前 Session 时没有右侧栏，也就没有
+图谱表面；这与 Page Key 绑定 Session 的模型一致。SciFork 不自建 pane 分割、
+浮出或全屏管理，全部交给 DSH docking surface。
 
-页面按宽度自动调整：
+页面按 tab pane 的容器宽度自动调整（面板宽度不等于浏览器视口宽度，不得使用
+viewport media queries）：
 
-- Companion 只使用 Tailwind 默认 viewport breakpoints：mobile/base 为 `<sm`（小于
-  640 px），`sm` 从 640 px 开始，`md` 从 768 px 开始，`xl` 从 1280 px 开始；不再定义
-  360/480/760/1120 px 等自定义响应式阈值。
+- Companion 只使用 Tailwind 默认断点数值的 container queries：mobile/base 为
+  `<sm`（小于 640 px），`sm` 从 640 px 开始，`md` 从 768 px 开始，`xl` 从
+  1280 px 开始；不再定义 360/480/760/1120 px 等自定义响应式阈值，也不监听
+  视口宽度。右侧栏的 normal 窄面板通常落在 `<md`，全屏呈现落在宽区间；
+  两种呈现共享同一内容树，切换不重挂载。
 - Graph 在 `<md` 使用上下（TB）布局，在 `md` 及以上使用左右（LR）布局。
 - Details 在 `<xl` 位于 Graph 下方，在 `xl` 及以上与 Graph 并列；收起拉手和箭头方向
   使用同一个 `xl` 切换点。
 - `<sm` 使用移动端顶栏、失败恢复条和单列 Edge Details；`sm` 显示分支 chip 并恢复常规
   顶栏操作，`md` 再显示项目名。
-- 顶栏固定在可视区域并始终保持单行；项目名与分支 chip 位于左侧，分支不在窄窗口
-  另起第二行，空间不足时按 HEAD、项目名、分支文字的顺序降级或截断。
-- 页面不显示独立 Focus 面包屑栏；Graph 和 Details 使用顶栏以下的剩余高度。
-- Details 收起时，宽屏保留右侧竖向拉手，窄屏保留图下方横向拉手；展开状态只存在于
-  当前页面，刷新后恢复默认打开。
+- 顶栏固定在 pane 可视区域并始终保持单行；项目名与分支 chip 位于左侧，分支不在窄
+  pane 另起第二行，空间不足时按 HEAD、项目名、分支文字的顺序降级或截断。
+- 页面不显示独立 Focus 面包屑栏；Graph 和 Details 使用顶栏以下的 pane 剩余高度。
+- Details 收起时，宽容器保留右侧竖向拉手，窄容器保留图下方横向拉手；展开状态只存在于
+  当前 tab body，隐藏、切换 Session 或重开后恢复默认打开。
 - Details 顶部固定为两行：第一行显示精确实体类型、适用的紧凑
   `N publications · A machine-reviewed · H reviewed`、Focus 状态和抽屉按钮；第二行是无背景、无边框的完整等宽
   ID 复制控件。ID 文本本身支持点击、Enter 和 Space，复制成功或失败时显示短暂、轻量
@@ -178,7 +195,7 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 → Chat 运行中：进入 Queue
 → Companion 禁用按钮并显示无文字的等待转圈
 → 大模型读取当前 Chat 研究目的、最新 Focus 与方向邻居
-→ 默认先用 PubMed Search 检索并 lookup 高价值记录
+→ 先完成真实检索（外部检索插件或降级路径）并 lookup 高价值记录
 → 从真实 abstract 或用户提供的有界 PDF 段落提取并自动审核 Evidence Assertion
 → 生成最多五条不重复、可解释且有 machine-reviewed Evidence 的直接扩展分支
 → 普通 Focus：以低置信 Hypothesis/Prediction + 从已有 Node/Result 锚点指向新 Node 的科学 Edge 保存
@@ -194,7 +211,9 @@ SciFork 不提供 Back/Forward，也不维护 undo 状态。用户需要恢复�
 若当前 Chat 没有明确研究目的，或检索后没有科学上可辩护的明确关系，则不创建实体
 并说明原因。单步完成后 Focus 保持不变，用户可选择一个新节点后再次点击。
 
-Bridge acknowledgement 只表示提交成功；之后 Bridge 观察它捕获的原始 Session。
+Bridge 调用被接受只表示提交成功；tab body 与 Bridge 同属一个 client 插件，
+进程内直接调用同步返回接受或拒绝，不存在跨窗口投递或超时等待。之后 Bridge
+观察它捕获的原始 Session。
 由于钉住的 DSH 公开契约没有 per-turn 完成事件，Companion 将该 Session 已被观察为
 running、随后恢复 `running=false` 定义为本次界面运行完成。同一 Session 的其他排队工作
 可以延迟按钮复位；该定义不改变一次点击只授权一个 Research Expansion Step 的边界。
@@ -207,7 +226,9 @@ continuation；其他 Hypothesis 和全部 Prediction 作为本次运行的终�
 Hypothesis 可继续，或达到用户范围、耗尽已声明计划、遇到不可恢复错误或需要改变目标时
 停止并汇报，不逐层等待用户确认，也不能转为后台任务。
 
-若 DSH 页面、Session 或 Bridge 不可用，Companion 保留提示并显示 `Retry` 和 `Copy`，不能静默丢失，也不能另建 Session 或发送到其他 Chat。
+若调用被同步拒绝（Session 已关闭、Page Key 因重载失效等），Companion 保留提示并显示
+`Retry` 和 `Copy`，不能静默丢失，也不能另建 Session 或发送到其他 Chat；`Copy` 允许
+用户把提示手动粘贴到 Chat。
 
 ### Details
 
@@ -440,7 +461,7 @@ Research Question、Framing Link、Evidence Assertion、Node、Edge 和 Result �
 → 创建受管文件
 → 若目录没有自己的 Git，则在该目录初始化 Git
 → 在当前分支创建基线检查点
-→ Open Research Graph
+→ 打开 Research Graph tab（guide 卡片或左栏底部 action）
 ```
 
 SciFork 不递归使用意外的父目录 Git 仓库，也不自动创建或切换分支。
@@ -475,8 +496,8 @@ Host 确认后的 Focus 使用正式高亮，连续点击不会被静默丢弃�
 默认 Main 保持完整非 Evidence 上下文，Evidence 视图只保留锁定锚点及其直接 Evidence。切换
 只影响当前页面投影。点击
 `Research & Expand` 后，Companion 生成只包含 Focus
-ID/摘要、当前 Chat 研究目的约束、单步任务和明确保存授权的提示，并自动提交到启动
-该页面的 DSH Session。提示不预装邻域正文；大模型使用 `research_graph_read` 的
+ID/摘要、当前 Chat 研究目的约束、单步任务和明确保存授权的提示，并自动提交到该 tab
+绑定的 DSH Session。提示不预装邻域正文；大模型使用 `research_graph_read` 的
 方向邻居与 entity 操作选择最新上下文。Graph 不增加编辑或删除控件；用户通过 DSH
 Chat 发起多轮研究、修改或删除分支。
 
@@ -504,32 +525,45 @@ SciFork typed tools 执行持久化。Evidence 导入与扩展先经过同一套
 Run 的明确请求则授权其声明轮次中的同类处理。两者都不能生成 Finding。Progressive Research Run 的
 授权必须来自当前 Chat 中的明确用户请求，不能从按钮授权推导。
 
-检索 Skill 保持独立、可替换，由大模型根据任务先行使用；只有真实检索或 PDF 解析结果已进入当前 Chat context 后，大模型才加载 `SciFork Research` 完成格式化。两个 packaged Skill 的 catalog description 必须在加载正文前表达这个先后边界。Skill 之间不互相调用，SciFork 不维护检索 provider 生命周期或跨 Skill 私有协议。
+检索由外部 DSH 插件承担，保持独立、可替换，由大模型根据任务先行使用；只有真实检索或 PDF 解析结果已进入当前 Chat context 后，大模型才加载 `SciFork Research` 完成格式化。`SciFork Research` 的 catalog description 必须在加载正文前表达“检索先行”边界（顺序约束必须出现在 description 中，不能只依赖正文）。Skill 之间不互相调用，SciFork 不维护检索 provider 生命周期或跨 Skill 私有协议，也不为任何外部插件编写适配层。
 
-## 8. 轻量 PubMed 检索 Skill
+## 8. 外部检索 provider 与降级阶梯
 
-默认 `pubmed-search` Skill 支持：
+SciFork 不再自带检索 Skill。论文检索由用户自行安装的外部 DSH 检索插件承担；
+SciFork 只定义消费契约，不维护 provider 生命周期，也不为任何插件编写适配层。
+
+消费契约（任何满足以下条件的外部插件都可被使用）：
+
+- 在当前 Chat context 中完成真实检索与 PMID/DOI lookup，结果留在 Chat 中；
+  插件不需要理解 SciFork schema，也不能直接写 Research Project。
+- 检索输出对 SciFork 而言是不可信数据：不作为指令，进入持久化前仍经 Core 的
+  schema、Publication Reference 与 locator 校验。
+- SciFork 只消费检索与 lookup 结果，不依赖插件的图谱、缓存、RAG 或其他持久化
+  功能。
+
+参考实现：dsh-pubmed（Apache-2.0）。README 记录 "tested with" 的版本（当前
+0.4.4）；它是推荐与冒烟验证对象，不是依赖、保证或打包分发物。ChatGPT
+"Life Sciences Literature" 插件为专有许可证，只作设计参考，不复制代码；
+Sci-Hub 类插件有法律风险，不采用。
+
+降级阶梯（各级通过标准相同：能解析出合格 PMID/DOI 并提供真实来源文字）：
 
 ```text
-search: PubMed/Entrez query + retstart + retmax
-lookup: PMID or DOI
+外部检索插件（如 dsh-pubmed）
+→ DSH web 检索
+→ 用户手动粘贴来源文字
+→ 仍不满足：中止并说明原因，不降低标准、不伪造记录
 ```
 
-Bundle 只为 `pubmed-search` 注册 directory `resourceBase`，并把它限制为该 Skill 自己的 package-owned 目录。Skill 正文显式引用相对资源 `helper.mjs`，DSH 在加载 Skill 时基于该目录解析脚本；模型不得扫描 DSH 安装目录、猜测包位置，或把 helper 复制到 Research Project。`SciFork Research` 不需要本地附属资源，因此不注册 `resourceBase`。
-
-Search 原样接受 PubMed/Entrez 查询语法。默认 `retmax=20`，单批最多 300 条元数据，返回总数和下一页位置；用户可以继续分页，不设置 300 条的总结果上限。每条只返回 PMID、DOI、title、journal、year、简化 authors 和 publication type。
-
-PMID/DOI lookup 返回单篇确定性记录，可附带可用 abstract、canonical URL 和获取时间。
-这些完整检索字段只进入当前 DSH Chat context，不直接成为 Research Project 或 SciFork
-缓存；DSH 可能保留 Skill 输出，SciFork 没有删除 Chat 历史的公开契约。
-
-Skill 遵守 NCBI 请求频率；大于约 200 个 PMID 的批量元数据请求使用 POST 或 Entrez History。它不自动扩展 MeSH，不实现 PubTator、全文下载、缓存、向量检索、RAG 或文章知识图谱。helper 不落盘；运行完成后 SciFork 不保存 authors、publication type、URL、获取时间、abstract、全文、PDF、解析文本或原始 provider 响应。
-
-网络失败、标识不存在或响应结构无效时明确失败，不能让模型补造文献信息。
+`SciFork Research` 的正文写明该阶梯；Research Import Draft 的
+`producer.retrievalSkill` 记录实际来源：外部插件名（如 `dsh-pubmed`）、
+`dsh-web-search` 或 `user-provided`。lookup-only 存在性校验助手（建议
+Europe PMC 单源）为后续任务，本期不实现；落地前 Core 只校验标识格式，
+存在性核验空窗记为已知风险。
 
 ## 9. 模型编排与导入
 
-大模型先加载并完成一个检索 Skill；默认可以选择 `pubmed-search`，也可以选择其他数据库检索或 PDF 解析 Skill。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把结果格式化为 Research Import Draft，并使用与获授权扩展相同的规则从真实来源文字提取和自动审核 Evidence Assertion；有 Focus 与研究目标时再判断是否存在可保存的明确关系。不得在检索尚未执行时预先或同时加载两个 packaged Skill；若 `SciFork Research` 被过早加载，它必须等待真实检索上下文，不能补造 Draft、Evidence 或扩展分支。
+大模型先完成一个真实检索阶段：默认使用用户安装的外部检索插件（参考实现 dsh-pubmed），也可以选择其他数据库检索或 PDF 解析插件，或按 §8 降级阶梯处理。检索结果进入当前 Chat context 后，大模型再加载 `SciFork Research`，由它把结果格式化为 Research Import Draft，并使用与获授权扩展相同的规则从真实来源文字提取和自动审核 Evidence Assertion；有 Focus 与研究目标时再判断是否存在可保存的明确关系。不得在检索尚未执行时加载 `SciFork Research`；若它被过早加载，必须等待真实检索上下文，不能补造 Draft、Evidence 或扩展分支。
 
 Progressive Research Run 可以重复上述顺序，但每轮都必须先完成检索阶段，再进入
 图谱读取/持久化阶段。大模型而不是 Skill 负责选择唯一的下一 Hypothesis continuation
@@ -599,28 +633,21 @@ limitations、review state 和机器审核理由；原始 abstract、全文、PD
 
 ## 11. 页面认证
 
-MVP 使用一个随机 Page Key：
+MVP 使用一个随机 Page Key 作为唯一能力凭证：绑定 session + project，在 tab 打开时
+由 Host 铸造、经同源 loopback POST 响应体交给 client 插件内存，再以 props 传入
+tab body；key 不进入 URL、query、Referer、日志或仓库。没有 launch token →
+exchange token → bearer capability 的双阶段状态机，也没有独立登录或第二套凭证。
 
-```text
-DSH Open action
-→ Host 创建绑定 session + project 的 Page Key
-→ key 放在 URL fragment
-→ Companion 读入 sessionStorage 并清除 fragment
-→ API 请求携带 Page Key
-```
+必要边界：
 
-不再设计 launch token → exchange token → bearer capability 的双阶段状态机，也不为不同 API 建立独立凭证。
-
-保留必要边界：
-
-- DSH Web 必须是 loopback，Companion 与 API 必须同源。
-- Page Key 不进入 query、Referer、日志或仓库。
+- DSH 必须是 loopback（桌面端渲染进程与 Web 同源约束一致），Companion 与 API 必须同源。
 - API 从 Page Key 解析 session 和项目，不接受页面自报 cwd。
-- Session 关闭、bundle 卸载或 DSH 重启后 Page Key 失效。
+- Session 关闭、bundle 卸载、DSH 重启或 tab body 卸载后 Page Key 失效；tab 重开时重新铸造。
 - 静态资源、受管路径和请求体有固定边界。
 
-Page Key 同时派生不可猜测的浏览器 channel 名称，使 Companion 只能把单步 Research
-Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、bridge secret 或 Host claim。
+铸造/传递流程、失效语义与 Research & Expand 的进程内直接提交契约以
+[右侧栏迁移 spec](./specs/dsh-desktop-right-sidebar.md) 为准；不再使用
+BroadcastChannel、nonce 防重放、DraftRequest、bridge secret 或 Host claim。
 
 ## 12. 职责边界
 
@@ -629,10 +656,10 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 | Chat、Session、Agent、通用文件读取 | DSH |
 | Question、Framing Link、Graph schema 与科研规则 | SciFork Core |
 | 三个模型工具与项目定位 | SciFork Host |
-| 同源独立页面与 Details | SciFork Companion |
-| 自动提交单步 Research Expansion | SciFork DSH Bridge |
+| 右侧栏 Graph tab 与 Details | SciFork Companion |
+| 单步 Research Expansion 的进程内提交 | SciFork DSH Bridge |
 | 问题建模、检索建议、Draft 格式化、Evidence 自动审核、单步/递进研究和批判 | SciFork Research Skill |
-| 默认 PubMed 检索与 PMID/DOI 查找 | PubMed Search Skill |
+| 论文检索与 PMID/DOI 查找 | 外部 DSH 检索插件（用户安装；参考实现 dsh-pubmed） |
 | 替代数据库检索或 PDF 解析 | 其他检索 Skill |
 | Research Import Draft 校验与持久化 | SciFork Core + Host |
 | 受管文件的最小本地提交尝试 | SciFork Host |
@@ -641,11 +668,13 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 
 ## 13. MVP 明确不做
 
-- DSH 内嵌 Panel、Tab、右栏或 Sidebar。
-- 第三方 DSH 插件运行依赖。
-- 两套页面模式或自定义窗口管理。
+- 独立浏览器窗口、独立 OS 窗口或第二套页面表面。
+- 第三方 DSH 插件运行依赖或检索 provider 适配层（外部检索插件仅为参考实现与
+  冒烟对象，不打包分发）。
+- SciFork 自建的 pane 分割、浮出、全屏或窗口管理（由 DSH docking surface 提供）。
 - 多包 monorepo 和内部 npm 包。
 - 把 SciFork Research 拆成多套 Skill，或让 Skill 直接调用另一个 Skill。
+- lookup-only PMID/DOI 存在性校验助手（后续任务，本期不实现）。
 - 自动 MeSH 扩展、PubTator、全文下载、缓存或 RAG。
 - Publication/Source 实体、文章图谱、原始文章/PDF/abstract/全文/完整检索元信息归档。
 - 外部 Skill 直接写 Research Project。
@@ -659,12 +688,12 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 
 ```text
 1. 用户在 DSH 打开研究目录并执行 /research init
-2. 点击 Open Research Graph
+2. 通过右栏 guide 卡片或左栏底部 action 打开 Research Graph tab
 3. 用户给出开放式目标时，大模型先创建 Research Question 并设为 Focus
 4. Companion 默认显示 Main；选中有直接 Evidence 的实体后可进入只含该锚点及其 Evidence 的视图
 5. 用户点击 Research & Expand
 6. 对应 DSH Chat 自动开始或进入 Queue
-7. 大模型读取最新 Question/方向邻居并选择 PubMed Search 或其他检索/PDF Skill
+7. 大模型读取最新 Question/方向邻居并选择已安装的外部检索插件或其他检索/PDF Skill（降级阶梯见 §8）
 8. 检索结果进入当前 Chat context，大模型只从真实 abstract/PDF 段落提取 Evidence
 9. 大模型加载 SciFork Research，逐条保存 machine-reviewed Evidence，再保存最多五条有效、非重复的低置信分支
 10. Question Focus 的 Hypothesis 通过 Framing Link 连接；其他 Focus 使用明确科学 Edge；Focus 保持不变
@@ -678,8 +707,9 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 
 ## 15. MVP 完成标准
 
-- 无第三方 DSH 插件即可打开独立 Companion。
-- 页面能窄窗悬放，也能系统并列，并自动响应宽度。
+- 无第三方 DSH 插件即可在 DSH 桌面端或同版本 Web 的右侧栏打开 Research Graph tab。
+- tab 在窄面板、全屏与浮出呈现下共享同一内容树，并按 tab pane 容器宽度自动响应。
+- DSH 运行时版本与钉住的 `0.2.1-rc.2` 不符时，Companion 显示未验证版本警告条。
 - Companion 默认显示完整非 Evidence 主图；单一视图按钮在 Main 中显示 `Evidence`、
   在 Evidence 中显示 `Main`，且只允许从有直接 Evidence 的 Host-confirmed Focus 进入。
 - Host Focus 与图中正式选中态一致；连续点击最终落到最后一次目标，且完整实体 ID
@@ -709,7 +739,8 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
   Hypothesis/Prediction；Finding、Evidence、Question 和 Result 不提供物理删除。
 - 提交失败时 Retry/Copy 可恢复。
 - 统一 SciFork Research Skill 能完成检索建议、Draft 格式化、单步/递进研究和批判。
-- PubMed Search Skill 能执行完整查询、按 300 条分页并按 PMID/DOI 查找，且不会伪造记录。
+- 论文检索由用户安装的外部插件完成真实查询与 PMID/DOI lookup；未安装或检索不足时
+  按降级阶梯处理，解析不出合格标识即中止，不降标准、不伪造记录。
 - 大模型能先使用任一检索 Skill，再使用 SciFork Research 格式化 Draft；普通导入与扩展使用同一套自动审核规则，检索 Skill 不能绕过校验写仓库。
 - Node/Edge Details 能按状态显示 Citation Snapshot、PMID/DOI、assertion、locator、
   direction、limitations 和机器审核理由；卡片计数区分 publication、machine-reviewed 和人工 reviewed。
@@ -720,11 +751,3 @@ Expansion 提交给启动它的 DSH Bridge；不再使用二次 DraftRequest、b
 - SciFork 不提供 Back/Forward；Git 历史恢复由 DSH Chat 或用户完成。
 - 冲突或陈旧版本不会覆盖外部修改。
 - 卸载后 Research Project 文件仍完整可读。
-
-## 16. better-sidebar 参考边界
-
-参考 [DSH-better-sidebar v0.15.2](https://github.com/omdsh-dev/DSH-better-sidebar/releases/tag/v0.15.2) 的 session/cwd 作用域、页面隐藏时暂停刷新、composer input 接入、effect/disposer 生命周期和 mount smoke test。
-
-不复用 portal、全局布局 CSS、`/sidebar/api`、WebSocket、侧栏状态协议、终端、Git、浏览器、编辑器、子代理或 `node-pty`。
-
-它不是 dependency、peerDependency、profile 或运行时 provider。若未来复制具体代码，必须保留对应来源和许可证声明。
