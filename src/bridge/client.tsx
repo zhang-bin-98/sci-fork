@@ -1,57 +1,127 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
-import { createElement } from 'react'
-import {
-  RESEARCH_EXPANSION_REJECTED_WIRE_CODE,
-  RESEARCH_EXPANSION_REQUEST_WIRE_TYPE,
-  type ResearchExpansionAckMessage,
-  type ResearchExpansionCompleteMessage,
-  type ResearchExpansionErrorMessage,
-  type ResearchExpansionRequestMessage,
-} from '../shared/companion-contract.js'
-import { channelNameForPageKey, isPageKey } from '../shared/page-key.js'
-import { COMPANION_URL, ROUTE_LAUNCH } from '../shared/routes.js'
+import { createElement, Fragment, useEffect, useState } from 'react'
+import { CompanionApp } from '../companion/app.js'
+import { isPageKey } from '../shared/page-key.js'
+import { ROUTE_LAUNCH } from '../shared/routes.js'
 
 export const name = 'scifork'
-export const inject = ['slots', 'sessions', 'conversation'] as const
+export const inject = [
+  'slots',
+  'sessions',
+  'conversation',
+  'sidebarRightTabs',
+  'sidebarRight',
+] as const
 
-const MAX_PROMPT_BYTES = 16 * 1024
-const MAX_ACCEPTED_NONCES = 256
-const NONCE_PATTERN = /^[A-Za-z0-9_-]{22}$/
+/**
+ * M4 bridge: the Research Graph renders as a DSH right-sidebar tab. The old
+ * standalone-window launch (window.open + URL fragment key exchange +
+ * BroadcastChannel expansion channel) is deleted; the expansion submit is an
+ * in-plugin direct call and the Page Key lives only in this module's memory.
+ */
+
+const TAB_TYPE_ID = 'dsh-scifork'
+const TAB_KIND = 'scifork.research-graph'
+const GUIDE_ENTRY_ID = 'research-graph'
+const TAB_TITLE = 'Research Graph'
+const GUIDE_DESCRIPTION = 'Open the SciFork Research Graph for the current session.'
 const OPEN_FAILURE_MESSAGE = 'SciFork could not open the Research Graph. Try again from DSH.'
 const OPEN_ACTION_LABEL = 'Open Research Graph'
 const OPEN_ACTION_TEXT = 'Research Graph'
+const MAX_PROMPT_BYTES = 16 * 1024
+
+/** UTF-8 byte length without assuming TextEncoder exists in the module realm. */
+function byteLengthOf(value: string): number {
+  if (typeof globalThis.TextEncoder === 'function') {
+    return new globalThis.TextEncoder().encode(value).byteLength
+  }
+  let bytes = 0
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i)
+    if (code < 0x80) bytes += 1
+    else if (code < 0x800) bytes += 2
+    else bytes += 3
+  }
+  return bytes
+}
 const RESEARCH_COMPLETION_POLL_MS = 250
+
+export type ResearchExpansionRejection =
+  | 'RESEARCH_EXPANSION_REJECTED'
+  | 'SESSION_UNAVAILABLE'
+
+export class ResearchExpansionError extends Error {
+  constructor(readonly code: ResearchExpansionRejection) {
+    super(code)
+    this.name = 'ResearchExpansionError'
+  }
+}
 
 interface SidebarFooterActionOwnerProps {
   readonly wide: boolean
 }
 
-/** Public sidebar.footer.action list-slot face pinned against DSH 0.1.1-rc.2. */
+/** Framework props on the session-scoped tab body seat in DSH 0.2.1-rc.2. */
+interface SidebarTabBodyProps {
+  readonly sessionId: string
+  useTabInfo(): { readonly tab: { readonly visible: boolean } }
+}
+
+/** One guide entry on the right-sidebar guide page. */
+interface SidebarRightGuideEntry {
+  readonly id: string
+  readonly order: number
+  readonly title: () => string
+  readonly description?: () => string
+}
+
+/**
+ * Public `ctx.sidebarRightTabs.register` face, structurally pinned against
+ * DSH 0.2.1-rc.2 (page type: no patterns, default `extension` band).
+ */
+interface SidebarRightTabsPort {
+  register(definition: {
+    readonly id: string
+    readonly kind: string
+    readonly keepMounted?: boolean
+    readonly title: (address?: string) => string
+    readonly guide?: readonly SidebarRightGuideEntry[]
+  }): () => void
+}
+
+/** Public `ctx.sidebarRight` navigation controller face. */
+interface SidebarRightPort {
+  openTab(kind: string): void
+}
+
+/** Public sidebar slots face: footer action list slot + keyed tab body seat. */
 interface SlotsPort {
-  inject(name: 'sidebar.footer.action', callback: () => () => void): () => void
+  inject(name: 'sidebar.footer.action' | 'sidebar.right.pane.tab', callback: () => () => void): () => void
   register(
     entry: { name: string; id: string; order?: number; label?: string },
     factory: (props: SidebarFooterActionOwnerProps) => ReactElement,
   ): () => void
+  register(
+    entry: { name: 'sidebar.right.pane.tab'; key: string },
+    factory: (props: SidebarTabBodyProps) => ReactElement,
+  ): () => void
 }
 
-/** Public client Session list and scope faces pinned against DSH 0.1.1-rc.2. */
+/** Public client Session list and scope faces pinned against DSH 0.2.1-rc.2. */
 interface ClientSessionsPort {
   list: {
     getSnapshot(): {
-      current?: string
       byId: Readonly<Record<string, { readonly running: boolean }>>
     }
   }
   scope(id: string): Context | undefined
 }
 
-/** Public scoped SessionInput face pinned against DSH 0.1.1-rc.2. */
+/** Public scoped SessionInput face pinned against DSH 0.2.1-rc.2. */
 interface SessionInputPort {
   setDraft(text: string): void
   submit(): void
-  notify(level: 'info' | 'error', text: string): void
 }
 
 interface ConversationPort {
@@ -60,247 +130,173 @@ interface ConversationPort {
   }
 }
 
-interface ChannelBinding {
-  readonly channel: BroadcastChannel
-  readonly acceptedNonces: Set<string>
-  readonly acceptedNonceQueue: string[]
-  readonly listener: (event: MessageEvent<unknown>) => void
-  completion: {
-    nonce: string
-    observedRunning: boolean
-    timer: ReturnType<typeof setTimeout> | undefined
-  } | undefined
+interface PageKeyBinding {
+  readonly pageKey: string
+  readonly sessionId: string
+  readonly sessionScope: Context
 }
 
-interface BridgeState {
+interface CompletionWatch {
+  readonly sessionId: string
+  observedRunning: boolean
+  timer: ReturnType<typeof setTimeout> | undefined
+  resolve(): void
+  reject(error: ResearchExpansionError): void
+}
+
+export interface BridgeDeps {
   readonly sessions: ClientSessionsPort
   readonly conversation: ConversationPort
-  readonly channels: Set<ChannelBinding>
-  disposed: boolean
+  readonly fetchImpl?: typeof fetch
+}
+
+export interface Bridge {
+  /** Mint (or reuse) the Page Key for the slot's Session, in memory only. */
+  requestPageKey(sessionId: string): Promise<string>
+  /** Drop a Page Key binding (tab body unmount invalidates the key). */
+  releasePageKey(pageKey: string): void
+  /** Submit one Research Expansion step; resolves when the session goes idle again. */
+  submitResearchExpansion(pageKey: string, prompt: string): Promise<void>
+  dispose(): void
 }
 
 interface LaunchBody {
   readonly ok: true
-  readonly url: string
+  readonly pageKey: string
 }
 
 function isLaunchBody(value: unknown): value is LaunchBody {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
-  return record.ok === true && typeof record.url === 'string'
+  return record.ok === true && isPageKey(record.pageKey)
 }
 
-function pageKeyFromLaunchUrl(url: string): string | undefined {
-  const prefix = `${COMPANION_URL}#key=`
-  if (!url.startsWith(prefix)) return undefined
-  const pageKey = url.slice(prefix.length)
-  return isPageKey(pageKey) ? pageKey : undefined
-}
+export function createBridge(deps: BridgeDeps): Bridge {
+  const doFetch = deps.fetchImpl ?? fetch
+  const byPageKey = new Map<string, PageKeyBinding>()
+  const bySession = new Map<string, string>()
+  const watches = new Map<string, CompletionWatch>()
+  let disposed = false
 
-function isResearchExpansionRequest(
-  value: unknown,
-): value is ResearchExpansionRequestMessage {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const record = value as Record<string, unknown>
-  const keys = Object.keys(record)
-  if (
-    keys.length !== 3
-    || !Object.hasOwn(record, 'type')
-    || !Object.hasOwn(record, 'nonce')
-    || !Object.hasOwn(record, 'prompt')
-  ) {
-    return false
-  }
-  if (record.type !== RESEARCH_EXPANSION_REQUEST_WIRE_TYPE) return false
-  if (typeof record.nonce !== 'string' || !NONCE_PATTERN.test(record.nonce)) return false
-  if (typeof record.prompt !== 'string' || record.prompt.length === 0) return false
-  return new TextEncoder().encode(record.prompt).byteLength <= MAX_PROMPT_BYTES
-}
-
-function postError(
-  channel: BroadcastChannel,
-  nonce: string,
-  code: ResearchExpansionErrorMessage['code'],
-): void {
-  const message: ResearchExpansionErrorMessage = { type: 'error', nonce, code }
-  channel.postMessage(message)
-}
-
-function clearCompletionWatch(binding: ChannelBinding): void {
-  const watch = binding.completion
-  if (watch?.timer !== undefined) clearTimeout(watch.timer)
-  binding.completion = undefined
-}
-
-function scheduleCompletionWatch(
-  state: BridgeState,
-  binding: ChannelBinding,
-  sessionId: string,
-): void {
-  const watch = binding.completion
-  if (watch === undefined || watch.timer !== undefined) return
-  watch.timer = setTimeout(() => {
-    watch.timer = undefined
-    const session = state.sessions.list.getSnapshot().byId[sessionId]
-    if (session === undefined) {
-      clearCompletionWatch(binding)
-      postError(binding.channel, watch.nonce, 'SESSION_UNAVAILABLE')
-      return
+  async function requestPageKey(sessionId: string): Promise<string> {
+    if (disposed) throw new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED')
+    const sessionScope = deps.sessions.scope(sessionId)
+    if (sessionScope === undefined) throw new ResearchExpansionError('SESSION_UNAVAILABLE')
+    const cached = bySession.get(sessionId)
+    if (cached !== undefined) {
+      if (byPageKey.get(cached)?.sessionScope === sessionScope) return cached
+      releasePageKey(cached)
     }
-    if (session.running) {
-      watch.observedRunning = true
-      scheduleCompletionWatch(state, binding, sessionId)
-      return
-    }
-    if (!watch.observedRunning) {
-      scheduleCompletionWatch(state, binding, sessionId)
-      return
-    }
-    clearCompletionWatch(binding)
-    const completion: ResearchExpansionCompleteMessage = {
-      type: 'complete',
-      nonce: watch.nonce,
-    }
-    binding.channel.postMessage(completion)
-  }, RESEARCH_COMPLETION_POLL_MS)
-}
 
-function handleResearchExpansion(
-  state: BridgeState,
-  binding: ChannelBinding,
-  sessionId: string,
-  sessionScope: Context,
-  value: unknown,
-): void {
-  if (state.disposed || !isResearchExpansionRequest(value)) return
-  if (binding.completion !== undefined || binding.acceptedNonces.has(value.nonce)) return
-
-  const session = state.sessions.list.getSnapshot().byId[sessionId]
-  if (session === undefined) {
-    postError(binding.channel, value.nonce, 'SESSION_UNAVAILABLE')
-    return
-  }
-
-  const wasRunning = session.running
-  const status: ResearchExpansionAckMessage['status'] = wasRunning ? 'queued' : 'started'
-  binding.acceptedNonces.add(value.nonce)
-  binding.acceptedNonceQueue.push(value.nonce)
-  if (binding.acceptedNonceQueue.length > MAX_ACCEPTED_NONCES) {
-    const expiredNonce = binding.acceptedNonceQueue.shift()
-    if (expiredNonce !== undefined) binding.acceptedNonces.delete(expiredNonce)
-  }
-  try {
-    const input = state.conversation.input.for(sessionScope)
-    input.setDraft(value.prompt)
-    input.submit()
-    const afterSubmit = state.sessions.list.getSnapshot().byId[sessionId]
-    binding.completion = {
-      nonce: value.nonce,
-      observedRunning: wasRunning || afterSubmit?.running === true,
-      timer: undefined,
-    }
-    scheduleCompletionWatch(state, binding, sessionId)
-    const acknowledgement: ResearchExpansionAckMessage = {
-      type: 'ack',
-      nonce: value.nonce,
-      status,
-    }
-    binding.channel.postMessage(acknowledgement)
-  } catch {
-    clearCompletionWatch(binding)
-    postError(binding.channel, value.nonce, RESEARCH_EXPANSION_REJECTED_WIRE_CODE)
-  }
-}
-
-function closeBinding(state: BridgeState, binding: ChannelBinding): void {
-  clearCompletionWatch(binding)
-  binding.channel.removeEventListener('message', binding.listener)
-  binding.channel.close()
-  binding.acceptedNonces.clear()
-  binding.acceptedNonceQueue.length = 0
-  state.channels.delete(binding)
-}
-
-function notifyOpenFailure(conversation: ConversationPort, sessionScope: Context): void {
-  try {
-    conversation.input.for(sessionScope).notify('error', OPEN_FAILURE_MESSAGE)
-  } catch {
-    // Notification is best-effort; never leak the underlying launch error.
-  }
-}
-
-function closePopup(popup: Window): void {
-  try {
-    popup.close()
-  } catch {
-    // The browser may revoke the WindowProxy after creation.
-  }
-}
-
-async function finishLaunch(
-  state: BridgeState,
-  popup: Window,
-  sessionId: string,
-  sessionScope: Context,
-): Promise<void> {
-  let binding: ChannelBinding | undefined
-  try {
-    const response = await fetch(ROUTE_LAUNCH, {
+    const response = await doFetch(ROUTE_LAUNCH, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId }),
     })
-    if (!response.ok) throw new Error('launch rejected')
+    if (!response.ok) throw new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED')
     const body: unknown = await response.json()
-    if (!isLaunchBody(body)) throw new Error('invalid launch response')
-    const pageKey = pageKeyFromLaunchUrl(body.url)
-    if (pageKey === undefined || state.disposed) throw new Error('invalid launch binding')
-
-    const channel = new BroadcastChannel(channelNameForPageKey(pageKey))
-    const acceptedNonces = new Set<string>()
-    const acceptedNonceQueue: string[] = []
-    binding = {
-      channel,
-      acceptedNonces,
-      acceptedNonceQueue,
-      completion: undefined,
-      listener: (event) => {
-        if (binding !== undefined) {
-          handleResearchExpansion(state, binding, sessionId, sessionScope, event.data)
-        }
-      },
+    if (!isLaunchBody(body) || disposed) {
+      throw new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED')
     }
-    channel.addEventListener('message', binding.listener)
-    state.channels.add(binding)
-    popup.location.assign(body.url)
-  } catch {
-    if (binding !== undefined) closeBinding(state, binding)
-    closePopup(popup)
-    notifyOpenFailure(state.conversation, sessionScope)
+    if (deps.sessions.scope(sessionId) !== sessionScope) {
+      throw new ResearchExpansionError('SESSION_UNAVAILABLE')
+    }
+    byPageKey.set(body.pageKey, { pageKey: body.pageKey, sessionId, sessionScope })
+    bySession.set(sessionId, body.pageKey)
+    return body.pageKey
   }
-}
 
-function handleOpen(state: BridgeState): void {
-  if (state.disposed) return
-  const sessionId = state.sessions.list.getSnapshot().current
-  if (sessionId === undefined) return
+  function releasePageKey(pageKey: string): void {
+    const binding = byPageKey.get(pageKey)
+    byPageKey.delete(pageKey)
+    if (binding !== undefined && bySession.get(binding.sessionId) === pageKey) {
+      bySession.delete(binding.sessionId)
+    }
+  }
 
-  let popup: Window | null = null
-  try {
-    popup = window.open('about:blank', '_blank')
-  } catch {
-    // Continue so the originating composer can receive a bounded error.
+  function clearWatch(watch: CompletionWatch): void {
+    if (watch.timer !== undefined) clearTimeout(watch.timer)
+    watch.timer = undefined
   }
-  const sessionScope = state.sessions.scope(sessionId)
-  if (sessionScope === undefined) {
-    if (popup !== null) closePopup(popup)
-    return
+
+  function scheduleWatch(watch: CompletionWatch): void {
+    if (disposed || watch.timer !== undefined) return
+    watch.timer = setTimeout(() => {
+      watch.timer = undefined
+      const session = deps.sessions.list.getSnapshot().byId[watch.sessionId]
+      if (session === undefined) {
+        clearWatch(watch)
+        watches.delete(watch.sessionId)
+        watch.reject(new ResearchExpansionError('SESSION_UNAVAILABLE'))
+        return
+      }
+      if (session.running) {
+        watch.observedRunning = true
+        scheduleWatch(watch)
+        return
+      }
+      if (!watch.observedRunning) {
+        scheduleWatch(watch)
+        return
+      }
+      clearWatch(watch)
+      watches.delete(watch.sessionId)
+      watch.resolve()
+    }, RESEARCH_COMPLETION_POLL_MS)
   }
-  if (popup === null) {
-    notifyOpenFailure(state.conversation, sessionScope)
-    return
+
+  function submitResearchExpansion(pageKey: string, prompt: string): Promise<void> {
+    if (disposed) {
+      return Promise.reject(new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED'))
+    }
+    const binding = byPageKey.get(pageKey)
+    if (binding === undefined || watches.has(binding.sessionId)) {
+      return Promise.reject(new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED'))
+    }
+    if (
+      typeof prompt !== 'string'
+      || prompt.length === 0
+      || byteLengthOf(prompt) > MAX_PROMPT_BYTES
+    ) {
+      return Promise.reject(new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED'))
+    }
+    const session = deps.sessions.list.getSnapshot().byId[binding.sessionId]
+    if (session === undefined || deps.sessions.scope(binding.sessionId) !== binding.sessionScope) {
+      return Promise.reject(new ResearchExpansionError('SESSION_UNAVAILABLE'))
+    }
+    return new Promise<void>((resolve, reject) => {
+      try {
+        const input = deps.conversation.input.for(binding.sessionScope)
+        input.setDraft(prompt)
+        input.submit()
+        const afterSubmit = deps.sessions.list.getSnapshot().byId[binding.sessionId]
+        const watch: CompletionWatch = {
+          sessionId: binding.sessionId,
+          observedRunning: session.running || afterSubmit?.running === true,
+          timer: undefined,
+          resolve,
+          reject,
+        }
+        watches.set(binding.sessionId, watch)
+        scheduleWatch(watch)
+      } catch {
+        reject(new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED'))
+      }
+    })
   }
-  void finishLaunch(state, popup, sessionId, sessionScope)
+
+  function dispose(): void {
+    disposed = true
+    for (const watch of watches.values()) {
+      clearWatch(watch)
+      watch.reject(new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED'))
+    }
+    watches.clear()
+    byPageKey.clear()
+    bySession.clear()
+  }
+
+  return { requestPageKey, releasePageKey, submitResearchExpansion, dispose }
 }
 
 function GraphIcon(props: { readonly size: number }): ReactElement {
@@ -360,8 +356,8 @@ function setOpenButtonHover(
     : 'transparent'
 }
 
-function OpenGraphButton(props: {
-  readonly state: BridgeState
+function openGraphButtonElement(props: {
+  readonly onClick: () => void
   readonly wide: boolean
 }): ReactElement {
   return createElement(
@@ -370,7 +366,7 @@ function OpenGraphButton(props: {
       'aria-label': OPEN_ACTION_LABEL,
       'data-scifork-sidebar-action': props.wide ? 'wide' : 'rail',
       type: 'button',
-      onClick: () => handleOpen(props.state),
+      onClick: props.onClick,
       onMouseEnter: (event: ReactMouseEvent<HTMLButtonElement>) => {
         setOpenButtonHover(event, true)
       },
@@ -398,24 +394,128 @@ function OpenGraphButton(props: {
   )
 }
 
+function OpenGraphAction(props: SidebarFooterActionOwnerProps & { onClick(): void }): ReactElement {
+  const [failed, setFailed] = useState(false)
+  return createElement(
+    Fragment,
+    null,
+    openGraphButtonElement({
+      wide: props.wide,
+      onClick: () => {
+        try {
+          props.onClick()
+          setFailed(false)
+        } catch {
+          setFailed(true)
+        }
+      },
+    }),
+    failed ? createElement('span', { role: 'status' }, OPEN_FAILURE_MESSAGE) : null,
+  )
+}
+
+/**
+ * Tab body: mounts the Companion tree with a bridge-held Page Key. The key
+ * is minted on mount and released on unmount (keepMounted: false), so the
+ * body lifecycle owns the key lifecycle.
+ */
+function ResearchGraphTabBody(props: SidebarTabBodyProps & { readonly bridge: Bridge }): ReactElement {
+  const { tab } = props.useTabInfo()
+  const [state, setState] = useState<
+    { phase: 'loading' | 'failed' } | { phase: 'ready'; pageKey: string }
+  >({ phase: 'loading' })
+  useEffect(() => {
+    let active = true
+    let heldKey: string | undefined
+    props.bridge.requestPageKey(props.sessionId).then(
+      (key) => {
+        if (!active) {
+          props.bridge.releasePageKey(key)
+          return
+        }
+        heldKey = key
+        setState({ phase: 'ready', pageKey: key })
+      },
+      () => {
+        if (active) setState({ phase: 'failed' })
+      },
+    )
+    return () => {
+      active = false
+      if (heldKey !== undefined) props.bridge.releasePageKey(heldKey)
+    }
+  }, [props.bridge, props.sessionId])
+  if (state.phase !== 'ready') {
+    return createElement('div', {
+      className: 'scifork-root',
+      'data-scifork-research-graph-tab': state.phase,
+      role: 'status',
+      style: { padding: 16 },
+    }, state.phase === 'loading'
+      ? 'Loading Research Graph…'
+      : 'Research Graph is unavailable. Close this tab and reopen it from your DSH session.')
+  }
+  return createElement(CompanionApp, { pageKey: state.pageKey, bridge: props.bridge, visible: tab.visible })
+}
+
 export function apply(ctx: Context): void {
+  // slots/sessions/conversation are boot-ready baseline services. The
+  // sidebarRightTabs/sidebarRight services are PROVIDED at runtime by the
+  // ui-sidebar-right client plugin (whose own apply waits on `layout`), so
+  // they may not exist when this apply runs; Cordis re-fires a runtime
+  // `inject` once each named service becomes available (the same mechanism
+  // the shipped dsh-client-modules consumer uses for webServer). Waiting
+  // here removes the load-order race that silently disabled the plugin.
+  ctx.inject(['slots', 'sessions', 'conversation', 'sidebarRightTabs', 'sidebarRight'], () => {
+    applyOnceAvailable(ctx)
+  })
+}
+
+function applyOnceAvailable(ctx: Context): void {
   const slots = ctx.get('slots') as SlotsPort | undefined
   const sessions = ctx.get('sessions') as ClientSessionsPort | undefined
   const conversation = ctx.get('conversation') as ConversationPort | undefined
-  if (slots === undefined || sessions === undefined || conversation === undefined) return
-
-  const state: BridgeState = {
-    sessions,
-    conversation,
-    channels: new Set(),
-    disposed: false,
+  const sidebarRightTabs = ctx.get('sidebarRightTabs') as SidebarRightTabsPort | undefined
+  const sidebarRight = ctx.get('sidebarRight') as SidebarRightPort | undefined
+  if (
+    slots === undefined
+    || sessions === undefined
+    || conversation === undefined
+    || sidebarRightTabs === undefined
+    || sidebarRight === undefined
+  ) {
+    return
   }
+
+  const deps: BridgeDeps = { sessions, conversation }
+  const bridge = createBridge(deps)
+
+  ctx.effect(() => sidebarRightTabs.register({
+    id: TAB_TYPE_ID,
+    kind: TAB_KIND,
+    keepMounted: false,
+    title: () => TAB_TITLE,
+    guide: [
+      {
+        id: GUIDE_ENTRY_ID,
+        order: 100,
+        title: () => TAB_TITLE,
+        description: () => GUIDE_DESCRIPTION,
+      },
+    ],
+  }))
+
   slots.inject('sidebar.footer.action', () => slots.register(
     { name: 'sidebar.footer.action', id: 'scifork-open', order: 100, label: OPEN_ACTION_TEXT },
-    ({ wide }) => createElement(OpenGraphButton, { state, wide }),
+    ({ wide }) => createElement(OpenGraphAction, { wide, onClick: () => sidebarRight.openTab(TAB_KIND) }),
   ))
-  ctx.effect(() => () => {
-    state.disposed = true
-    for (const binding of [...state.channels]) closeBinding(state, binding)
-  })
+
+  slots.inject('sidebar.right.pane.tab', () => slots.register(
+    { name: 'sidebar.right.pane.tab', key: TAB_TYPE_ID },
+    ({ sessionId, useTabInfo }) => createElement(ResearchGraphTabBody, {
+      key: sessionId, bridge, sessionId, useTabInfo,
+    }),
+  ))
+
+  ctx.effect(() => () => bridge.dispose())
 }

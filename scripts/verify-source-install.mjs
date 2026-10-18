@@ -46,11 +46,7 @@ try {
   const required = [
     'dist/host/index.js',
     'dist/client.js',
-    'dist/companion/index.html',
-    'dist/companion/app.js',
-    'dist/companion/styles.css',
-    'skills/pubmed-search/helper.mjs',
-    'skills/pubmed-search/SKILL.md',
+    'dist/client.css',
     'skills/scifork-research/SKILL.md',
   ]
   const missing = required.filter((path) => !existsSync(join(installedRoot, path)))

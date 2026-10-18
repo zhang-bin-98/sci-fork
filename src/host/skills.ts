@@ -1,20 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { SkillResourceBase } from './contracts.js'
 
 /**
  * Packaged skills shipped inside the bundle as `skills/<name>/SKILL.md`.
  * The DSH filesystem skill provider never scans npm packages, so the Host
  * registers each skill with ctx.skills.register() during apply(). The files
- * remain the single source of the instruction body.
+ * remain the single source of the instruction body. Literature retrieval is
+ * external (M4): no retrieval skill ships with the package.
  */
 export interface PackagedSkillSource {
   name: string
   description: string
   whenToUse?: string
   file: string
-  directoryResources?: readonly string[]
 }
 
 export const PACKAGED_SKILLS = [
@@ -23,17 +22,8 @@ export const PACKAGED_SKILLS = [
     description:
       'Explicit current-Chat 深度研究, 深度调研, deep research, progressive, iterative, or multi-round requests mean a multi-level Progressive Research Run, not Evidence-only enrichment: plan at least two levels and continue through exactly one new Hypothesis without another click or import confirmation. Otherwise format retrieval/PDF results already in the current DSH Chat context for one-step Research Expansion/import; critique or delete exact current/selected/focused branches. This Skill does not retrieve.',
     whenToUse:
-      'Use after a completed retrieval phase for Research Expansion or evidence import, for an explicit current-Chat request to orchestrate Progressive Research on an existing graph, or directly for graph critique or deletion including requests about the current, selected, or focused entity.',
+      'Use after a completed external retrieval phase for Research Expansion or evidence import, for an explicit current-Chat request to orchestrate Progressive Research on an existing graph, or directly for graph critique or deletion including requests about the current, selected, or focused entity.',
     file: 'scifork-research/SKILL.md',
-  },
-  {
-    name: 'pubmed-search',
-    description:
-      'Run concise PubMed/Entrez search or PMID/DOI lookup; complete retrieval before loading scifork-research, and do not load both while retrieval is unfinished.',
-    whenToUse:
-      'Use first when the task needs PubMed literature metadata, PMID/DOI lookup, or paged search results.',
-    file: 'pubmed-search/SKILL.md',
-    directoryResources: ['helper.mjs'],
   },
 ] as const satisfies readonly PackagedSkillSource[]
 
@@ -43,7 +33,6 @@ export interface LoadedPackagedSkill {
   whenToUse?: string
   content: string
   source: 'runtime'
-  resourceBase?: SkillResourceBase
 }
 
 /**
@@ -73,17 +62,6 @@ export function loadPackagedSkills(
       source: 'runtime',
     }
     if (entry.whenToUse !== undefined) skill.whenToUse = entry.whenToUse
-    if (entry.directoryResources !== undefined) {
-      const resourceDirectory = dirname(skillPath)
-      for (const resource of entry.directoryResources) {
-        if (!existsSync(join(resourceDirectory, resource))) {
-          throw new Error(
-            `scifork: failed to read packaged skill resource ${entry.name}/${resource}`,
-          )
-        }
-      }
-      skill.resourceBase = { kind: 'directory', path: resourceDirectory }
-    }
     return skill
   })
 }

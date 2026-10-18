@@ -1,6 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { createHash } from 'node:crypto'
-import { dirname } from 'node:path'
 import type {
   CommandsPort,
   FsPort,
@@ -14,7 +13,6 @@ import type {
   WebServerPort,
 } from './contracts.js'
 import { registerResearchCommands } from './commands.js'
-import { companionAssetsFromPackageRoot } from './companion-assets.js'
 import { CompanionService } from './companion-service.js'
 import { PageKeyStore } from './page-keys.js'
 import { findSkillsRoot, loadPackagedSkills } from './skills.js'
@@ -31,7 +29,6 @@ export const name = 'scifork'
  */
 export const inject = [
   'skills',
-  'webServer',
   'subprocess',
   'fs',
   'storageDomain',
@@ -51,7 +48,6 @@ const sha256 = (content: string): string => createHash('sha256').update(content,
 export async function apply(ctx: Context): Promise<void> {
   // inject guarantees all nine services exist before activation.
   const skills = ctx.get('skills') as SkillsPort
-  const webServer = ctx.get('webServer') as WebServerPort
   const subprocess = ctx.get('subprocess') as SubprocessPort
   const fs = ctx.get('fs') as FsPort
   const storageDomain = ctx.get('storageDomain') as StorageDomainPort
@@ -59,9 +55,6 @@ export async function apply(ctx: Context): Promise<void> {
   const commands = ctx.get('commands') as CommandsPort
   const sessions = ctx.get('sessions') as SessionsPort
   const sandboxPolicy = ctx.get('sandboxPolicy') as SandboxPolicyPort
-  if (webServer.host !== '127.0.0.1') {
-    throw new Error('scifork: DSH Web must listen on 127.0.0.1')
-  }
   const skillsRoot = findSkillsRoot(import.meta.url)
   if (skillsRoot === undefined) {
     throw new Error('scifork: packaged skills directory not found')
@@ -69,7 +62,6 @@ export async function apply(ctx: Context): Promise<void> {
   for (const skill of loadPackagedSkills(skillsRoot)) {
     ctx.effect(() => skills.register(skill))
   }
-  const packageRoot = dirname(skillsRoot)
 
   const storage = await storageDomain.open(uiStateDomainSpec())
   ctx.effect(() => () => {
@@ -85,10 +77,19 @@ export async function apply(ctx: Context): Promise<void> {
     pageKeys.revokeSession(session.id)
   })
   const api = new CompanionService({ ...researchDeps, storage, sessions, pageKeys })
-  const assets = companionAssetsFromPackageRoot(packageRoot)
-  for (const route of sciforkRoutes({ api, assets })) {
-    ctx.effect(() => webServer.register(route))
-  }
+  // DSH 0.2.1 boots the web profile before the app creates the webServer
+  // service; waiting through the runtime inject (the same pattern as the
+  // shipped dsh-client-modules consumer) keeps the boot graph clean while
+  // still failing closed unless the listener is loopback.
+  ctx.inject(['webServer'], () => {
+    const webServer = ctx.get('webServer') as WebServerPort
+    if (webServer.host !== '127.0.0.1') {
+      throw new Error('scifork: DSH Web must listen on 127.0.0.1')
+    }
+    for (const route of sciforkRoutes({ api })) {
+      ctx.effect(() => webServer.register(route))
+    }
+  })
 
   ctx.effect(() => registerResearchTools({ ...researchMutationDeps, storage, tools }))
   ctx.effect(() => registerResearchCommands({ ...researchMutationDeps, commands }))

@@ -19,9 +19,11 @@ goes through SciFork typed tools and the authorization rules below.
 
 For evidence import:
 
-1. Load and use one retrieval/PDF Skill. Keep its raw result in Chat context.
-2. Load this Skill and record the actual retrieval Skill name in
-   `producer.retrievalSkill`.
+1. Complete one external retrieval/PDF phase (an installed retrieval plugin, the
+   harness web search fallback, or user-pasted source text) and keep the raw
+   result in Chat context.
+2. Load this Skill and record the actual source in `producer.retrievalSkill`
+   (the plugin name such as `dsh-pubmed`, `dsh-web-search`, or `user-provided`).
 3. Emit one complete `ResearchImportDraft`. Every importable candidate includes
    the Citation Snapshot and machine-review rationale required below.
 4. After SciFork validation, convert each qualifying candidate to one
@@ -137,10 +139,13 @@ and the orchestrating model has completed a real retrieval phase. Page load,
 polling, model output, an earlier click, and background events do not authorize
 the step. A click does not authorize a Progressive Research Run.
 
-The packaged `pubmed-search` Skill is the default retrieval source. The
-orchestrating model must complete `search` and then `lookup` for promising PMID or
-DOI records before loading this Skill. This Skill never calls `pubmed-search`.
-When actual results are absent, stop without graph mutation.
+Retrieval is external to this package: complete an installed retrieval plugin
+(for example `dsh-pubmed`) before loading this Skill. When no plugin is
+installed or its results are insufficient, fall back to the harness web
+search, then to explicitly user-pasted source text. Every level must resolve a
+qualifying PMID or DOI plus real source text; otherwise stop without graph
+mutation. Record the actual source in `producer.retrievalSkill`. This Skill
+never performs retrieval and never calls another Skill.
 
 1. Read the latest Focus and its full entity. For a Research Question, use its
    returned `framedEntities` and outgoing framing neighbors. For other anchors use `neighbors` with
@@ -212,9 +217,11 @@ a `visited` set, then alternates complete phases:
 
 1. Read the current Research Question or Hypothesis plus directional
    `neighbors` (`incoming`, `outgoing`, or `both`).
-2. Form one focused retrieval question. Complete one retrieval/PDF Skill and keep
-   its actual results in the current Chat. The default is `pubmed-search` with
-   `search` followed by `lookup`, but honor a user-selected reliable source.
+2. Form one focused retrieval question. Complete one external retrieval/PDF
+   phase and keep its actual results in the current Chat: an installed
+   retrieval plugin (for example `dsh-pubmed`), the harness web search
+   fallback, or a user-selected reliable source, honoring the same
+   qualifying-source bar as the Research Expansion Step.
 3. Load this Skill and save all zero to five novel branches grounded by
    qualifying source text. Apply the same Evidence-first machine review,
    low-confidence Node, and immediate scientific Edge or Framing Link rules as

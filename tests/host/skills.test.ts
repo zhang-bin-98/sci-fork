@@ -10,16 +10,10 @@ function makeSkillRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'scifork-skills-'))
   tempDirs.push(root)
   mkdirSync(join(root, 'scifork-research'), { recursive: true })
-  mkdirSync(join(root, 'pubmed-search'), { recursive: true })
   writeFileSync(
     join(root, 'scifork-research', 'SKILL.md'),
     '# SciFork Research\n\nM0 stub body.\n',
   )
-  writeFileSync(
-    join(root, 'pubmed-search', 'SKILL.md'),
-    '# PubMed Search\n\nM0 stub body.\n',
-  )
-  writeFileSync(join(root, 'pubmed-search', 'helper.mjs'), 'export {}\n')
   return root
 }
 
@@ -28,32 +22,21 @@ afterEach(() => {
 })
 
 describe('loadPackagedSkills', () => {
-  it('loads both packaged skills with runtime source', () => {
+  it('loads the single packaged skill with runtime source and no resourceBase', () => {
     const skills = loadPackagedSkills(makeSkillRoot())
-    expect(skills).toHaveLength(2)
-    expect(skills.map((skill) => skill.name)).toEqual([
-      'scifork-research',
-      'pubmed-search',
-    ])
+    expect(skills).toHaveLength(1)
+    expect(skills.map((skill) => skill.name)).toEqual(['scifork-research'])
     for (const skill of skills) {
       expect(skill.source).toBe('runtime')
       expect(skill.description.length).toBeGreaterThan(0)
       expect(skill.content).toContain('M0 stub body.')
+      expect('resourceBase' in skill).toBe(false)
     }
-    expect(skills.find((skill) => skill.name === 'scifork-research')?.resourceBase)
-      .toBeUndefined()
-    expect(skills.find((skill) => skill.name === 'pubmed-search')?.resourceBase)
-      .toEqual({
-        kind: 'directory',
-        path: join(tempDirs.at(-1)!, 'pubmed-search'),
-      })
   })
 
-  it('publishes retrieval-before-formatting in catalog descriptions', () => {
+  it('publishes retrieval-before-formatting in the catalog description', () => {
     const research = PACKAGED_SKILLS.find((skill) => skill.name === 'scifork-research')
-    const pubmed = PACKAGED_SKILLS.find((skill) => skill.name === 'pubmed-search')
-    expect(pubmed?.description).toMatch(/complete .* before .*scifork-research/i)
-    expect(pubmed?.description).toMatch(/do not load both/i)
+    expect(PACKAGED_SKILLS).toHaveLength(1)
     expect(research?.description).toMatch(/already .*current .*Chat context/i)
     expect(research?.description).toMatch(/does not .*retriev/i)
     expect(research?.description).toMatch(/research expansion/i)
@@ -66,6 +49,7 @@ describe('loadPackagedSkills', () => {
     expect(research?.whenToUse).toMatch(/existing .*graph/i)
     expect(research?.whenToUse).toMatch(/explicit .*Chat/i)
     expect(research?.whenToUse).toMatch(/current, selected, or focused/i)
+    expect(research?.whenToUse).toMatch(/external retrieval/i)
   })
 
   it('keeps skill names kebab-case', () => {
@@ -76,9 +60,9 @@ describe('loadPackagedSkills', () => {
 
   it('throws when a declared skill file is missing', () => {
     const root = makeSkillRoot()
-    rmSync(join(root, 'pubmed-search', 'SKILL.md'))
+    rmSync(join(root, 'scifork-research', 'SKILL.md'))
     expect(() => loadPackagedSkills(root)).toThrow(
-      'scifork: failed to read packaged skill pubmed-search',
+      'scifork: failed to read packaged skill scifork-research',
     )
 
     try {
@@ -92,19 +76,5 @@ describe('loadPackagedSkills', () => {
     const root = makeSkillRoot()
     writeFileSync(join(root, 'scifork-research', 'SKILL.md'), '   \n')
     expect(() => loadPackagedSkills(root)).toThrow()
-  })
-
-  it('fails without disclosing the package path when helper.mjs is missing', () => {
-    const root = makeSkillRoot()
-    rmSync(join(root, 'pubmed-search', 'helper.mjs'))
-    expect(() => loadPackagedSkills(root)).toThrow(
-      'scifork: failed to read packaged skill resource pubmed-search/helper.mjs',
-    )
-
-    try {
-      loadPackagedSkills(root)
-    } catch (error) {
-      expect((error as Error).message).not.toContain(root)
-    }
   })
 })

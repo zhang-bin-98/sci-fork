@@ -1,6 +1,10 @@
 # SciFork M3: Research Skills and PubMed helper
 
 > Status: v0.0.1 implemented; release E2E passed on 2026-08-30; interface cleanup updated on 2026-09-03
+> Superseded（部分，2026-10-18）：`pubmed-search` Skill 与 PubMed helper 条款由
+> [检索外置](./external-retrieval-skills.md) 取代（移除 packaged 检索 Skill，检索由
+> 外部插件承担）；`SciFork Research` Skill、Draft 契约与扩展语义继续有效。
+> 基线 `0.1.1-rc.2` 为历史钉住，现行基线为 `0.2.1-rc.2`。
 > Parent design: [product design v0.11](../scifork-product-design.md) sections 7-9; [software architecture v0.12](../scifork-software-architecture.md) sections 10 and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`
 > Expansion semantics: [literature-grounded research expansion](progressive-research-expansion.md).

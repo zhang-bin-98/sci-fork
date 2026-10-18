@@ -6,11 +6,13 @@ interface VisibilityPort {
 
 export interface VisiblePollingOptions {
   document: VisibilityPort
+  visible: boolean
   readSnapshot(): Promise<unknown>
   intervalMs?: number
 }
 
 export function startVisiblePolling(options: VisiblePollingOptions): () => void {
+  if (!options.visible) return () => undefined
   const intervalMs = options.intervalMs ?? 5_000
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false

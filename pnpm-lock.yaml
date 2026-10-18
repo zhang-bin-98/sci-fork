@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: 4.0.1
       gray-matter:
         specifier: 4.0.3
         version: 4.0.3
@@ -21,9 +24,6 @@ importers:
       '@dagrejs/dagre':
         specifier: ^3.1.1
         version: 3.1.1
-      '@deepseek-ai/cordis':
-        specifier: 4.0.1
-        version: 4.0.1
       '@tailwindcss/cli':
         specifier: ^4.3.3
         version: 4.3.3

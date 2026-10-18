@@ -1,5 +1,5 @@
 import { buildSync } from 'esbuild'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 /**
  * Build the browser client bundle in the exact shape the DSH client module
@@ -19,6 +19,7 @@ const result = buildSync({
   format: 'cjs',
   platform: 'browser',
   target: 'es2022',
+  minify: true,
   external: ['react', '@deepseek-ai/cordis'],
   sourcemap: 'external',
   write: false,
@@ -28,6 +29,17 @@ const code = result.outputFiles.find((file) => file.path.endsWith('client.js'))
 const map = result.outputFiles.find((file) => file.path.endsWith('client.js.map'))
 if (code === undefined) throw new Error('scifork: client build produced no bundle')
 
+// The Tailwind stylesheet (built to dist/client.css before this script) is
+// embedded into the factory and injected once on load; the plugin ships no
+// static style route.
+const stylesheet = existsSync('dist/client.css') ? readFileSync('dist/client.css', 'utf8') : ''
+const styleInjection = stylesheet === '' ? '' : (
+  '(function(){var s=document.createElement("style");' +
+  's.setAttribute("data-scifork","companion");' +
+  'document.head.appendChild(s);' +
+  's.textContent=' + JSON.stringify(stylesheet) + ';})();'
+)
+
 const wrapped = [
   'window.__ModuleLoader__.load({',
   '\tid: "dsh-scifork",',
@@ -35,6 +47,7 @@ const wrapped = [
   '\t\tvar module = { exports: {} };',
   '\t\tvar exports = module.exports;',
   '\t\tObject.defineProperty(exports, Symbol.toStringTag, { value: "Module" });',
+  styleInjection,
   code.text,
   '\t\treturn module.exports;',
   '\t}',
@@ -45,4 +58,7 @@ const wrapped = [
 mkdirSync('dist', { recursive: true })
 writeFileSync('dist/client.js', wrapped)
 if (map !== undefined) writeFileSync('dist/client.js.map', map.text)
-console.log(`scifork: built dist/client.js (${Buffer.byteLength(wrapped)} bytes)`)
+console.log(
+  `scifork: built dist/client.js (${Buffer.byteLength(wrapped)} bytes` +
+    `${stylesheet === '' ? ' without stylesheet' : ` incl. ${Buffer.byteLength(stylesheet)} bytes of css`})`,
+)

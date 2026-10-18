@@ -189,16 +189,15 @@ async function setup(files = entries()) {
 }
 
 describe('CompanionService launch and binding', () => {
-  it('derives the project only from the live Session cwd and returns a fragment URL', async () => {
+  it('derives the project only from the live Session cwd and returns the key itself', async () => {
     const { service, pageKeys } = await setup()
 
     const result = await service.launch('session-1')
 
     expect(result).toMatchObject({ ok: true })
     if (!result.ok) throw new Error('launch failed')
-    expect(result.url).toMatch(/^\/scifork#key=[A-Za-z0-9_-]{43}$/)
-    expect(result.url).not.toContain('?')
-    const key = new URL(result.url, 'http://127.0.0.1').hash.slice('#key='.length)
+    expect(result.pageKey).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    const key = result.pageKey
     expect(pageKeys.resolve(key)).toEqual({
       sessionId: 'session-1',
       sessionCwd: '/project',
@@ -226,7 +225,7 @@ describe('CompanionService launch and binding', () => {
     const { service, sessions, fs, pageKeys } = await setup()
     const launched = await service.launch('session-1')
     if (!launched.ok) throw new Error('launch failed')
-    const key = launched.url.split('#key=')[1]!
+    const key = launched.pageKey
 
     sessions.records.delete('session-1')
     await expect(service.snapshot(key)).resolves.toMatchObject({
@@ -238,7 +237,7 @@ describe('CompanionService launch and binding', () => {
     sessions.records.set('session-1', { id: 'session-1', header: { cwd: '/project' } })
     const relaunched = await service.launch('session-1')
     if (!relaunched.ok) throw new Error('relaunch failed')
-    const nextKey = relaunched.url.split('#key=')[1]!
+    const nextKey = relaunched.pageKey
     fs.writeExternal(
       '/project/research.json',
       JSON.stringify({ schema_version: 1, project_id: OTHER_PROJECT_ID, name: 'Replacement' }),
@@ -259,7 +258,7 @@ describe('CompanionService reads', () => {
     setupState = await setup()
     const launched = await setupState.service.launch('session-1')
     if (!launched.ok) throw new Error('launch failed')
-    key = launched.url.split('#key=')[1]!
+    key = launched.pageKey
   })
 
   it('returns a body-free projection with bounded labels and edge Evidence Gap', async () => {
@@ -308,7 +307,7 @@ describe('CompanionService reads', () => {
     })
     const launched = await state.service.launch('session-1')
     if (!launched.ok) throw new Error('launch failed')
-    const localKey = launched.url.split('#key=')[1]!
+    const localKey = launched.pageKey
 
     const snapshot = await state.service.snapshot(localKey)
     if (!snapshot.ok || snapshot.graph === undefined) throw new Error('snapshot failed')
@@ -380,7 +379,7 @@ describe('CompanionService reads', () => {
     })
     const launched = await state.service.launch('session-1')
     if (!launched.ok) throw new Error('launch failed')
-    const localKey = launched.url.split('#key=')[1]!
+    const localKey = launched.pageKey
 
     const snapshot = await state.service.snapshot(localKey)
     if (!snapshot.ok || snapshot.graph === undefined) throw new Error('snapshot failed')

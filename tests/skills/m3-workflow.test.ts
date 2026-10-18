@@ -79,8 +79,7 @@ describe('M3 retrieval to import workflow', () => {
     expect(planned.issues[0]?.code).toBe('INVALID_IMPORT_DRAFT')
   })
 
-  it('ships the helper and security policy in the package source tree', () => {
-    expect(readFileSync(join(process.cwd(), 'skills', 'pubmed-search', 'helper.mjs'), 'utf8')).toContain('NCBI_API_KEY')
+  it('ships the loopback security policy in the package source tree', () => {
     expect(readFileSync(join(process.cwd(), 'SECURITY.md'), 'utf8')).toContain('127.0.0.1')
   })
 })

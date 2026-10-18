@@ -33,19 +33,17 @@ try {
 const files = new Set(metadata.files?.map((entry) => entry.path))
 const required = [
   'dist/client.js',
-  'dist/companion/app.js',
-  'dist/companion/index.html',
-  'dist/companion/styles.css',
+  'dist/client.css',
   'dist/host/index.js',
   'LICENSE',
   'README.md',
   'README.zh-CN.md',
   'SECURITY.md',
   'docs/specs/m3-research.md',
+  'docs/specs/dsh-desktop-right-sidebar.md',
+  'docs/specs/external-retrieval-skills.md',
   'docs/specs/research-questions-machine-review.md',
   'docs/specs/contextual-evidence-and-question-intake.md',
-  'skills/pubmed-search/helper.mjs',
-  'skills/pubmed-search/SKILL.md',
   'skills/scifork-research/SKILL.md',
 ]
 const missing = required.filter((path) => !files.has(path))
