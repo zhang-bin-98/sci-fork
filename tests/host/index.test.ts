@@ -146,15 +146,10 @@ describe('host apply', () => {
     await apply(fake.ctx as never)
     expect(fake.registeredSkills.map((register) => register().name)).toEqual([
       'scifork-research',
-      'pubmed-search',
     ])
-    expect(fake.registeredSkills.map((register) => register().resourceBase)).toEqual([
-      undefined,
-      {
-        kind: 'directory',
-        path: expect.stringMatching(/[\\/]skills[\\/]pubmed-search$/),
-      },
-    ])
+    for (const register of fake.registeredSkills) {
+      expect('resourceBase' in register()).toBe(false)
+    }
     expect(fake.registeredRoutes.map((route) => route.path)).toEqual([
       '/scifork/api/launch',
       '/scifork/api/snapshot',
@@ -188,8 +183,8 @@ describe('host apply', () => {
   it('keeps every registration disposable for unload', async () => {
     const fake = fakeContext()
     await apply(fake.ctx as never)
-    // 2 skills + 4 JSON routes + 1 domain close + 1 Page Key clear + tools + commands
-    expect(fake.disposers).toHaveLength(10)
+    // 1 skill + 4 JSON routes + 1 domain close + 1 Page Key clear + tools + commands
+    expect(fake.disposers).toHaveLength(9)
     for (const dispose of fake.disposers) dispose()
     expect(fake.storageDomain.closedCount).toBe(1)
     expect(fake.tools.disposals).toHaveLength(3)

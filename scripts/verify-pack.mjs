@@ -44,8 +44,6 @@ const required = [
   'docs/specs/m3-research.md',
   'docs/specs/research-questions-machine-review.md',
   'docs/specs/contextual-evidence-and-question-intake.md',
-  'skills/pubmed-search/helper.mjs',
-  'skills/pubmed-search/SKILL.md',
   'skills/scifork-research/SKILL.md',
 ]
 const missing = required.filter((path) => !files.has(path))
