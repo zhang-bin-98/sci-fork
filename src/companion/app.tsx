@@ -267,8 +267,8 @@ interface GraphPaneProps {
 function useWideGraphLayout(paneRef: React.RefObject<HTMLElement | null>): boolean {
   const [wide, setWide] = React.useState(false)
   React.useEffect(() => {
-    const element = paneRef.current
-    if (element === null || typeof ResizeObserver === 'undefined') return undefined
+    const element = paneRef.current?.closest('.scifork-root')
+    if (element == null || typeof ResizeObserver === 'undefined') return undefined
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) setWide(entry.contentRect.width >= 768)
     })
@@ -314,10 +314,9 @@ export function GraphViewControl(props: {
 }
 
 function GraphPane(props: GraphPaneProps): React.ReactElement {
-  const rootRef = React.useRef<HTMLElement | null>(null)
-  const wide = useWideGraphLayout(rootRef)
-  const direction = graphDirectionForViewport(wide)
   const paneRef = React.useRef<HTMLElement | null>(null)
+  const wide = useWideGraphLayout(paneRef)
+  const direction = graphDirectionForViewport(wide)
   const [flow, setFlow] = React.useState<
     ReactFlowInstance<EntityFlowNode, RelationFlowEdge> | undefined
   >()
