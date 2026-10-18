@@ -1,5 +1,6 @@
 import { buildSync } from 'esbuild'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { scopeCss } from './scope-css.mjs'
 
 /**
  * Build the browser client bundle in the exact shape the DSH client module
@@ -31,8 +32,9 @@ if (code === undefined) throw new Error('scifork: client build produced no bundl
 
 // The Tailwind stylesheet (built to dist/client.css before this script) is
 // embedded into the factory and injected once on load; the plugin ships no
-// static style route.
-const stylesheet = existsSync('dist/client.css') ? readFileSync('dist/client.css', 'utf8') : ''
+// static style route. Every generated rule is scoped under the Companion
+// container so the injection defines no global class names inside DSH.
+const stylesheet = existsSync('dist/client.css') ? scopeCss(readFileSync('dist/client.css', 'utf8')) : ''
 const styleInjection = stylesheet === '' ? '' : (
   '(function(){var s=document.createElement("style");' +
   's.setAttribute("data-scifork","companion");' +
