@@ -791,10 +791,13 @@ SciFork 不提供 Back/Forward，不维护 checkpoint 栈、undo storage 或恢�
 
 - v0.2 仅允许 DSH（桌面端与 Web）监听 `127.0.0.1`；Host 在 WebServer 为
   `0.0.0.0` 时 fail closed，不依赖可伪造的 `Host` Header 代替监听地址检查。
-- Companion 与 API 同源，不启用 CORS；JSON POST 必须携带与
-  当前 `Host` 的 scheme + authority 精确同源的 `Origin`。桌面端渲染进程在
-  `dsh-app://` 协议下的实际 `Origin` 语义由迁移 spike 钉住并纳入契约声明；
-  校验不满足即拒绝请求（fail closed），不放宽同源规则迁就桌面端。
+- Companion 与 API 同源，不启用 CORS；浏览器 JSON POST 必须携带与
+  当前 `Host` 的 scheme + authority 精确同源的 `Origin`。桌面渲染进程
+  （`dsh-app://` 主框架）的 loopback fetch 不携带 `Origin` 头
+  （0.2.1-rc.2 真实桌面实测），因此 Origin 缺失的 loopback 请求放行——
+  浏览器 POST 总是携带 Origin，缺失即非浏览器本机调用；其余校验
+  （loopback Host、数字 loopback socket、媒体类型、体积上限）不变，
+  携带错误 `Origin` 的请求仍被拒绝。
 - JSON POST 验证 Page Key、Host、Origin、实际 socket 地址、精确 JSON
   Content-Type 和 body size；超限请求返回有界 413 JSON，不在响应前销毁 socket。
 - Host 不再提供静态资源路由；client bundle 由 DSH client module 机制加载。

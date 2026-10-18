@@ -165,7 +165,7 @@ describe('route table and request guards', () => {
     }
   })
 
-  it('accepts only loopback Host/peers and exact same HTTP origin', () => {
+  it('accepts loopback Host/peers, exact same HTTP origin, and a missing Origin (desktop renderer)', () => {
     expect(isLoopbackAddress('127.0.0.1')).toBe(true)
     expect(isLoopbackAddress('::1')).toBe(true)
     expect(isLoopbackAddress('::ffff:127.0.0.1')).toBe(true)
@@ -175,9 +175,14 @@ describe('route table and request guards', () => {
     expect(isLoopbackHost('localhost:3080')).toBe(true)
     expect(isLoopbackHost('0.0.0.0:3080')).toBe(false)
     expect(isAllowedJsonRequest('http://127.0.0.1:3199', '127.0.0.1:3199', '127.0.0.1')).toBe(true)
-    expect(isAllowedJsonRequest(undefined, '127.0.0.1:3199', '127.0.0.1')).toBe(false)
+    // The desktop renderer (dsh-app:// main frame) sends no Origin header on
+    // its loopback fetch; every other gate still applies (live-measured on
+    // 0.2.1-rc.2 against a disposable diagnostic build).
+    expect(isAllowedJsonRequest(undefined, '127.0.0.1:3199', '127.0.0.1')).toBe(true)
     expect(isAllowedJsonRequest('http://localhost:3199', '127.0.0.1:3199', '127.0.0.1')).toBe(false)
     expect(isAllowedJsonRequest('http://127.0.0.1:3199', '127.0.0.1:3199', '203.0.113.7')).toBe(false)
+    expect(isAllowedJsonRequest(undefined, '127.0.0.1:3199', '203.0.113.7')).toBe(false)
+    expect(isAllowedJsonRequest(undefined, '0.0.0.0:3199', '127.0.0.1')).toBe(false)
   })
 
   it.each(['application/json', 'Application/JSON', 'application/json; charset=utf-8'])(
@@ -272,10 +277,22 @@ describe('JSON Companion API routes', () => {
           : { entityId: 'node-1' }
       const key = path === ROUTE_LAUNCH ? undefined : PAGE_KEY
       const get = await invokeRoute(route, { headers: (port) => jsonHeaders(port, key) })
+      // No Origin header: the desktop renderer shape (dsh-app:// main frame);
+      // every other gate still applies, so this dispatches normally.
       const noOrigin = await invokeRoute(route, {
         method: 'POST',
         headers: (port) => ({
           host: '127.0.0.1:' + port,
+          'content-type': 'application/json',
+          ...(key !== undefined ? { [PAGE_KEY_HEADER]: key } : {}),
+        }),
+        body: JSON.stringify(body),
+      })
+      const wrongOrigin = await invokeRoute(route, {
+        method: 'POST',
+        headers: (port) => ({
+          host: '127.0.0.1:' + port,
+          origin: 'http://127.0.0.1:1',
           'content-type': 'application/json',
           ...(key !== undefined ? { [PAGE_KEY_HEADER]: key } : {}),
         }),
@@ -298,7 +315,8 @@ describe('JSON Companion API routes', () => {
         body: JSON.stringify({ ...body, blob: 'x'.repeat(JSON_BODY_LIMIT) }),
       })
       expect(get.status).toBe(405)
-      expect(noOrigin.status).toBe(403)
+      expect(noOrigin.status).toBe(200)
+      expect(wrongOrigin.status).toBe(403)
       expect(remote.status).toBe(403)
       expect(wrongType.status).toBe(415)
       expect(oversized.status).toBe(413)

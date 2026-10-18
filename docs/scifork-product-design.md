@@ -642,7 +642,9 @@ exchange token → bearer capability 的双阶段状态机，也没有独立登�
 
 必要边界：
 
-- DSH 必须是 loopback（桌面端渲染进程与 Web 同源约束一致），Companion 与 API 必须同源。
+- DSH 必须是 loopback，Companion 与 API 必须同源：浏览器 POST 的 `Origin` 必须
+  与 `Host` 精确同源；桌面渲染进程（`dsh-app://`）的 fetch 不携带 `Origin`，
+  Origin 缺失的 loopback 请求放行，携带错误 `Origin` 仍拒绝（0.2.1-rc.2 实测）。
 - API 从 Page Key 解析 session 和项目，不接受页面自报 cwd。
 - Session 关闭、bundle 卸载、DSH 重启或 tab body 卸载后 Page Key 失效；tab 重开时重新铸造。
 - 静态资源、受管路径和请求体有固定边界。

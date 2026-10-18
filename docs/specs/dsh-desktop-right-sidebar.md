@@ -191,7 +191,13 @@ tab body 挂载
 - CSS：`style[data-scifork]` 注入（42 KB），三条 `@container (min-width: 640/768/1280px)` 全部生效。
 - Boot 图含 `dsh-scifork`；`__DSH_BOOT__.release.version === "0.2.1-rc.2"`——**版本守卫读取面钉住**。
 - HMR：修改已安装 bundle 后 stat-poll 自动换载（标记样式出现、旧样式清理、页面无 reload）——esbuild 单文件产物可被官方 HMR 检测，开发主循环成立。
-- 未决：桌面端 `dsh-app://` 渲染进程 Origin 语义仍待真实桌面 profile 实测（预期转发器固定值加入精确允许集合）；shell React 精确版本未直接读取（documentpreview 以 react ^18.2 编译，推断 18.x，本包依赖均兼容 18/19，非阻塞）。
+- 桌面实测（2026-10-18，真实 desktop profile + 一次性诊断包：client 引导时自动
+  探针 launch、Host 记录请求面；测毕卸载并恢复 profile，与备份逐字节一致）：渲染
+  进程 loopback fetch 的 `Host` 正确、**不携带 `Origin` 头**。据此
+  `isAllowedJsonRequest` 放行"Origin 缺失 + 其余校验不变"，浏览器错误 `Origin`
+  仍 403。
+- 未决：shell React 精确版本未直接读取（documentpreview 以 react ^18.2 编译，推断
+  18.x，本包依赖均兼容 18/19，非阻塞）。
 
 原计划项：
 

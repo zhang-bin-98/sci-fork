@@ -75,15 +75,25 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   )
 }
 
-/** Require a numeric loopback peer and an HTTP Origin exactly matching Host. */
+/**
+ * Require a numeric loopback peer and a same-origin HTTP Origin.
+ *
+ * A missing Origin header is the measured desktop-renderer shape (the
+ * dsh-app:// main frame sends no Origin on its loopback fetch; live-measured
+ * on 0.2.1-rc.2) and is admitted for loopback requests: browser POSTs always
+ * carry an Origin and must still match the Host exactly, so a missing Origin
+ * marks a non-browser loopback client while every other gate (loopback Host,
+ * numeric loopback socket, media type, body cap) keeps applying.
+ */
 export function isAllowedJsonRequest(
   origin: string | undefined,
   host: string | undefined,
   remoteAddress: string | undefined,
 ): boolean {
-  if (!origin || !host || !isLoopbackHost(host) || !isLoopbackAddress(remoteAddress)) {
+  if (!host || !isLoopbackHost(host) || !isLoopbackAddress(remoteAddress)) {
     return false
   }
+  if (origin === undefined) return true
   try {
     const parsed = new URL(origin)
     const expectedOrigin = new URL(`http://${host}`).origin
