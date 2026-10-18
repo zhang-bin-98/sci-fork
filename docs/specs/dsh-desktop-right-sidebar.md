@@ -110,7 +110,10 @@ tab body 挂载
 - 同步返回接受或拒绝；key 无效或 Session 已关闭返回
   `RESEARCH_EXPANSION_REJECTED`，body 显示 `Retry` 与 `Copy`。
 - 完成语义不变：Bridge 观察捕获 Session running→idle 后复位按钮；idle 启动、
-  busy 按 DSH Queue 排队；prompt 构造边界与授权范围不变（架构 §9）。
+  busy 按 DSH Queue 排队。prompt 按瘦身契约构造：Focus id/摘要 + 目的约束 +
+  检索先行指引 + 完整授权边界（最多五条、一层、Focus 不变、不递归、只创建
+  machine-reviewed Evidence、禁 Finding）；工作流与格式细则由 `scifork-research`
+  正文单一承载，提示不复述（消除 Skill 与提示两份真相）。
 
 ### 5. 布局与样式
 
@@ -169,7 +172,9 @@ tab body 挂载
     单 classic script 演化为 `__DSH_BOOT__` 图 + `/plugins` combo scripts +
     lazy-CJS 模块表，`__ModuleLoader__.load` 形状以 spike 实测为准。
 - 单 client bundle：Bridge 与 Companion 组件由 `scripts/build-client.mjs` 打包
-  进 `dist/client.js`（classic script，shell 播种 React/Cordis 基线模块）。
+  进 `dist/client.js`（classic script，shell 播种 React/Cordis 基线模块）。构建
+  开启 minify；React/React-DOM 等 shell 播种模块声明为 external，不重复打包
+  （当前 companion app bundle 约 622 KB 且携带 React，迁移后消除）。
 - 安全边界沿用架构 §12.2 修订版：loopback-only、精确同源（桌面 `dsh-app://`
   Origin 语义由 spike 钉住，不满足即 fail closed）、Page Key 只在 Host 内存、
   launch 响应体与 client 插件内存出现、Host 无静态路由。

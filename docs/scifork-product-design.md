@@ -498,7 +498,8 @@ Host 确认后的 Focus 使用正式高亮，连续点击不会被静默丢弃�
 只影响当前页面投影。点击
 `Research & Expand` 后，Companion 生成只包含 Focus
 ID/摘要、当前 Chat 研究目的约束、单步任务和明确保存授权的提示，并自动提交到该 tab
-绑定的 DSH Session。提示不预装邻域正文；大模型使用 `research_graph_read` 的
+绑定的 DSH Session。提示不预装邻域正文，也不复述 Skill 的工作流与格式细则——
+那些由 `SciFork Research` 正文单一承载；大模型使用 `research_graph_read` 的
 方向邻居与 entity 操作选择最新上下文。Graph 不增加编辑或删除控件；用户通过 DSH
 Chat 发起多轮研究、修改或删除分支。
 

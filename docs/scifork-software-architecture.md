@@ -596,15 +596,15 @@ Companion `Research & Expand` user click
 - 只有 click handler 能发送，tab 加载、轮询、模型输出和后台刷新不能发送。
 - prompt 有字节上限，只包含当前 Focus id/摘要、当前 Chat 研究目的约束、单步任务和
   明确授权；不内联 Focus 邻域或完整图谱正文。
-- prompt 明确要求先完成一次真实外部检索（用户安装的检索插件或 DSH web 检索降级）
-  并读取高价值来源文字，再读取 Question 的 `framedEntities` 或普通 Focus 的方向邻居；
-  解析不出合格 PMID/DOI 或来源文字不足时中止，不得用无依据猜测代替。
-- prompt 明确要求每个保留分支先从真实 abstract 或用户提供的有界 PDF 文字创建
-  machine-reviewed Evidence，title-only/metadata-only 不合格；只保存最小 Citation
-  Snapshot，不保存原始检索材料。
-- prompt 明确说明本次真实点击只授权保存当前步全部有效直接分支；每步最多五条、
-  深度一层、Focus 不变且不得递归。Question Focus 只创建 Hypothesis + Framing Link，
-  其他锚点使用科学 Edge；任何路径均不得创建 Finding。
+- prompt 明确要求先完成一次真实外部检索并读取高价值来源文字，随后才加载
+  `scifork-research` 进入图谱阶段；解析不出合格 PMID/DOI 或来源文字不足时中止。
+  除此之外的工作流与格式细则（Evidence 先于分支、摘要句格式、Edge 端点方向、
+  汇报要求等）由 `scifork-research` 正文单一承载，prompt 不复述，避免 Skill 与
+  提示两份真相漂移。
+- prompt 明确写出本次真实点击的完整授权边界：一次点击只授权当前一步、最多五条
+  直接分支、深度一层、Focus 不变、不得递归、只创建 machine-reviewed Evidence、
+  任何路径不得创建 Finding。授权边界是本次点击的授权文书，必须完整出现在
+  prompt 中，不依赖 Skill 是否已加载。
 - Bridge 只接受持有有效 Page Key 的调用，并以 key 解析目标 Session，不接受页面自报
   目标；key 无效或 Session 已关闭时同步返回 `RESEARCH_EXPANSION_REJECTED`。
 - Session 空闲时 submit 启动；运行中使用 DSH 默认 Queue，不执行 steer 或 cancel。
@@ -945,8 +945,8 @@ MVP 不引入 Express、Next.js、SQLite、Neo4j、Redis、Zustand、simple-git 
 - Host 读取的运行时 DSH 版本与钉住版本不符时显示未验证版本警告条，相符时不显示。
 - Details 阻止 raw HTML、脚本、远程资源和路径逃逸。
 - Research & Expand 真实点击后经进程内直接调用执行 `setDraft + submit`；prompt 使用
-  Focus id/摘要，要求先检索真实来源文字、先保存 machine-reviewed Evidence，再保存最多
-  五条直接分支，区分 Question/普通 Focus、保持 Focus 且不递归；非 click 路径不可触发。
+  Focus id/摘要，包含检索先行指引与完整授权边界（最多五条、一层、Focus 不变、
+  不递归、禁 Finding），不复述 Skill 工作流细则；非 click 路径不可触发。
 - idle Session 启动、busy Session 排队。
 - key 无效或 Session 已关闭时同步返回 `RESEARCH_EXPANSION_REJECTED`，显示
   Retry/Copy；`Copy` 复制的提示可手动粘贴。
@@ -1042,6 +1042,10 @@ fresh DSH profile（desktop 为主，同版本 web 为回归）
   container queries 布局、无 Preflight 的作用域样式、`tab.visible` 驱动轮询、
   `keepMounted: false` 生命周期。
 - Research Expansion 改为进程内直接调用；删除 BroadcastChannel、nonce 与 ack 超时。
+- 扩展提示瘦身：prompt 只保留 Focus id/摘要、目的约束、检索先行指引与完整授权
+  边界，工作流与格式细则由 `scifork-research` 正文单一承载。
+- client 构建开启 minify；React/React-DOM 等 shell 播种基线模块 external 化，
+  不重复打包（消除 app bundle 携带 React 的体积问题）。
 - 检索外置：移除 `pubmed-search` Skill、helper 与 `resourceBase` 注册；
   `scifork-research` 成为唯一 package-owned Skill，description 保留“检索先行”边界，
   正文写入外部检索消费契约与降级阶梯（见检索外置 spec）。
