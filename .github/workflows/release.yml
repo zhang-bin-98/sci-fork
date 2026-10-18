@@ -378,5 +378,7 @@ jobs:
           tar -xzf "$TARBALL" -C release package/package.json
           published_version="$(node -p "JSON.parse(require('node:fs').readFileSync('release/package/package.json', 'utf8')).version")"
           npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          npm publish "release/$(basename "$TARBALL")" --access public --provenance
+          # The ./ prefix is required: npm 11 normalizes a bare "a/b" argument
+          # as a GitHub owner/repo shorthand before checking the filesystem.
+          npm publish "./release/$(basename "$TARBALL")" --access public --provenance
           echo "Published dsh-scifork@${published_version} to npm."
