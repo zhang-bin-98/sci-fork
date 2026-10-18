@@ -183,6 +183,18 @@ tab body 挂载
 
 ## Spike plan（M4 前置；一次性 profile 冒烟需用户批准）
 
+**Web 冒烟结果（2026-10-18，用户批准；disposable `E:/scifork-smoke-home` + 捆绑 0.2.1-rc.2 CLI，验证后清理）**：
+
+- 安装/引导：tarball 经 CLI 装入一次性 profile；干净 profile 秒起。**发现并修复两个真实缺陷**：① `@deepseek-ai/cordis` 误为 devDependency，profile 内无法解析，已移入 dependencies；② `webServer` 由 web app 在引导后创建，硬 inject 死锁引导，已改为 `ctx.inject(['webServer'])` 运行时等待（dsh-client-modules 同款）。修复后带插件引导正常。
+- API：403（无 Origin）/ SESSION_UNAVAILABLE（正确 Origin + 无会话）/ 415 / 401 / 404（旧 SPA 入口）全部符合契约。
+- GUI：footer action 渲染并可点击；guide 卡片（标题+描述）渲染；Research Graph tab 打开、body 挂载、无会话时正确进入 unavailable 态。
+- CSS：`style[data-scifork]` 注入（42 KB），三条 `@container (min-width: 640/768/1280px)` 全部生效。
+- Boot 图含 `dsh-scifork`；`__DSH_BOOT__.release.version === "0.2.1-rc.2"`——**版本守卫读取面钉住**。
+- HMR：修改已安装 bundle 后 stat-poll 自动换载（标记样式出现、旧样式清理、页面无 reload）——esbuild 单文件产物可被官方 HMR 检测，开发主循环成立。
+- 未决：桌面端 `dsh-app://` 渲染进程 Origin 语义仍待真实桌面 profile 实测（预期转发器固定值加入精确允许集合）；shell React 精确版本未直接读取（documentpreview 以 react ^18.2 编译，推断 18.x，本包依赖均兼容 18/19，非阻塞）。
+
+原计划项：
+
 1. 桌面端（disposable desktop profile；完全退出应用后经 CLI 安装、验证后恢复）：
    - `dsh-app://` 渲染进程 fetch `/scifork/api/*` 的实际 Origin/Host；同源校验
      原样成立或确定桌面特定行为（不允许放宽校验迁就）。预期结果：桌面转发器
