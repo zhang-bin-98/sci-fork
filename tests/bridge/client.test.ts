@@ -10,7 +10,7 @@ interface FooterRegistration {
 
 interface TabBodyRegistration {
   entry: { name: 'sidebar.right.pane.tab'; key: string }
-  factory: () => ReactElement
+  factory: (props: { sessionId: string; useTabInfo: () => { tab: { visible: boolean } } }) => ReactElement
 }
 
 interface TabDefinitionCapture {
@@ -22,7 +22,9 @@ interface TabDefinitionCapture {
 }
 
 interface SessionSnapshot {
-  current?: string
+  ids: string[]
+  phase: 'ready'
+  projectionsBySession: Record<string, unknown>
   byId: Record<string, { running: boolean }>
 }
 
@@ -56,7 +58,10 @@ function makeHarness(): {
   let definition: TabDefinitionCapture | undefined
   const openTab = vi.fn()
 
-  const snapshot: SessionSnapshot = { current: 'session-1', byId: { 'session-1': { running: false } } }
+  const snapshot: SessionSnapshot = {
+    ids: ['session-1'], phase: 'ready', projectionsBySession: {},
+    byId: { 'session-1': { running: false } },
+  }
   const scopes = new Map<string, Context>()
   const inputs = new Map<Context, SessionInputCapture>()
 
@@ -187,6 +192,15 @@ describe('apply registration surface', () => {
       name: 'sidebar.footer.action',
       id: 'scifork-open',
     })
+    expect(harness.injectedKeys).toContain('sidebar.right.pane.tab')
+  })
+
+  it('passes the slot Session and visibility hook to its body', () => {
+    const harness = makeHarness()
+    apply(harness.ctx)
+    const useTabInfo = () => ({ tab: { visible: false } })
+    const body = harness.tabBodies[0]!.factory({ sessionId: 'session-2', useTabInfo })
+    expect(body.props).toMatchObject({ sessionId: 'session-2', useTabInfo })
   })
 
   it('opens the tab through sidebarRight.openTab on footer action click', () => {
@@ -219,7 +233,6 @@ describe('bridge page keys', () => {
     bridge = createBridge({
       sessions: harness.ctx.get('sessions') as never,
       conversation: harness.ctx.get('conversation') as never,
-      sidebarRight: { openTab: vi.fn() },
       fetchImpl: launchFetch(PAGE_KEY) as never,
     })
   })
@@ -235,16 +248,15 @@ describe('bridge page keys', () => {
     const local = createBridge({
       sessions: { list: { getSnapshot: () => snapshot }, scope: (id) => scopes.get(id) },
       conversation: harnessConversation(inputs) as never,
-      sidebarRight: { openTab: vi.fn() },
       fetchImpl: fetchMock as never,
     })
 
-    await expect(local.requestPageKey()).resolves.toBe(PAGE_KEY)
-    await expect(local.requestPageKey()).resolves.toBe(PAGE_KEY)
+    await expect(local.requestPageKey('session-1')).resolves.toBe(PAGE_KEY)
+    await expect(local.requestPageKey('session-1')).resolves.toBe(PAGE_KEY)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith(
       '/scifork/api/launch',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ sessionId: 'session-1' }) }),
     )
   })
 
@@ -252,27 +264,61 @@ describe('bridge page keys', () => {
     const local = createBridge({
       sessions: { list: { getSnapshot: () => snapshot }, scope: (id) => scopes.get(id) },
       conversation: harnessConversation(inputs) as never,
-      sidebarRight: { openTab: vi.fn() },
       fetchImpl: vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) })) as never,
     })
-    await expect(local.requestPageKey()).rejects.toMatchObject({
+    await expect(local.requestPageKey('session-1')).rejects.toMatchObject({
       code: 'RESEARCH_EXPANSION_REJECTED',
     })
   })
 
-  it('rejects when there is no current session', async () => {
-    delete snapshot.current
-    await expect(bridge.requestPageKey()).rejects.toMatchObject({
+  it('rejects when the slot Session no longer has a live scope', async () => {
+    scopes.delete('session-1')
+    await expect(bridge.requestPageKey('session-1')).rejects.toMatchObject({
       code: 'SESSION_UNAVAILABLE',
     })
   })
 
   it('invalidates the key on release', async () => {
-    const key = await bridge.requestPageKey()
+    const key = await bridge.requestPageKey('session-1')
     bridge.releasePageKey(key)
     await expect(bridge.submitResearchExpansion(key, PROMPT)).rejects.toMatchObject({
       code: 'RESEARCH_EXPANSION_REJECTED',
     })
+  })
+
+  it('binds launch and expansion to the requested slot Session', async () => {
+    snapshot.byId['session-2'] = { running: true }
+    const key = await bridge.requestPageKey('session-2')
+    const pending = bridge.submitResearchExpansion(key, PROMPT)
+    expect(inputs.get(scopes.get('session-2')!)?.submit).toHaveBeenCalledOnce()
+    expect(inputs.has(scopes.get('session-1')!)).toBe(false)
+    snapshot.byId['session-2']!.running = false
+    await vi.advanceTimersByTimeAsync(250)
+    await pending
+  })
+
+  it('rejects expansion after its Session scope is replaced', async () => {
+    const key = await bridge.requestPageKey('session-1')
+    scopes.set('session-1', scopeContext('replacement'))
+    await expect(bridge.submitResearchExpansion(key, PROMPT)).rejects.toMatchObject({
+      code: 'SESSION_UNAVAILABLE',
+    })
+    expect(inputs.size).toBe(0)
+  })
+
+  it('rejects a launch response if its Session scope ended while pending', async () => {
+    let resolveResponse!: (value: unknown) => void
+    const local = createBridge({
+      sessions: { list: { getSnapshot: () => snapshot }, scope: (id) => scopes.get(id) },
+      conversation: harnessConversation(inputs) as never,
+      fetchImpl: vi.fn(() => new Promise((resolve) => { resolveResponse = resolve })) as never,
+    })
+    const pending = local.requestPageKey('session-1')
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'SESSION_UNAVAILABLE' })
+    scopes.delete('session-1')
+    resolveResponse({ ok: true, json: async () => ({ ok: true, pageKey: PAGE_KEY }) })
+    await rejected
+    local.dispose()
   })
 })
 
@@ -285,12 +331,14 @@ describe('bridge expansion submit', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     scopes = new Map<string, Context>([['session-1', scopeContext('session-1')]])
-    snapshot = { current: 'session-1', byId: { 'session-1': { running: false } } }
+    snapshot = {
+      ids: ['session-1'], phase: 'ready', projectionsBySession: {},
+      byId: { 'session-1': { running: false } },
+    }
     inputs = new Map()
     bridge = createBridge({
       sessions: { list: { getSnapshot: () => snapshot }, scope: (id) => scopes.get(id) },
       conversation: harnessConversation(inputs) as never,
-      sidebarRight: { openTab: vi.fn() },
       fetchImpl: launchFetch(PAGE_KEY) as never,
     })
   })
@@ -301,7 +349,7 @@ describe('bridge expansion submit', () => {
   })
 
   async function settledKey(): Promise<string> {
-    return bridge.requestPageKey()
+    return bridge.requestPageKey('session-1')
   }
 
   it('submits through the scoped SessionInput and resolves after running goes idle', async () => {

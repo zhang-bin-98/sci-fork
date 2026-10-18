@@ -926,7 +926,7 @@ export async function restoreMainView(inputs: {
   return (await inputs.selectFocus(inputs.anchorId)) ? 'restored' : 'failed'
 }
 
-export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.ReactElement {
+export function CompanionApp(props: { pageKey: string; bridge: Bridge; visible: boolean }): React.ReactElement {
   const [invalidKey, setInvalidKey] = React.useState(false)
   const [snapshot, setSnapshot] = React.useState<SnapshotSuccess>()
   const [graph, setGraph] = React.useState<SnapshotGraph>()
@@ -947,7 +947,7 @@ export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.
   const mountedRef = React.useRef(true)
   const detailsRequestRef = React.useRef(0)
   const focusQueueRef = React.useRef<FocusSelectionQueue<FocusSuccess> | undefined>(undefined)
-  const snapshotInFlightRef = React.useRef(false)
+  const snapshotInFlightRef = React.useRef<{ signal?: AbortSignal } | undefined>(undefined)
   const viewTransitioningRef = React.useRef(false)
   const researchExpansionRef =
     React.useRef<ResearchExpansionSubmitter | undefined>(undefined)
@@ -1056,17 +1056,19 @@ export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.
 
   const refresh = React.useCallback(
     async (signal?: AbortSignal): Promise<void> => {
-      if (snapshotInFlightRef.current) return
-      snapshotInFlightRef.current = true
+      const previous = snapshotInFlightRef.current
+      if (previous !== undefined && !previous.signal?.aborted) return
+      const request = signal === undefined ? {} : { signal }
+      snapshotInFlightRef.current = request
       try {
         const response = await api.snapshot(snapshotRef.current?.project.revision, signal)
-        if (mountedRef.current) applySnapshot(response)
+        if (mountedRef.current && !signal?.aborted) applySnapshot(response)
       } catch (caught) {
         if (!mountedRef.current || signal?.aborted) return
         if (caught instanceof CompanionApiError && caught.code === 'PAGE_KEY_INVALID') return
         setError(failureMessage(caught))
       } finally {
-        snapshotInFlightRef.current = false
+        if (snapshotInFlightRef.current === request) snapshotInFlightRef.current = undefined
       }
     },
     [api, applySnapshot],
@@ -1077,13 +1079,14 @@ export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.
     const controller = new AbortController()
     const stop = startVisiblePolling({
       document,
+      visible: props.visible,
       readSnapshot: () => refresh(controller.signal),
     })
     return () => {
       stop()
       controller.abort()
     }
-  }, [invalidKey, refresh])
+  }, [invalidKey, refresh, props.visible])
 
   React.useEffect(() => {
     if (invalidKey) return undefined

@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
-import { createElement, useEffect, useState } from 'react'
+import { createElement, Fragment, useEffect, useState } from 'react'
 import { CompanionApp } from '../companion/app.js'
 import { isPageKey } from '../shared/page-key.js'
 import { ROUTE_LAUNCH } from '../shared/routes.js'
@@ -62,6 +62,12 @@ interface SidebarFooterActionOwnerProps {
   readonly wide: boolean
 }
 
+/** Framework props on the session-scoped tab body seat in DSH 0.2.1-rc.2. */
+interface SidebarTabBodyProps {
+  readonly sessionId: string
+  useTabInfo(): { readonly tab: { readonly visible: boolean } }
+}
+
 /** One guide entry on the right-sidebar guide page. */
 interface SidebarRightGuideEntry {
   readonly id: string
@@ -91,14 +97,14 @@ interface SidebarRightPort {
 
 /** Public sidebar slots face: footer action list slot + keyed tab body seat. */
 interface SlotsPort {
-  inject(name: 'sidebar.footer.action', callback: () => () => void): () => void
+  inject(name: 'sidebar.footer.action' | 'sidebar.right.pane.tab', callback: () => () => void): () => void
   register(
     entry: { name: string; id: string; order?: number; label?: string },
     factory: (props: SidebarFooterActionOwnerProps) => ReactElement,
   ): () => void
   register(
     entry: { name: 'sidebar.right.pane.tab'; key: string },
-    factory: () => ReactElement,
+    factory: (props: SidebarTabBodyProps) => ReactElement,
   ): () => void
 }
 
@@ -106,7 +112,6 @@ interface SlotsPort {
 interface ClientSessionsPort {
   list: {
     getSnapshot(): {
-      current?: string
       byId: Readonly<Record<string, { readonly running: boolean }>>
     }
   }
@@ -117,7 +122,6 @@ interface ClientSessionsPort {
 interface SessionInputPort {
   setDraft(text: string): void
   submit(): void
-  notify(level: 'info' | 'error', text: string): void
 }
 
 interface ConversationPort {
@@ -143,13 +147,12 @@ interface CompletionWatch {
 export interface BridgeDeps {
   readonly sessions: ClientSessionsPort
   readonly conversation: ConversationPort
-  readonly sidebarRight: SidebarRightPort
   readonly fetchImpl?: typeof fetch
 }
 
 export interface Bridge {
-  /** Mint (or reuse) the Page Key for the current session, in memory only. */
-  requestPageKey(): Promise<string>
+  /** Mint (or reuse) the Page Key for the slot's Session, in memory only. */
+  requestPageKey(sessionId: string): Promise<string>
   /** Drop a Page Key binding (tab body unmount invalidates the key). */
   releasePageKey(pageKey: string): void
   /** Submit one Research Expansion step; resolves when the session goes idle again. */
@@ -175,18 +178,15 @@ export function createBridge(deps: BridgeDeps): Bridge {
   const watches = new Map<string, CompletionWatch>()
   let disposed = false
 
-  function currentSessionId(): string | undefined {
-    return deps.sessions.list.getSnapshot().current
-  }
-
-  async function requestPageKey(): Promise<string> {
-    const sessionId = currentSessionId()
-    if (sessionId === undefined) throw new ResearchExpansionError('SESSION_UNAVAILABLE')
-    const cached = bySession.get(sessionId)
-    if (cached !== undefined) return cached
-
+  async function requestPageKey(sessionId: string): Promise<string> {
+    if (disposed) throw new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED')
     const sessionScope = deps.sessions.scope(sessionId)
     if (sessionScope === undefined) throw new ResearchExpansionError('SESSION_UNAVAILABLE')
+    const cached = bySession.get(sessionId)
+    if (cached !== undefined) {
+      if (byPageKey.get(cached)?.sessionScope === sessionScope) return cached
+      releasePageKey(cached)
+    }
 
     const response = await doFetch(ROUTE_LAUNCH, {
       method: 'POST',
@@ -197,6 +197,9 @@ export function createBridge(deps: BridgeDeps): Bridge {
     const body: unknown = await response.json()
     if (!isLaunchBody(body) || disposed) {
       throw new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED')
+    }
+    if (deps.sessions.scope(sessionId) !== sessionScope) {
+      throw new ResearchExpansionError('SESSION_UNAVAILABLE')
     }
     byPageKey.set(body.pageKey, { pageKey: body.pageKey, sessionId, sessionScope })
     bySession.set(sessionId, body.pageKey)
@@ -258,7 +261,7 @@ export function createBridge(deps: BridgeDeps): Bridge {
       return Promise.reject(new ResearchExpansionError('RESEARCH_EXPANSION_REJECTED'))
     }
     const session = deps.sessions.list.getSnapshot().byId[binding.sessionId]
-    if (session === undefined) {
+    if (session === undefined || deps.sessions.scope(binding.sessionId) !== binding.sessionScope) {
       return Promise.reject(new ResearchExpansionError('SESSION_UNAVAILABLE'))
     }
     return new Promise<void>((resolve, reject) => {
@@ -294,25 +297,6 @@ export function createBridge(deps: BridgeDeps): Bridge {
   }
 
   return { requestPageKey, releasePageKey, submitResearchExpansion, dispose }
-}
-
-function notifyOpenFailure(conversation: ConversationPort, sessionScope: Context): void {
-  try {
-    conversation.input.for(sessionScope).notify('error', OPEN_FAILURE_MESSAGE)
-  } catch {
-    // Notification is best-effort; never leak the underlying open error.
-  }
-}
-
-function handleOpen(bridge: Bridge, deps: BridgeDeps): void {
-  const sessionId = deps.sessions.list.getSnapshot().current
-  if (sessionId === undefined) return
-  const sessionScope = deps.sessions.scope(sessionId)
-  try {
-    deps.sidebarRight.openTab(TAB_KIND)
-  } catch {
-    if (sessionScope !== undefined) notifyOpenFailure(deps.conversation, sessionScope)
-  }
 }
 
 function GraphIcon(props: { readonly size: number }): ReactElement {
@@ -373,8 +357,7 @@ function setOpenButtonHover(
 }
 
 function openGraphButtonElement(props: {
-  readonly bridge: Bridge
-  readonly deps: BridgeDeps
+  readonly onClick: () => void
   readonly wide: boolean
 }): ReactElement {
   return createElement(
@@ -383,7 +366,7 @@ function openGraphButtonElement(props: {
       'aria-label': OPEN_ACTION_LABEL,
       'data-scifork-sidebar-action': props.wide ? 'wide' : 'rail',
       type: 'button',
-      onClick: () => handleOpen(props.bridge, props.deps),
+      onClick: props.onClick,
       onMouseEnter: (event: ReactMouseEvent<HTMLButtonElement>) => {
         setOpenButtonHover(event, true)
       },
@@ -411,34 +394,68 @@ function openGraphButtonElement(props: {
   )
 }
 
+function OpenGraphAction(props: SidebarFooterActionOwnerProps & { onClick(): void }): ReactElement {
+  const [failed, setFailed] = useState(false)
+  return createElement(
+    Fragment,
+    null,
+    openGraphButtonElement({
+      wide: props.wide,
+      onClick: () => {
+        try {
+          props.onClick()
+          setFailed(false)
+        } catch {
+          setFailed(true)
+        }
+      },
+    }),
+    failed ? createElement('span', { role: 'status' }, OPEN_FAILURE_MESSAGE) : null,
+  )
+}
+
 /**
  * Tab body: mounts the Companion tree with a bridge-held Page Key. The key
  * is minted on mount and released on unmount (keepMounted: false), so the
  * body lifecycle owns the key lifecycle.
  */
-function ResearchGraphTabBody(props: { readonly bridge: Bridge }): ReactElement {
-  const [pageKey, setPageKey] = useState<string | undefined>(undefined)
+function ResearchGraphTabBody(props: SidebarTabBodyProps & { readonly bridge: Bridge }): ReactElement {
+  const { tab } = props.useTabInfo()
+  const [state, setState] = useState<
+    { phase: 'loading' | 'failed' } | { phase: 'ready'; pageKey: string }
+  >({ phase: 'loading' })
   useEffect(() => {
     let active = true
     let heldKey: string | undefined
-    props.bridge.requestPageKey().then(
+    props.bridge.requestPageKey(props.sessionId).then(
       (key) => {
+        if (!active) {
+          props.bridge.releasePageKey(key)
+          return
+        }
         heldKey = key
-        if (active) setPageKey(key)
+        setState({ phase: 'ready', pageKey: key })
       },
       () => {
-        if (active) setPageKey(undefined)
+        if (active) setState({ phase: 'failed' })
       },
     )
     return () => {
       active = false
       if (heldKey !== undefined) props.bridge.releasePageKey(heldKey)
     }
-  }, [props.bridge])
-  if (pageKey === undefined) {
-    return createElement('div', { 'data-scifork-research-graph-tab': 'unavailable' })
+  }, [props.bridge, props.sessionId])
+  if (state.phase !== 'ready') {
+    return createElement('div', {
+      className: 'scifork-root',
+      'data-scifork-research-graph-tab': state.phase,
+      role: 'status',
+      style: { padding: 16 },
+    }, state.phase === 'loading'
+      ? 'Loading Research Graph…'
+      : 'Research Graph is unavailable. Close this tab and reopen it from your DSH session.')
   }
-  return createElement(CompanionApp, { pageKey, bridge: props.bridge })
+  return createElement(CompanionApp, { pageKey: state.pageKey, bridge: props.bridge, visible: tab.visible })
 }
 
 export function apply(ctx: Context): void {
@@ -470,7 +487,7 @@ function applyOnceAvailable(ctx: Context): void {
     return
   }
 
-  const deps: BridgeDeps = { sessions, conversation, sidebarRight }
+  const deps: BridgeDeps = { sessions, conversation }
   const bridge = createBridge(deps)
 
   ctx.effect(() => sidebarRightTabs.register({
@@ -490,12 +507,14 @@ function applyOnceAvailable(ctx: Context): void {
 
   slots.inject('sidebar.footer.action', () => slots.register(
     { name: 'sidebar.footer.action', id: 'scifork-open', order: 100, label: OPEN_ACTION_TEXT },
-    ({ wide }) => openGraphButtonElement({ bridge, deps, wide }),
+    ({ wide }) => createElement(OpenGraphAction, { wide, onClick: () => sidebarRight.openTab(TAB_KIND) }),
   ))
 
-  ctx.effect(() => slots.register(
+  slots.inject('sidebar.right.pane.tab', () => slots.register(
     { name: 'sidebar.right.pane.tab', key: TAB_TYPE_ID },
-    () => createElement(ResearchGraphTabBody, { bridge }),
+    ({ sessionId, useTabInfo }) => createElement(ResearchGraphTabBody, {
+      key: sessionId, bridge, sessionId, useTabInfo,
+    }),
   ))
 
   ctx.effect(() => () => bridge.dispose())

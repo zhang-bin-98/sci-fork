@@ -73,13 +73,16 @@ bundle 契约不变，并处理桌面 nightly 自动更新带来的基线漂移�
   kind 打开。不使用 `window.open`、私有 React 组件或 DOM 操作。
 - 右侧栏表面按 Session 独立；无当前 Session 时无右侧栏，SciFork 不补偿、不
   另建表面。
+- `0.2.1-rc.2` 的 `sessions.list` 只提供会话目录，不含 `current`。footer
+  直接调用公开导航，由 DSH 解析当前 surface；tab body 使用 session-scoped slot
+  提供的 `sessionId`，不从全局目录推断当前会话。body 注册等待对应 slot owner。
 
 ### 2. 生命周期与 Page Key
 
 ```text
 tab body 挂载
 → 向同插件 Bridge 请求 Page Key
-→ Bridge POST /scifork/api/launch（当前 SessionId）
+→ Bridge POST /scifork/api/launch（slot 绑定的 sessionId）
 → Host 校验 loopback socket、精确同源 Origin、精确 JSON Content-Type、body 上限
 → Host 创建 256-bit random Page Key，绑定 sessionId + project root
 → 响应体返回 { pageKey }（同源 loopback POST，瞬时）
@@ -90,6 +93,8 @@ tab body 挂载
 - `keepMounted: false`：隐藏、切换 Session、关闭 tab 即卸载 body 并失效 key；
   重开重新铸造，从 Host storage 恢复 Focus，视图回 Main + Details 默认打开。
 - body 收到无效 key 时只显示重新打开提示。
+- 铸造期间显示加载状态；失败显示重新打开提示，不以空白容器吞掉错误。body
+  卸载后才返回的 key 也必须释放；已结束的 Session scope 不得接收旧 key 的提交。
 - key 不进入 URL、query、fragment、sessionStorage、日志或仓库。
 
 ### 3. 数据与轮询
@@ -196,8 +201,25 @@ tab body 挂载
   进程 loopback fetch 的 `Host` 正确、**不携带 `Origin` 头**。据此
   `isAllowedJsonRequest` 放行"Origin 缺失 + 其余校验不变"，浏览器错误 `Origin`
   仍 403。
-- 未决：shell React 精确版本未直接读取（documentpreview 以 react ^18.2 编译，推断
-  18.x，本包依赖均兼容 18/19，非阻塞）。
+- shell React 精确版本后续从本机捆绑 `dsh-web-frontend/dist/assets/index-*.js`
+  核实为 `18.3.1`；下述组件回归使用同版本 React/React-DOM。
+
+**Session 绑定回归（2026-10-18；本地组件夹具，不计为完整 DSH E2E）**：
+
+- 根因：本机 `dsh-api-session-controller` 的目录快照为
+  `{ ids, byId, phase, projectionsBySession }`，没有 `current`。旧测试替身提供
+  虚构字段，掩盖 footer 提前返回及 launch 前的 `SESSION_UNAVAILABLE`。
+- 修复：入口交给 `sidebarRight.openTab`；body 使用公开 slot 的 `sessionId` 和
+  `useTabInfo`，等待 slot owner，轮询同时要求 tab/document 可见。加载失败显示
+  重新打开提示，延迟返回的 key 清理 client 内存绑定，过期 Session scope 拒绝提交。
+- Red：真实目录形状下，footer 导航调用数为零，Page Key 获取被拒绝；隐藏 tab
+  仍发起轮询。修复后相关回归转 Green，完整 `pnpm check` 为 378 项测试通过；
+  `verify:pack`、`verify:source`、入口语法检查与 `git diff --check` 通过。
+- 用生成的 `dist/client.js`、React/React-DOM `18.3.1` 和合成 API 数据在 Chromium
+  验证：真实点击打开、两个实体和 Framing Link 渲染、Session 切换、隐藏五秒以上
+  停止轮询及恢复立即刷新、关闭后的延迟响应清理、加载/导航失败提示和重开。
+- 桌面一次性 profile 与同版本 Web 的完整 §15.4 验收仍待完成；上述结果不替代
+  真实宿主的安装、检索、提交与卸载流程验证。
 
 原计划项：
 
@@ -253,6 +275,8 @@ tab body 挂载
   - tab 注册参数（id/kind/guide/keepMounted）、footer action 联动 `openTab`
     （mock registry/slot 面）。
   - key 生命周期状态机：铸造、卸载失效、重开重铸。
+  - 使用不含 `current` 的真实 Session list 形状，验证 footer 导航、slot Session
+    铸造、跨会话提交隔离、卸载后的延迟响应清理和可见的加载失败状态。
   - 轮询联合可见性条件与 abort。
   - 直接调用提交：接受、无效 key、Session 关闭；Retry/Copy 数据。
   - 版本比对与警告条数据。

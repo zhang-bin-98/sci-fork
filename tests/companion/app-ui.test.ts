@@ -252,7 +252,7 @@ describe('Companion graph UI', () => {
 
   it('uses a calm inverted treatment for the research action', () => {
     const html = renderToStaticMarkup(
-      createElement(CompanionApp, { pageKey: 'K'.repeat(43), bridge: fakeBridge() }),
+      createElement(CompanionApp, { pageKey: 'K'.repeat(43), bridge: fakeBridge(), visible: true }),
     )
     const action = html.match(/<button[^>]*aria-label="Research &amp; Expand"[\s\S]*?<\/button>/)?.[0]
     const actionClasses = action?.match(/class="([^"]+)"/)?.[1]?.split(' ')
