@@ -162,8 +162,12 @@ viewport media queries）：
 - Graph 在 `<md` 使用上下（TB）布局，在 `md` 及以上使用左右（LR）布局。
 - Details 在 `<xl` 位于 Graph 下方，在 `xl` 及以上与 Graph 并列；收起拉手和箭头方向
   使用同一个 `xl` 切换点。
-- `<sm` 使用移动端顶栏、失败恢复条和单列 Edge Details；`sm` 显示分支 chip 并恢复常规
-  顶栏操作，`md` 再显示项目名。
+- 顶栏沿用 0.0.5 完整顶栏的视觉：所有 pane 宽度都保留当前 Git 分支 chip、
+  `Main`/`Evidence` 上下文切换和带完整文字的 `Research & Expand` 按钮；普通桌面
+  右栏不能因小于 640px 而隐藏分支或把研究操作替换成只有图标的按钮。
+  空间不足时截断分支文字，保留完整分支/HEAD 的悬停提示；极窄 pane 至少保留
+  分支图标和操作文字，品牌名可截断以避免重叠。`md` 再显示项目名。
+  `<sm` 继续使用失败恢复条和单列 Edge Details，`sm` 只调整顶栏间距。
 - 顶栏固定在 pane 可视区域并始终保持单行；项目名与分支 chip 位于左侧，分支不在窄
   pane 另起第二行，空间不足时按 HEAD、项目名、分支文字的顺序降级或截断。
 - 页面不显示独立 Focus 面包屑栏；Graph 和 Details 使用顶栏以下的 pane 剩余高度。
