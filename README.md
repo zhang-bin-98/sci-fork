@@ -41,132 +41,54 @@ a separate database, and SciFork does not upload the project or add cloud sync.
 
 ## Install
 
-### Requirements
+SciFork ships as a DSH plugin bundle (`dsh-scifork`). Install it from inside
+DeepSeek Harness — no command line required.
 
-- DSH `0.2.1-rc.2` — DeepSeek Harness desktop `0.2.1-rc.2`, or the same-version Web profile
-- Node.js `^22.19.0 || >=24.0.0`
-- pnpm `11.23.0` (Git source builds require Corepack and its pnpm shim)
-- Git with `user.name` and `user.email` configured
-- DSH listening on local loopback only (`127.0.0.1`) — the desktop app does
-  this by default; the Web profile is started from your project directory
+Requirements: DSH `0.2.1-rc.2` (desktop or same-version Web) listening on
+loopback only, and Git with `user.name` and `user.email` configured.
 
-### Install into the DeepSeek Harness desktop app (recommended)
+### Install from the Plugins panel (desktop and Web, recommended)
 
-The desktop app is the primary surface. Quit it completely (including the
-tray icon) before changing its plugin profile — the app owns
-`~/.dsh/profiles/desktop` and must not be modified while running.
+1. Open **Plugins** in the sidebar and select **Add plugin**.
+2. Enter the Git repository address:
 
-The `dsh` CLI is not on `PATH` by default. Either register it from the
-desktop app's menu (the post-install CLI registration action), or call the
-bundled CLI directly:
+   ```text
+   zhang-bin-98/sci-fork
+   ```
 
-```sh
-"C:\Program Files\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .\dsh-scifork-0.0.3.tgz
-```
+3. Select **Install**. When a registry prompt appears, the mainland China
+   mirror is offered automatically when GitHub is unreachable; if pnpm asks
+   about build scripts, use the **Allow these scripts and retry** button the
+   dialog offers. The install builds the bundle locally from the Git source.
+4. Select **Enable now** when the install finishes. If the Research Graph
+   entry does not appear right away, restart the app once.
 
-Source installation uses the same command with the Git URL:
+If your setup enables the plugin-management agent tool, you can instead ask
+the model in a chat to install `zhang-bin-98/sci-fork` for you.
 
-```sh
-"...\dsh.cmd" plugin --profile desktop add git+https://github.com/zhang-bin-98/sci-fork.git
-```
+### Install a verified release archive (optional)
 
-Reopen the app. SciFork appears in the right-sidebar guide and the sidebar
-footer action. A desktop nightly auto-update moves the runtime to an
-unverified version; the Companion then shows an Unverified DSH version
-banner until SciFork is re-pinned.
+1. Download `dsh-scifork-0.0.3.tgz` and its `.sha256` from the
+   [GitHub Releases page](https://github.com/zhang-bin-98/sci-fork/releases)
+   and verify the checksum (`sha256sum -c` on Linux, `shasum -a 256 -c` on
+   macOS, or `Get-FileHash` on Windows).
+2. In **Add plugin**, enter the archive's absolute local path.
 
-### Install into the DSH Web profile
+### CLI (advanced)
 
-The Web profile serves the same client bundle at loopback. Start it from the
-directory you want to use as the Research Project:
-
-```sh
-dsh --profile web
-```
-
-### Install from GitHub source
-
-Enable the Corepack pnpm shim before installing:
+The `dsh plugin` command installs into a named profile and is useful for
+automation. Quit the desktop app completely before touching its profile; the
+Web profile can be updated while running (restart DSH afterwards).
 
 ```sh
-corepack enable pnpm
-```
-
-If `corepack` is missing (including Node.js 25+ installations), install it
-first with `npm install --global corepack`, then enable the shim. This makes
-nested `pnpm install` calls select the version pinned by SciFork.
-
-An `ERR_PNPM_BAD_PM_VERSION` error can mean that a different global pnpm is
-handling Git preparation even when the outer command uses Corepack. Run
-`corepack enable pnpm` and retry from a terminal using that shim. In a SciFork
-checkout, `corepack pnpm exec pnpm --version` must print `11.23.0`;
-`corepack pnpm verify:source` checks this and performs an isolated source install.
-
-Source installation is supported starting with `v0.0.2`. DSH Plugin Hub
-uses this route when SciFork has no npm package. The install builds `dist/`
-locally from the Git source:
-
-```sh
-dsh plugin --profile web add git+https://github.com/zhang-bin-98/sci-fork.git
-```
-
-If pnpm blocks the Git dependency's `prepare` script, use the exact
-`allowBuilds` key and profile `pnpm-workspace.yaml` path printed by DSH, then
-run the same command again. Do not guess or broaden the allowed key.
-
-After installation, restart DSH if it is already running.
-
-### Install from GitHub Releases
-
-Use the prebuilt archive when you want to verify the published checksum or
-avoid running the source build locally.
-
-1. Download `dsh-scifork-0.0.3.tgz` and
-   `dsh-scifork-0.0.3.tgz.sha256` from the
-   [GitHub Releases page](https://github.com/zhang-bin-98/sci-fork/releases).
-2. Put both files in the same directory and verify the archive.
-
-Linux:
-
-```sh
-sha256sum -c dsh-scifork-0.0.3.tgz.sha256
-```
-
-macOS:
-
-```sh
-shasum -a 256 -c dsh-scifork-0.0.3.tgz.sha256
-```
-
-Windows PowerShell:
-
-```powershell
-$archive = 'dsh-scifork-0.0.3.tgz'
-$expected = (Get-Content "$archive.sha256").Split()[0].ToLowerInvariant()
-$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
-```
-
-3. Install the verified archive into the DSH Web profile.
-
-```sh
+dsh plugin --profile desktop add git+https://github.com/zhang-bin-98/sci-fork.git
 dsh plugin --profile web add ./dsh-scifork-0.0.3.tgz
 ```
 
-4. Start DSH from the directory you want to use as the Research Project.
-
-```sh
-dsh --profile web
-```
-
-If DSH was already running, restart it after installation. To uninstall the
-plugin later, run the same command with `remove`:
-
-```sh
-dsh plugin --profile web remove dsh-scifork
-```
-
-(For the desktop app, quit it first and use `--profile desktop remove`.)
+Building the Git source locally requires Corepack's pnpm shim
+(`corepack enable pnpm`; `corepack pnpm verify:source` in a checkout verifies
+the isolated source install). To uninstall, use **Remove** on the plugin's
+page, or `dsh plugin --profile <name> remove dsh-scifork`.
 
 ## First use
 
