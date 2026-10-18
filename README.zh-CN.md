@@ -35,125 +35,50 @@ SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepse
 
 ## 安装
 
-### 前置条件
+SciFork 以 DSH 插件包（`dsh-scifork`）分发，直接在 DeepSeek Harness 内安装，
+无需命令行。
 
-- DSH `0.2.1-rc.2`：DeepSeek Harness 桌面端 `0.2.1-rc.2`，或同版本 Web profile
-- Node.js `^22.19.0 || >=24.0.0`
-- pnpm `11.23.0`（Git 源码构建需要 Corepack 及其 pnpm shim）
-- 已配置 `user.name` 和 `user.email` 的 Git
-- DSH 仅监听本机回环（`127.0.0.1`）——桌面端默认如此；Web profile 从你的
-  项目目录启动
+前置条件：DSH `0.2.1-rc.2`（桌面端或同版本 Web）仅监听本机回环，以及已配置
+`user.name` 和 `user.email` 的 Git。
 
-### 安装到 DeepSeek Harness 桌面端（推荐）
+### 从插件面板安装（桌面端与 Web，推荐）
 
-桌面端是主要使用表面。修改其插件 profile 前必须完全退出应用（包括托盘图标）——
-应用独占 `~/.dsh/profiles/desktop`，运行期间不可改动。
+1. 在侧栏打开 **插件**，点击 **添加插件**。
+2. 输入 Git 仓库地址：
 
-`dsh` CLI 默认不在 `PATH` 中。可以在桌面应用菜单里注册 CLI（安装后的注册动作），
-或直接调用应用捆绑的 CLI：
+   ```text
+   zhang-bin-98/sci-fork
+   ```
 
-```sh
-"C:\Program Files\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .\dsh-scifork-0.0.3.tgz
-```
+3. 点击 **安装**。出现镜像提示时，GitHub 不可达会自动提供中国大陆镜像；如果
+   pnpm 询问构建脚本，使用对话框提供的 **允许这些脚本并重试**。安装会从 Git
+   源码在本地构建插件。
+4. 安装完成后选择 **立即启用**。如果 Research Graph 入口没有立刻出现，重启一次
+   应用。
 
-源码安装使用同一命令、换为 Git 地址：
+如果你的环境启用了插件管理 agent 工具，也可以直接在会话中让模型安装
+`zhang-bin-98/sci-fork`。
 
-```sh
-"...\dsh.cmd" plugin --profile desktop add git+https://github.com/zhang-bin-98/sci-fork.git
-```
+### 安装已校验的 Release 压缩包（可选）
 
-重新打开应用后，SciFork 出现在右侧栏 guide 卡片和侧栏底部按钮中。桌面端 nightly
-自动更新会把运行时带入未验证状态；此时 Companion 会显示未验证 DSH 版本警告条，
-直至 SciFork 重新钉住版本。
+1. 从 [GitHub Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases)
+   下载 `dsh-scifork-0.0.3.tgz` 与对应 `.sha256` 并校验（Linux 用
+   `sha256sum -c`，macOS 用 `shasum -a 256 -c`，Windows 用 `Get-FileHash`）。
+2. 在 **添加插件** 中输入压缩包的本地绝对路径。
 
-### 安装到 DSH Web profile
+### 命令行（进阶）
 
-Web profile 在回环地址上提供同一个 client bundle。从希望作为 Research Project 的
-目录启动：
-
-```sh
-dsh --profile web
-```
-
-### 从 GitHub 源码安装
-
-安装前先启用 Corepack 的 pnpm 命令入口：
+`dsh plugin` 命令可向指定 profile 安装，适合自动化。修改桌面 profile 前必须
+完全退出应用；Web profile 可在运行中更新（之后重启 DSH）。
 
 ```sh
-corepack enable pnpm
-```
-
-如果没有 `corepack`（包括 Node.js 25+ 的安装环境），先运行
-`npm install --global corepack`，再启用入口。这能让内层
-`pnpm install` 使用 SciFork 固定的版本。
-
-遇到 `ERR_PNPM_BAD_PM_VERSION` 时，可能是 Git 依赖准备阶段调用了另一个
-全局 pnpm，即使外层已使用 Corepack 也会失败。运行 `corepack enable pnpm`，
-然后在使用该入口的终端中重试。在 SciFork 源码目录执行
-`corepack pnpm exec pnpm --version` 应输出 `11.23.0`；
-`corepack pnpm verify:source` 会检查这一点并执行隔离源码安装验证。
-
-从 `v0.0.2` 开始支持源码安装。SciFork 没有 npm 包时，DSH Plugin Hub 会使用
-该安装路径；安装过程会从 Git 源码在本地构建 `dist/`：
-
-```sh
-dsh plugin --profile web add git+https://github.com/zhang-bin-98/sci-fork.git
-```
-
-如果 pnpm 阻止 Git 依赖的 `prepare` 脚本，请把 DSH 输出中给出的精确
-`allowBuilds` key 写入它提示的 profile `pnpm-workspace.yaml`，然后重新执行同一命令。
-不要猜测或扩大允许范围。
-
-安装完成后，如果 DSH 已经在运行，请重启 DSH。
-
-### 从 GitHub Releases 安装
-
-需要校验正式发布的 checksum，或不希望在本机构建源码时，请使用预构建安装包。
-
-1. 从 [GitHub Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases)下载
-   `dsh-scifork-0.0.3.tgz` 和 `dsh-scifork-0.0.3.tgz.sha256`。
-2. 将两个文件放在同一目录，并校验安装包。
-
-Linux：
-
-```sh
-sha256sum -c dsh-scifork-0.0.3.tgz.sha256
-```
-
-macOS：
-
-```sh
-shasum -a 256 -c dsh-scifork-0.0.3.tgz.sha256
-```
-
-Windows PowerShell：
-
-```powershell
-$archive = 'dsh-scifork-0.0.3.tgz'
-$expected = (Get-Content "$archive.sha256").Split()[0].ToLowerInvariant()
-$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
-```
-
-3. 将已校验的安装包添加到 DSH Web profile。
-
-```sh
+dsh plugin --profile desktop add git+https://github.com/zhang-bin-98/sci-fork.git
 dsh plugin --profile web add ./dsh-scifork-0.0.3.tgz
 ```
 
-4. 从你希望作为 Research Project 的目录启动 DSH。
-
-```sh
-dsh --profile web
-```
-
-如果安装时 DSH 已经在运行，请重启 DSH。以后如需卸载，执行：
-
-```sh
-dsh plugin --profile web remove dsh-scifork
-```
-
-（桌面端请先完全退出应用，再使用 `--profile desktop remove`。）
+本地构建 Git 源码需要 Corepack 的 pnpm 入口（`corepack enable pnpm`；在源码
+目录运行 `corepack pnpm verify:source` 可执行隔离源码安装验证）。卸载时在插件
+页面选择 **移除**，或执行 `dsh plugin --profile <name> remove dsh-scifork`。
 
 ## 第一次使用
 
