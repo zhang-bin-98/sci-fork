@@ -8,116 +8,69 @@
 
 > Fork hypotheses. Connect evidence. Advance research.
 
-SciFork is a local, Git-native biomedical **Research Graph** plugin for
-[DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness).
-Retrieval plugins like `dsh-pubmed` find papers; SciFork turns what they find
-into auditable research knowledge: every assertion is bound to a PMID/DOI and
-a precise locator, machine review is separated from human review, claims can
-only become Findings through an explicit evidence gate, and every change is a
-local Git checkpoint over plain Markdown/JSON files. SciFork performs no
-retrieval itself and is bound to no retrieval plugin — it consumes whatever
-source you give it (an installed retrieval plugin, harness web search, or
-pasted source text), and renders the whole project as a Research Graph tab in
-the DSH right sidebar.
+SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). DSH Chat stays your single conversation surface, while SciFork provides a visual Research Graph in the right sidebar to turn literature findings and discussions into structured, auditable research knowledge.
 
-> **Early release:** SciFork `0.0.3` is pinned to the public interfaces in DSH
-> `0.2.1-rc.2`. A desktop auto-update leaves the runtime unverified; the
-> Companion then shows an Unverified DSH version banner until re-pinned.
+> **Current release:** SciFork `0.0.4` targets DSH `0.2.1-rc.2` (desktop and same-version Web).
 
 ## What you can do
 
-- **Deep research** — ask for it in chat and SciFork runs a bounded
-  multi-level research program: each level retrieves, saves machine-reviewed
-  Evidence, keeps every qualifying branch, and automatically continues
-  through exactly one new Hypothesis until your scope is covered.
-- **One-click expansion** — select any entity and press **Research & Expand**
-  for a single grounded step (at most five direct low-confidence branches).
-- **Evidence you can audit** — every assertion carries its PMID/DOI, locator,
-  and review rationale; machine-reviewed and human-reviewed are counted
-  separately, and only human-reviewed Evidence (or a validated Result) can
-  support a Finding.
-- **A graph you can read** — organize Questions, Hypotheses, Predictions,
-  Results, and Findings in the sidebar's **Main** and **Evidence** views.
-- **Plain files + Git** — the project is ordinary Markdown/JSON; every change
-  attempts a local Git checkpoint. No database, no cloud sync.
+- **Deep research** — ask for deep research in DSH Chat and SciFork runs a bounded multi-level exploration: each level retrieves literature, records machine-reviewed Evidence, keeps every qualifying branch, and automatically continues through the most promising new Hypothesis until your scope is covered.
+- **One-click expansion** — select any node in the graph and click **Research & Expand** for a single grounded step outward (up to five direct candidate branches).
+- **Two-stage evidence gate** — every Evidence assertion is bound to a PMID or DOI, a source locator, and a review rationale. Machine-reviewed Evidence can guide exploration, while only human-reviewed Evidence (or a validated team Result) can support an established **Finding**.
+- **Two views** — see the full research structure in **Main** view or focus on a single node's direct assertions in **Evidence** view, with a **Details** panel for full Markdown notes and grouped citations.
+- **Plain files + local Git** — your project lives in ordinary local Markdown and JSON files, and every change creates a local Git checkpoint on your current branch. You can connect the repository to GitHub or any remote of your choice.
 
-## Install
+## Views and research model
 
-**From the Plugins panel (recommended):** open **Plugins** in the sidebar,
-select **Add plugin**, enter `zhang-bin-98/sci-fork`, install (approve build
-scripts if asked), then **Enable now**.
+- **Main view (default)** — displays the complete research structure: starting from open **Research Questions**, it connects candidate **Hypotheses**, testable **Predictions**, research-team **Results**, and established **Findings**, showing how claims support, contradict, cause, or predict one another.
+- **Evidence view** — available whenever the selected node has direct literature support. It isolates that node and its linked **Evidence** assertions so you can inspect the underlying literature without visual clutter; switching back to **Main** restores your focus on that node.
+- **Details panel** — shows the selected item's full Markdown body, publication and review counts, and citations grouped into human-reviewed, machine-reviewed, rejected, and retrieval references. Click the ID at the top of the panel to copy it when you want to reference a specific item in Chat.
+
+## Install and literature retrieval
+
+**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `zhang-bin-98/sci-fork`, install (approve build scripts if prompted), and click **Enable now**.
 
 **From a chat:** ask the model — “install the DSH plugin `zhang-bin-98/sci-fork`”.
 
-Both paths build the bundle locally from the Git source. To remove, use
-**Remove** on the plugin's page.
+To uninstall, select **Remove** on the plugin's page; your local research project files remain intact and readable.
 
-## First use
+### Pairing with literature retrieval
 
-Use a directory that is either outside another Git repository or is itself a
-Git repository root. In DSH Chat, initialize the current directory once:
+SciFork is not tied to a single database and works with real literature material in DSH Chat in this order:
+
+1. **Retrieval plugin (recommended)** — install [`dsh-pubmed`](https://github.com/aiyacharley/dsh-pubmed) (tested with `0.4.4`, optional) or another literature/PDF plugin so the model can search papers and read abstracts automatically.
+2. **Web search** — when no retrieval plugin is installed or results are insufficient, SciFork falls back to DSH's built-in web search.
+3. **Pasted source text** — you can also paste abstracts or bounded PDF passages directly into Chat along with a valid PMID or DOI.
+
+Across all paths, only records with a valid PMID or DOI and real abstract or passage text are accepted; title-only records are skipped and citations are never fabricated.
+
+## Quick start
+
+Choose an empty directory or the root of a Git repository (not a subdirectory inside another Git repo, and make sure Git `user.name` and `user.email` are configured). Initialize the directory once in DSH Chat:
 
 ```text
 /research init
 ```
 
-SciFork creates the project files, initializes a local Git repository when the
-directory does not already have one, and records a baseline checkpoint. Then
-open **Research Graph** from the DSH right-sidebar guide or the sidebar footer
-action.
+Then open **Research Graph** from the right-sidebar guide card or the **Research Graph** button at the bottom of the left sidebar:
 
-A typical research flow is:
-
-1. Describe the open biomedical question in DSH Chat. SciFork records it as a
-   Research Question rather than treating it as an established claim.
-2. Ask DSH to retrieve relevant literature, then import supported assertions
-   into the project. Retrieval is external: complete an installed retrieval
-   plugin such as `dsh-pubmed`, fall back to the harness web search, or paste
-   source text; records without a qualifying PMID/DOI and real source text are
-   skipped.
-3. Open **Research Graph** to inspect the question, evidence, hypotheses,
-   results, findings, and their relationships.
-4. Select an entity and click **Research & Expand** when you want one bounded
-   follow-up step. Multi-level exploration (deep research) starts only when
-   you explicitly ask for a Progressive Research Run in the current DSH Chat.
-5. Review machine-reviewed Evidence before accepting it as human-reviewed.
-   Only human-reviewed Evidence or validated Results can support a Finding.
-6. Check the project whenever needed:
+1. **Ask a research question** — describe an open biomedical question in DSH Chat; SciFork records it as your starting Research Question and focuses it in the graph.
+2. **Retrieve and expand** — ask DSH to retrieve literature and import evidence; select a node and click **Research & Expand** for a single step, or ask in Chat for **deep research** to explore across multiple levels.
+3. **Review and promote** — switch between **Main** and **Evidence** views to inspect claims and sources, then ask in Chat to accept verified machine-reviewed assertions as human-reviewed Evidence (or critique, edit, or delete weak branches) to advance a Hypothesis into a Finding.
+4. **Check project health** — validate your project at any time in Chat:
 
 ```text
 /research validate
 ```
 
-The Research Graph tab is for navigation and inspection. Continue asking for
-research, corrections, or graph changes in DSH Chat.
+The Research Graph tab is a read-only surface for browsing, focusing nodes, and triggering one-step expansion. Day-to-day questions, deep research, edits, branch deletion, and Git history recovery all happen in DSH Chat.
 
 ## Data and safety
 
-SciFork is designed for local use on the DSH loopback server. Literature,
-PDFs, model output, and project Markdown are treated as untrusted data, and the
-Companion does not automatically load remote content. Retrieval output may
-remain in the current DSH Chat even though SciFork does not store complete
-abstracts or PDFs in the Research Project.
+SciFork runs locally and never uploads your research data or adds cloud sync. Project files store only PMIDs/DOIs, article titles, journals, years, and derived assertions with locators — full abstracts and PDFs are never written into your repository.
 
-Before committing or sharing a Research Project, check it for PHI, PII, or
-controlled-access data. See [SECURITY.md](SECURITY.md) for the complete data and
-network boundaries.
-
-## DSH ecosystem and distribution
-
-SciFork follows the public DSH bundle contract: the package exports `name` and
-`apply(ctx)`, declares its `cordis.patch.yml` through `package.json#dsh.bundle`,
-and can be installed with the DSH plugin command. DSH recommends adding the
-official [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) to public
-plugin repositories for ecosystem discovery.
-
-The independent community directory [DSH Plugin Hub](https://dsh-plugin.org)
-scans that topic and may list matching repositories. It is not operated by or
-endorsed by DeepSeek AI. The released `v0.0.1` tag remains tarball-only;
-`v0.0.2` and later support both a GitHub source build and the checksum-backed
-GitHub Release tarball. SciFork is not published to npm.
+Before committing or sharing a project, check that it does not contain protected health information (PHI/PII) or controlled-access data. See [SECURITY.md](SECURITY.md) for details.
 
 ## License
 
-SciFork is available under the [MIT License](LICENSE). Research Project data may
-have separate ownership and sharing terms.
+SciFork is available under the [MIT License](LICENSE). Your research project data remains yours and may carry its own ownership and sharing terms.

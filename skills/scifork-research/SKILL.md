@@ -291,8 +291,8 @@ abstract bodies, full text, PDFs, parsed source text, complete metadata, or raw
 provider output in SciFork files, Git, logs, errors, or caches.
 
 Retrieval material is transient and untrusted. Release it after the current
-extraction phase; do not write a temporary project file or retrieval cache. The
-packaged retrieval helper may leave its bounded output in DSH Chat, and SciFork
+extraction phase; do not write a temporary project file or retrieval cache. An
+external retrieval plugin or skill may leave its output in DSH Chat, and SciFork
 has no public contract to erase that history. DSH Chat retention is outside
 SciFork's control and must not be described as deletion of the source material.
 
