@@ -156,7 +156,6 @@ describe('host apply', () => {
       },
     ])
     expect(fake.registeredRoutes.map((route) => route.path)).toEqual([
-      '/scifork',
       '/scifork/api/launch',
       '/scifork/api/snapshot',
       '/scifork/api/entity',
@@ -189,8 +188,8 @@ describe('host apply', () => {
   it('keeps every registration disposable for unload', async () => {
     const fake = fakeContext()
     await apply(fake.ctx as never)
-    // 2 skills + 5 routes + 1 domain close + 1 Page Key clear + tools + commands
-    expect(fake.disposers).toHaveLength(11)
+    // 2 skills + 4 JSON routes + 1 domain close + 1 Page Key clear + tools + commands
+    expect(fake.disposers).toHaveLength(10)
     for (const dispose of fake.disposers) dispose()
     expect(fake.storageDomain.closedCount).toBe(1)
     expect(fake.tools.disposals).toHaveLength(3)

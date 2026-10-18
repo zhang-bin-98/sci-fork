@@ -1,6 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { createHash } from 'node:crypto'
-import { dirname } from 'node:path'
 import type {
   CommandsPort,
   FsPort,
@@ -14,7 +13,6 @@ import type {
   WebServerPort,
 } from './contracts.js'
 import { registerResearchCommands } from './commands.js'
-import { companionAssetsFromPackageRoot } from './companion-assets.js'
 import { CompanionService } from './companion-service.js'
 import { PageKeyStore } from './page-keys.js'
 import { findSkillsRoot, loadPackagedSkills } from './skills.js'
@@ -69,7 +67,6 @@ export async function apply(ctx: Context): Promise<void> {
   for (const skill of loadPackagedSkills(skillsRoot)) {
     ctx.effect(() => skills.register(skill))
   }
-  const packageRoot = dirname(skillsRoot)
 
   const storage = await storageDomain.open(uiStateDomainSpec())
   ctx.effect(() => () => {
@@ -85,8 +82,7 @@ export async function apply(ctx: Context): Promise<void> {
     pageKeys.revokeSession(session.id)
   })
   const api = new CompanionService({ ...researchDeps, storage, sessions, pageKeys })
-  const assets = companionAssetsFromPackageRoot(packageRoot)
-  for (const route of sciforkRoutes({ api, assets })) {
+  for (const route of sciforkRoutes({ api })) {
     ctx.effect(() => webServer.register(route))
   }
 

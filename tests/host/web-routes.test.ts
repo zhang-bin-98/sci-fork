@@ -10,11 +10,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { CompanionApiPort } from '../../src/host/companion-service.js'
 import type { WebRoute } from '../../src/host/contracts.js'
 import {
-  COMPANION_ASSET_MANIFEST,
   JSON_BODY_LIMIT,
   PAGE_KEY_HEADER,
-  STATIC_CONTENT_SECURITY_POLICY,
-  type CompanionAssets,
   isAllowedJsonRequest,
   isJsonContentType,
   isLoopbackAddress,
@@ -24,7 +21,6 @@ import {
   sendJson,
 } from '../../src/host/web-routes.js'
 import {
-  ROUTE_COMPANION,
   ROUTE_ENTITY,
   ROUTE_FOCUS,
   ROUTE_LAUNCH,
@@ -115,18 +111,9 @@ function jsonHeaders(
   }
 }
 
-function memoryAssets(): CompanionAssets {
-  const bodies: Record<keyof typeof COMPANION_ASSET_MANIFEST, string> = {
-    'index.html': '<!doctype html><main id=root></main>',
-    'app.js': 'globalThis.__sciforkLoaded = true',
-    'styles.css': 'body { margin: 0; }',
-  }
-  return { read: (name) => Buffer.from(bodies[name], 'utf8') }
-}
-
 function fakeApi(): CompanionApiPort {
   return {
-    launch: vi.fn(async () => ({ ok: true as const, url: `/scifork#key=${PAGE_KEY}` })),
+    launch: vi.fn(async () => ({ ok: true as const, pageKey: PAGE_KEY })),
     snapshot: vi.fn(async () => ({
       ok: true as const,
       unchanged: false,
@@ -159,21 +146,21 @@ function fakeApi(): CompanionApiPort {
   }
 }
 
-function testRoutes(api = fakeApi(), assets = memoryAssets()): readonly WebRoute[] {
-  return sciforkRoutes({ api, assets })
+function testRoutes(api = fakeApi()): readonly WebRoute[] {
+  return sciforkRoutes({ api })
 }
 
-describe('M2 route table and request guards', () => {
-  it('registers one static prefix and four exact JSON routes with no spike', () => {
+describe('route table and request guards', () => {
+  it('registers exactly four exact JSON routes with no static or spike route', () => {
     expect(testRoutes().map(({ kind, path }) => ({ kind, path }))).toEqual([
-      { kind: 'prefix', path: ROUTE_COMPANION },
       { kind: 'exact', path: ROUTE_LAUNCH },
       { kind: 'exact', path: ROUTE_SNAPSHOT },
       { kind: 'exact', path: ROUTE_ENTITY },
       { kind: 'exact', path: ROUTE_FOCUS },
     ])
     expect(testRoutes().some(({ path }) => path.includes('spike'))).toBe(false)
-    for (const path of [ROUTE_COMPANION, ROUTE_LAUNCH, ROUTE_SNAPSHOT, ROUTE_ENTITY, ROUTE_FOCUS]) {
+    expect(testRoutes().some(({ kind }) => kind === 'prefix')).toBe(false)
+    for (const path of [ROUTE_LAUNCH, ROUTE_SNAPSHOT, ROUTE_ENTITY, ROUTE_FOCUS]) {
       expect(path.startsWith('/') && path.length > 1 && !path.endsWith('/')).toBe(true)
     }
   })
@@ -200,93 +187,6 @@ describe('M2 route table and request guards', () => {
 
   it('rejects a JSON prefix that is not the application/json media type', () => {
     expect(isJsonContentType('application/jsonp')).toBe(false)
-  })
-})
-
-describe('static Companion route', () => {
-  it.each([
-    ['/scifork', 'index.html', 'text/html; charset=utf-8'],
-    ['/scifork/index.html', 'index.html', 'text/html; charset=utf-8'],
-    ['/scifork/app.js', 'app.js', 'text/javascript; charset=utf-8'],
-    ['/scifork/styles.css', 'styles.css', 'text/css; charset=utf-8'],
-  ])('serves allowlisted asset %s', async (path, name, contentType) => {
-    const response = await invokeRoute(routeAt(testRoutes(), ROUTE_COMPANION), {
-      path,
-      headers: (port) => ({ host: '127.0.0.1:' + port }),
-    })
-    expect(response.status).toBe(200)
-    expect(response.headers['content-type']).toBe(contentType)
-    expect(response.headers['content-security-policy']).toBe(STATIC_CONTENT_SECURITY_POLICY)
-    expect(response.headers['x-content-type-options']).toBe('nosniff')
-    expect(response.headers['referrer-policy']).toBe('no-referrer')
-    expect(response.headers['x-frame-options']).toBe('DENY')
-    expect(response.headers['access-control-allow-origin']).toBeUndefined()
-    expect(response.body).toContain(
-      name === 'index.html' ? 'root' : name === 'app.js' ? 'sciforkLoaded' : 'margin',
-    )
-  })
-
-  it('redirects the legacy slash path to the canonical bare Companion URL', async () => {
-    const response = await invokeRoute(routeAt(testRoutes(), ROUTE_COMPANION), {
-      path: `${ROUTE_COMPANION}/`,
-      headers: (port) => ({ host: '127.0.0.1:' + port }),
-    })
-    expect(response.status).toBe(308)
-    expect(response.headers.location).toBe(ROUTE_COMPANION)
-    expect(response.headers['content-security-policy']).toBe(STATIC_CONTENT_SECURITY_POLICY)
-    expect(response.body).toBe('')
-  })
-
-  it.each([
-    '/scifork/missing.js',
-    '/scifork/api/snapshot',
-    '/scifork/../secret.txt',
-    '/scifork/%2e%2e/secret.txt',
-    '/scifork/%252e%252e/secret.txt',
-    '/scifork/app.js?key=secret',
-  ])('rejects non-manifest, API-shaped, traversal, or queried path %s', async (path) => {
-    const response = await invokeRoute(routeAt(testRoutes(), ROUTE_COMPANION), {
-      path,
-      headers: (port) => ({ host: '127.0.0.1:' + port }),
-    })
-    expect(response.status).toBe(404)
-  })
-
-  it('supports HEAD but rejects other methods and non-loopback requests', async () => {
-    const route = routeAt(testRoutes(), ROUTE_COMPANION)
-    const head = await invokeRoute(route, {
-      method: 'HEAD',
-      path: '/scifork/app.js',
-      headers: (port) => ({ host: '127.0.0.1:' + port }),
-    })
-    const post = await invokeRoute(route, {
-      method: 'POST',
-      path: '/scifork/app.js',
-      headers: (port) => ({ host: '127.0.0.1:' + port }),
-    })
-    const remote = await invokeRoute(route, {
-      path: '/scifork/app.js',
-      headers: (port) => ({ host: '127.0.0.1:' + port }),
-      remoteAddress: '203.0.113.7',
-    })
-    expect(head.status).toBe(200)
-    expect(head.body).toBe('')
-    expect(post.status).toBe(405)
-    expect(remote.status).toBe(403)
-  })
-
-  it('fails closed without exposing an asset-loader path', async () => {
-    const assets: CompanionAssets = {
-      read() {
-        throw new Error('missing E:\\secret\\dist\\companion')
-      },
-    }
-    const response = await invokeRoute(
-      routeAt(testRoutes(fakeApi(), assets), ROUTE_COMPANION),
-      { path: '/scifork', headers: (port) => ({ host: '127.0.0.1:' + port }) },
-    )
-    expect(response.status).toBe(503)
-    expect(response.body).not.toContain('secret')
   })
 })
 

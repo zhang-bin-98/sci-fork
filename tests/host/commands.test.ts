@@ -62,7 +62,7 @@ describe('registerResearchCommands', () => {
   it('registers the research command with an input hint and disposes it', async () => {
     const { commands, dispose } = await registered()
     expect(commands.definitions).toHaveLength(1)
-    expect(commands.definitions[0]).toMatchObject({ name: 'research', input: { hint: 'init | open | validate' } })
+    expect(commands.definitions[0]).toMatchObject({ name: 'research', input: { hint: 'init | validate' } })
     dispose()
     expect(commands.disposals).toHaveLength(1)
   })
@@ -79,13 +79,12 @@ describe('registerResearchCommands', () => {
     expect(text).not.toContain('/newproj')
   })
 
-  it('directs /research open to the keyed DSH action without emitting a URL', async () => {
+  it('rejects the removed /research open subcommand', async () => {
     const { commands } = await registered()
     const result = await commands.definitions[0]!.handler(invocation('/proj', ' open'))
-    expect(result).toMatchObject({ kind: 'success' })
-    if (result.kind === 'success') {
-      expect(result.text).toContain('Open Research Graph')
-      expect(result.text).not.toMatch(/https?:|\/scifork|#key=/u)
+    expect(result.kind).toBe('error')
+    if (result.kind === 'error') {
+      expect(result.text).toContain('usage: /research init | validate')
     }
   })
 

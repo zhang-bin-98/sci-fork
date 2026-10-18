@@ -1,100 +1,71 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ReactElement } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { apply } from '../../src/bridge/client.js'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { apply, createBridge, type Bridge } from '../../src/bridge/client.js'
 
-interface SlotEntry {
-  name: string
-  id: string
-  order?: number
-  label?: string
-}
-
-interface Registration {
-  entry: SlotEntry
+interface FooterRegistration {
+  entry: { name: string; id: string; order?: number; label?: string }
   factory: (props: { wide: boolean }) => ReactElement
 }
 
-interface ClickableProps {
-  onClick(): void
+interface TabBodyRegistration {
+  entry: { name: 'sidebar.right.pane.tab'; key: string }
+  factory: () => ReactElement
+}
+
+interface TabDefinitionCapture {
+  id: string
+  kind: string
+  keepMounted?: boolean
+  title: () => string
+  guide?: ReadonlyArray<{ id: string; order: number }>
 }
 
 interface SessionSnapshot {
-  current: string
+  current?: string
   byId: Record<string, { running: boolean }>
 }
 
-type MessageListener =
-  | ((event: MessageEvent<unknown>) => unknown)
-  | { handleEvent(event: MessageEvent<unknown>): unknown }
-
 const PAGE_KEY = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8'
-const LAUNCH_URL = `/scifork#key=${PAGE_KEY}`
-const NONCE = 'AQIDBAUGBwgJCgsMDQ4PEA'
 const PROMPT = 'Use this exact, bounded research expansion prompt.'
 
-class FakeBroadcastChannel {
-  static instances: FakeBroadcastChannel[] = []
-  static events: string[] = []
-
-  readonly name: string
-  readonly postMessage = vi.fn()
-  readonly close = vi.fn(() => {
-    this.closed = true
-  })
-  onmessage: ((event: MessageEvent<unknown>) => unknown) | null = null
-
-  private readonly listeners = new Set<MessageListener>()
-  private closed = false
-
-  constructor(name: string) {
-    this.name = name
-    FakeBroadcastChannel.instances.push(this)
-    FakeBroadcastChannel.events.push(`channel:${name}`)
-  }
-
-  addEventListener(type: string, listener: MessageListener): void {
-    if (type === 'message') this.listeners.add(listener)
-  }
-
-  removeEventListener(type: string, listener: MessageListener): void {
-    if (type === 'message') this.listeners.delete(listener)
-  }
-
-  receive(data: unknown): void {
-    if (this.closed) return
-    const event = { data } as MessageEvent<unknown>
-    this.onmessage?.(event)
-    for (const listener of this.listeners) {
-      if (typeof listener === 'function') listener(event)
-      else listener.handleEvent(event)
-    }
-  }
-
-  static reset(): void {
-    FakeBroadcastChannel.instances = []
-    FakeBroadcastChannel.events = []
-  }
+interface SessionInputCapture {
+  setDraft: ReturnType<typeof vi.fn>
+  submit: ReturnType<typeof vi.fn>
+  notify: ReturnType<typeof vi.fn>
 }
 
-function fakeContext(services: Record<string, unknown>): Context {
-  return {
-    get(name: string): unknown {
-      return services[name]
-    },
-  } as unknown as Context
-}
-
-function captureRegistrations(services: Record<string, unknown>): {
+function makeHarness(): {
   ctx: Context
   injectedKeys: string[]
-  registrations: Registration[]
+  footer: FooterRegistration[]
+  tabBodies: TabBodyRegistration[]
+  tabDefinition: () => TabDefinitionCapture | undefined
+  openTab: ReturnType<typeof vi.fn>
+  sessions: {
+    snapshot: SessionSnapshot
+    scopes: Map<string, Context>
+  }
+  inputs: Map<Context, SessionInputCapture>
   dispose(): void
 } {
   const injectedKeys: string[] = []
-  const registrations: Registration[] = []
+  const footer: FooterRegistration[] = []
+  const tabBodies: TabBodyRegistration[] = []
   const disposers: Array<() => void> = []
-  const slots = {
+  let definition: TabDefinitionCapture | undefined
+  const openTab = vi.fn()
+
+  const snapshot: SessionSnapshot = { current: 'session-1', byId: { 'session-1': { running: false } } }
+  const scopes = new Map<string, Context>()
+  const inputs = new Map<Context, SessionInputCapture>()
+
+  interface SlotsMock {
+    inject(key: string, callback: () => () => void): () => void
+    register(entry: FooterRegistration['entry'], factory: FooterRegistration['factory']): () => void
+    register(entry: TabBodyRegistration['entry'], factory: TabBodyRegistration['factory']): () => void
+  }
+  const slots: SlotsMock = {
     inject(key: string, callback: () => () => void): () => void {
       injectedKeys.push(key)
       const disposer = callback()
@@ -102,16 +73,57 @@ function captureRegistrations(services: Record<string, unknown>): {
       return disposer
     },
     register(
-      entry: SlotEntry,
-      factory: (props: { wide: boolean }) => ReactElement,
+      entry: FooterRegistration['entry'] | TabBodyRegistration['entry'],
+      factory: unknown,
     ): () => void {
-      registrations.push({ entry, factory })
+      if ((entry as TabBodyRegistration['entry']).key !== undefined) {
+        tabBodies.push({
+          entry: entry as TabBodyRegistration['entry'],
+          factory: factory as TabBodyRegistration['factory'],
+        })
+      } else {
+        footer.push({
+          entry: entry as FooterRegistration['entry'],
+          factory: factory as FooterRegistration['factory'],
+        })
+      }
       return () => undefined
     },
   }
+  const services: Record<string, unknown> = {
+    slots,
+    sessions: {
+      list: { getSnapshot: () => snapshot },
+      scope(id: string) {
+        return scopes.get(id)
+      },
+    },
+    conversation: {
+      input: {
+        for(actx: Context): SessionInputCapture {
+          const existing = inputs.get(actx)
+          if (existing !== undefined) return existing
+          const capture: SessionInputCapture = {
+            setDraft: vi.fn(),
+            submit: vi.fn(),
+            notify: vi.fn(),
+          }
+          inputs.set(actx, capture)
+          return capture
+        },
+      },
+    },
+    sidebarRightTabs: {
+      register(def: TabDefinitionCapture): () => void {
+        definition = def
+        return () => undefined
+      },
+    },
+    sidebarRight: { openTab },
+  }
   const ctx = {
     get(name: string): unknown {
-      return name === 'slots' ? slots : services[name]
+      return services[name]
     },
     effect(callback: () => void | (() => void)): void | (() => void) {
       const disposer = callback()
@@ -122,456 +134,264 @@ function captureRegistrations(services: Record<string, unknown>): {
   return {
     ctx,
     injectedKeys,
-    registrations,
+    footer,
+    tabBodies,
+    tabDefinition: () => definition,
+    openTab,
+    sessions: { snapshot, scopes },
+    inputs,
     dispose(): void {
       for (const disposer of disposers.reverse()) disposer()
     },
   }
 }
 
-function renderOpenButton(registration: Registration, wide = true): ReactElement {
-  const component = registration.factory({ wide })
-  expect(typeof component.type).toBe('function')
-  const button = (component.type as (props: unknown) => ReactElement)(component.props)
-  expect(button.type).toBe('button')
-  return button
+function scopeContext(name: string): Context {
+  return { name } as unknown as Context
 }
 
-function click(registration: Registration): void {
-  const button = renderOpenButton(registration)
-  ;(button.props as ClickableProps).onClick()
-}
-
-function openAction(registrations: Registration[]): Registration {
-  const registration = registrations.find(({ entry }) => entry.id === 'scifork-open')
-  expect(registration).toBeDefined()
-  return registration!
-}
-
-function createServices(running = false) {
-  const state: SessionSnapshot = {
-    current: 'session-a',
-    byId: {
-      'session-a': { running },
-      'session-b': { running: false },
-    },
-  }
-  const scopeA = fakeContext({ id: 'scope-a' })
-  const scopeB = fakeContext({ id: 'scope-b' })
-  let resolvedScopeA: Context | undefined = scopeA
-  const scope = vi.fn((sessionId: string) =>
-    sessionId === 'session-a' ? resolvedScopeA : sessionId === 'session-b' ? scopeB : undefined,
-  )
-  const setDraft = vi.fn()
-  const submit = vi.fn()
-  const notify = vi.fn()
-  const input = { setDraft, submit, notify }
-  const otherInput = { setDraft: vi.fn(), submit: vi.fn(), notify: vi.fn() }
-  const inputFor = vi.fn((scopeContext: Context) =>
-    scopeContext === scopeA ? input : otherInput,
-  )
-  const sessions = {
-    list: { getSnapshot: vi.fn(() => state) },
-    scope,
-  }
-  const conversation = { input: { for: inputFor } }
-  return {
-    state,
-    scopeA,
-    scope,
-    setResolvedScopeA(value: Context | undefined): void {
-      resolvedScopeA = value
-    },
-    setDraft,
-    submit,
-    notify,
-    inputFor,
-    sessions,
-    conversation,
-  }
-}
-
-function launchResponse(url: string, ok = true): Response {
-  return {
-    ok,
-    status: ok ? 200 : 500,
-    json: vi.fn(async () => ({ ok, url })),
-  } as unknown as Response
-}
-
-function deferred<T>(): {
-  promise: Promise<T>
-  resolve(value: T): void
-} {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
+function launchFetch(pageKey: string, failures = 0): ReturnType<typeof vi.fn> {
+  let calls = 0
+  return vi.fn(async () => {
+    calls += 1
+    if (calls <= failures) {
+      return { ok: false, json: async () => ({ ok: false, code: 'SESSION_UNAVAILABLE' }) }
+    }
+    return { ok: true, json: async () => ({ ok: true, pageKey }) }
   })
-  return { promise, resolve }
 }
 
-function installBrowser(fetchImplementation: () => Promise<Response>, popupAllowed = true) {
-  const events = FakeBroadcastChannel.events
-  let currentUrl = 'about:blank'
-  const navigate = vi.fn((url: string) => {
-    currentUrl = url
-    events.push(`navigate:${url}`)
-  })
-  const popupLocation = { assign: navigate, replace: navigate }
-  Object.defineProperty(popupLocation, 'href', {
-    get: () => currentUrl,
-    set: navigate,
-  })
-  const popup = {
-    location: popupLocation,
-    close: vi.fn(),
-  } as unknown as Window
-  const open = vi.fn(() => {
-    events.push('open')
-    return popupAllowed ? popup : null
-  })
-  const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => {
-    events.push('fetch')
-    return fetchImplementation()
-  })
-  vi.stubGlobal('window', {
-    open,
-    location: { origin: 'http://127.0.0.1:3000' },
-    BroadcastChannel: FakeBroadcastChannel,
-  })
-  vi.stubGlobal('fetch', fetchMock)
-  vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel)
-  return { events, popup, open, fetchMock, navigate }
-}
+describe('apply registration surface', () => {
+  it('registers the tab type, keyed body seat, and footer action', () => {
+    const harness = makeHarness()
+    apply(harness.ctx)
 
-async function openBridge(running = false) {
-  const services = createServices(running)
-  const browser = installBrowser(async () => launchResponse(LAUNCH_URL))
-  const captured = captureRegistrations({
-    sessions: services.sessions,
-    conversation: services.conversation,
+    expect(harness.tabDefinition()).toMatchObject({
+      id: 'dsh-scifork',
+      kind: 'scifork.research-graph',
+      keepMounted: false,
+    })
+    expect(harness.tabDefinition()?.guide?.map((entry) => ({ id: entry.id, order: entry.order }))).toEqual([
+      { id: 'research-graph', order: 100 },
+    ])
+    expect(harness.tabDefinition()?.title()).toBe('Research Graph')
+
+    expect(harness.tabBodies.map(({ entry }) => entry)).toEqual([
+      { name: 'sidebar.right.pane.tab', key: 'dsh-scifork' },
+    ])
+    expect(harness.footer).toHaveLength(1)
+    expect(harness.footer[0]!.entry).toMatchObject({
+      name: 'sidebar.footer.action',
+      id: 'scifork-open',
+    })
   })
-  apply(captured.ctx)
-  click(openAction(captured.registrations))
-  await vi.waitFor(() => expect(FakeBroadcastChannel.instances).toHaveLength(1))
-  return {
-    ...services,
-    ...browser,
-    ...captured,
-    channel: FakeBroadcastChannel.instances[0]!,
-  }
-}
 
-function acknowledgementMessages(channel: FakeBroadcastChannel): unknown[] {
-  return channel.postMessage.mock.calls
-    .map(([message]) => message)
-    .filter((message) => (message as { type?: unknown } | null)?.type === 'ack')
-}
+  it('opens the tab through sidebarRight.openTab on footer action click', () => {
+    const harness = makeHarness()
+    apply(harness.ctx)
 
-afterEach(() => {
-  vi.unstubAllGlobals()
-  vi.restoreAllMocks()
-  FakeBroadcastChannel.reset()
+    const button = harness.footer[0]!.factory({ wide: false }) as unknown as {
+      props: { onClick(): void }
+    }
+    button.props.onClick()
+
+    expect(harness.openTab).toHaveBeenCalledWith('scifork.research-graph')
+  })
 })
 
-describe('SciFork DSH bridge', () => {
-  it('registers one additive sidebar footer Open action only', () => {
-    const services = createServices()
-    const { ctx, injectedKeys, registrations } = captureRegistrations({
-      sessions: services.sessions,
-      conversation: services.conversation,
+describe('bridge page keys', () => {
+  let bridge: Bridge
+  let snapshot: SessionSnapshot
+  let scopes: Map<string, Context>
+  let inputs: Map<Context, SessionInputCapture>
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    const harness = makeHarness()
+    snapshot = harness.sessions.snapshot
+    scopes = harness.sessions.scopes
+    inputs = harness.inputs
+    scopes.set('session-1', scopeContext('session-1'))
+    scopes.set('session-2', scopeContext('session-2'))
+    bridge = createBridge({
+      sessions: harness.ctx.get('sessions') as never,
+      conversation: harness.ctx.get('conversation') as never,
+      sidebarRight: { openTab: vi.fn() },
+      fetchImpl: launchFetch(PAGE_KEY) as never,
     })
-
-    apply(ctx)
-
-    expect(injectedKeys).toEqual(['sidebar.footer.action'])
-    expect(registrations.map(({ entry }) => entry)).toEqual([
-      {
-        name: 'sidebar.footer.action',
-        id: 'scifork-open',
-        order: 100,
-        label: 'Research Graph',
-      },
-    ])
   })
 
-  it('renders a labeled Graph row when wide and an accessible icon when collapsed', () => {
-    const services = createServices()
-    const captured = captureRegistrations({
-      sessions: services.sessions,
-      conversation: services.conversation,
-    })
-    apply(captured.ctx)
-    const registration = openAction(captured.registrations)
-
-    const wide = renderOpenButton(registration, true)
-    expect(wide.props).toMatchObject({
-      'aria-label': 'Open Research Graph',
-      'data-scifork-sidebar-action': 'wide',
-      style: {
-        width: 'calc(100% + 4px)',
-        height: 42,
-        borderRadius: 12,
-        justifyContent: 'flex-start',
-      },
-    })
-    const wideProps = wide.props as { children: unknown[]; title?: unknown }
-    expect(wideProps.title).toBeUndefined()
-    const wideChildren = wideProps.children
-    const wideIconComponent = wideChildren[0] as ReactElement
-    const wideIcon = (wideIconComponent.type as (props: unknown) => ReactElement)(
-      wideIconComponent.props,
-    )
-    expect(wideIcon.type).toBe('svg')
-    expect(wideIcon.props).toMatchObject({
-      'aria-hidden': true,
-      'data-scifork-graph-icon': true,
-      height: 16,
-      width: 16,
-    })
-    expect(wideChildren[1]).toMatchObject({
-      type: 'span',
-      props: { children: 'Research Graph' },
-    })
-
-    const collapsed = renderOpenButton(registration, false)
-    expect(collapsed.props).toMatchObject({
-      'aria-label': 'Open Research Graph',
-      'data-scifork-sidebar-action': 'rail',
-      title: 'Open Research Graph',
-      style: {
-        width: 36,
-        height: 36,
-        borderRadius: '50%',
-        justifyContent: 'center',
-      },
-    })
-    const collapsedChildren = (collapsed.props as { children: unknown[] }).children
-    expect(collapsedChildren[1]).toBeNull()
-  })
-
-  it('opens about:blank and captures the originating Session before launch, then opens the key channel before navigation', async () => {
-    const pending = deferred<Response>()
-    const services = createServices()
-    const browser = installBrowser(() => pending.promise)
-    const captured = captureRegistrations({
-      sessions: services.sessions,
-      conversation: services.conversation,
-    })
-    apply(captured.ctx)
-
-    click(openAction(captured.registrations))
-
-    expect(browser.open.mock.calls[0]?.slice(0, 2)).toEqual(['about:blank', '_blank'])
-    expect(services.scope).toHaveBeenCalledOnce()
-    expect(services.scope).toHaveBeenCalledWith('session-a')
-    expect(browser.fetchMock).toHaveBeenCalledOnce()
-    expect(browser.open.mock.invocationCallOrder[0]).toBeLessThan(
-      services.scope.mock.invocationCallOrder[0]!,
-    )
-    expect(services.scope.mock.invocationCallOrder[0]).toBeLessThan(
-      browser.fetchMock.mock.invocationCallOrder[0]!,
-    )
-    const [route, init] = browser.fetchMock.mock.calls[0]!
-    expect(route).toBe('/scifork/api/launch')
-    expect(init).toMatchObject({
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'session-a' }),
-    })
-    expect(FakeBroadcastChannel.instances).toHaveLength(0)
-    expect(browser.navigate).not.toHaveBeenCalled()
-
-    services.state.current = 'session-b'
-    services.setResolvedScopeA(fakeContext({ id: 'replacement-scope' }))
-    pending.resolve(launchResponse(LAUNCH_URL))
-    await vi.waitFor(() => expect(FakeBroadcastChannel.instances).toHaveLength(1))
-
-    const channel = FakeBroadcastChannel.instances[0]!
-    expect(channel.name).toBe(`scifork:research-expansion:v1:${PAGE_KEY}`)
-    expect(browser.navigate).toHaveBeenCalledWith(LAUNCH_URL)
-    expect(browser.events.indexOf(`channel:${channel.name}`)).toBeLessThan(
-      browser.events.indexOf(`navigate:${LAUNCH_URL}`),
-    )
-    expect(services.scope).toHaveBeenCalledOnce()
-    expect(browser.popup.close).not.toHaveBeenCalled()
-  })
-
-  it('does not launch when the synchronous popup is blocked and notifies the originating composer', async () => {
-    const services = createServices()
-    const browser = installBrowser(async () => launchResponse(LAUNCH_URL), false)
-    const captured = captureRegistrations({
-      sessions: services.sessions,
-      conversation: services.conversation,
-    })
-    apply(captured.ctx)
-
-    click(openAction(captured.registrations))
-
-    await vi.waitFor(() => expect(services.notify).toHaveBeenCalledOnce())
-    expect(browser.fetchMock).not.toHaveBeenCalled()
-    expect(FakeBroadcastChannel.instances).toHaveLength(0)
-    expect(services.notify).toHaveBeenCalledWith('error', expect.any(String))
-  })
-
-  it('closes the blank window and notifies the originating composer when launch fails', async () => {
-    const services = createServices()
-    const browser = installBrowser(async () => {
-      throw new Error('must not leak C:\\private\\project')
-    })
-    const captured = captureRegistrations({
-      sessions: services.sessions,
-      conversation: services.conversation,
-    })
-    apply(captured.ctx)
-
-    click(openAction(captured.registrations))
-
-    await vi.waitFor(() => expect(browser.popup.close).toHaveBeenCalledOnce())
-    expect(FakeBroadcastChannel.instances).toHaveLength(0)
-    expect(services.notify).toHaveBeenCalledOnce()
-    expect(services.notify).toHaveBeenCalledWith('error', expect.any(String))
-    expect(services.notify.mock.calls[0]?.[1]).not.toContain('private')
-  })
-
-  it('rejects a launch response without one valid fragment Page Key', async () => {
-    const services = createServices()
-    const browser = installBrowser(async () => launchResponse('/scifork#key=short'))
-    const captured = captureRegistrations({
-      sessions: services.sessions,
-      conversation: services.conversation,
-    })
-    apply(captured.ctx)
-
-    click(openAction(captured.registrations))
-
-    await vi.waitFor(() => expect(browser.popup.close).toHaveBeenCalledOnce())
-    expect(FakeBroadcastChannel.instances).toHaveLength(0)
-    expect(browser.navigate).not.toHaveBeenCalled()
-    expect(services.notify).toHaveBeenCalledOnce()
-  })
-
-  it('submits an exact valid message once to the captured Session and acknowledges started from the pre-submit state', async () => {
-    const bridge = await openBridge(false)
-    bridge.state.current = 'session-b'
-    bridge.setResolvedScopeA(fakeContext({ id: 'replacement-scope' }))
-    bridge.submit.mockImplementation(() => {
-      bridge.state.byId['session-a']!.running = true
-    })
-
-    bridge.channel.receive({ type: 'research_expansion', nonce: NONCE, prompt: PROMPT })
-
-    expect(bridge.scope).toHaveBeenCalledOnce()
-    expect(bridge.inputFor).toHaveBeenCalledOnce()
-    expect(bridge.inputFor).toHaveBeenCalledWith(bridge.scopeA)
-    expect(bridge.setDraft).toHaveBeenCalledOnce()
-    expect(bridge.setDraft).toHaveBeenCalledWith(PROMPT)
-    expect(bridge.submit).toHaveBeenCalledOnce()
-    expect(bridge.setDraft.mock.invocationCallOrder[0]).toBeLessThan(
-      bridge.submit.mock.invocationCallOrder[0]!,
-    )
-    expect(bridge.channel.postMessage).toHaveBeenCalledOnce()
-    expect(bridge.channel.postMessage).toHaveBeenCalledWith({
-      type: 'ack',
-      nonce: NONCE,
-      status: 'started',
-    })
-    bridge.state.byId['session-a']!.running = false
-    await vi.waitFor(() =>
-      expect(bridge.channel.postMessage).toHaveBeenCalledWith({
-        type: 'complete',
-        nonce: NONCE,
-      }),
-    )
+  afterEach(() => {
     bridge.dispose()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
-  it('acknowledges queued from a busy pre-submit Session even if submit changes the live snapshot', async () => {
-    const bridge = await openBridge(true)
-    bridge.submit.mockImplementation(() => {
-      bridge.state.byId['session-a']!.running = false
+  it('mints one key per session and reuses it without a second launch', async () => {
+    const fetchMock = launchFetch(PAGE_KEY)
+    const local = createBridge({
+      sessions: { list: { getSnapshot: () => snapshot }, scope: (id) => scopes.get(id) },
+      conversation: harnessConversation(inputs) as never,
+      sidebarRight: { openTab: vi.fn() },
+      fetchImpl: fetchMock as never,
     })
 
-    bridge.channel.receive({ type: 'research_expansion', nonce: NONCE, prompt: PROMPT })
-
-    expect(bridge.setDraft).toHaveBeenCalledWith(PROMPT)
-    expect(bridge.submit).toHaveBeenCalledOnce()
-    expect(bridge.channel.postMessage).toHaveBeenCalledWith({
-      type: 'ack',
-      nonce: NONCE,
-      status: 'queued',
-    })
-    await vi.waitFor(() =>
-      expect(bridge.channel.postMessage).toHaveBeenCalledWith({
-        type: 'complete',
-        nonce: NONCE,
-      }),
+    await expect(local.requestPageKey()).resolves.toBe(PAGE_KEY)
+    await expect(local.requestPageKey()).resolves.toBe(PAGE_KEY)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/scifork/api/launch',
+      expect.objectContaining({ method: 'POST' }),
     )
-    bridge.dispose()
   })
 
-  it('rejects research expansion when the originating Session is no longer live', async () => {
-    const bridge = await openBridge()
-    delete bridge.state.byId['session-a']
-
-    bridge.channel.receive({ type: 'research_expansion', nonce: NONCE, prompt: PROMPT })
-
-    expect(bridge.inputFor).not.toHaveBeenCalled()
-    expect(bridge.setDraft).not.toHaveBeenCalled()
-    expect(bridge.submit).not.toHaveBeenCalled()
-    expect(acknowledgementMessages(bridge.channel)).toEqual([])
-  })
-
-  it('rejects wrong shapes, malformed nonces, oversized UTF-8 prompts, and messages on another channel', async () => {
-    const bridge = await openBridge()
-    const oversizedPrompt = '\u754c'.repeat(5_462)
-    const invalidMessages: unknown[] = [
-      null,
-      [],
-      { type: 'ack', nonce: NONCE, prompt: PROMPT },
-      { type: 'research_expansion', nonce: 'a'.repeat(32), prompt: PROMPT },
-      { type: 'research_expansion', nonce: NONCE, prompt: PROMPT, extra: true },
-      { type: 'research_expansion', nonce: NONCE, prompt: oversizedPrompt },
-    ]
-
-    for (const message of invalidMessages) bridge.channel.receive(message)
-    const wrongChannel = new FakeBroadcastChannel(`scifork:research-expansion:v1:${'A'.repeat(43)}`)
-    wrongChannel.receive({ type: 'research_expansion', nonce: NONCE, prompt: PROMPT })
-
-    expect(new TextEncoder().encode(oversizedPrompt).byteLength).toBeGreaterThan(16 * 1024)
-    expect(bridge.inputFor).not.toHaveBeenCalled()
-    expect(bridge.setDraft).not.toHaveBeenCalled()
-    expect(bridge.submit).not.toHaveBeenCalled()
-    expect(acknowledgementMessages(bridge.channel)).toEqual([])
-  })
-
-  it('drops repeated or concurrent requests while one expansion is running', async () => {
-    const bridge = await openBridge()
-    bridge.submit.mockImplementation(() => {
-      bridge.state.byId['session-a']!.running = true
+  it('rejects the key when the launch response is invalid', async () => {
+    const local = createBridge({
+      sessions: { list: { getSnapshot: () => snapshot }, scope: (id) => scopes.get(id) },
+      conversation: harnessConversation(inputs) as never,
+      sidebarRight: { openTab: vi.fn() },
+      fetchImpl: vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) })) as never,
     })
-    const message = { type: 'research_expansion' as const, nonce: NONCE, prompt: PROMPT }
-
-    bridge.channel.receive(message)
-    bridge.channel.receive(message)
-    bridge.channel.receive({ ...message, nonce: 'B'.repeat(22) })
-
-    expect(bridge.setDraft).toHaveBeenCalledOnce()
-    expect(bridge.submit).toHaveBeenCalledOnce()
-    expect(acknowledgementMessages(bridge.channel)).toEqual([
-      { type: 'ack', nonce: NONCE, status: 'started' },
-    ])
-    bridge.dispose()
+    await expect(local.requestPageKey()).rejects.toMatchObject({
+      code: 'RESEARCH_EXPANSION_REJECTED',
+    })
   })
 
-  it('closes active channels on bundle unload', async () => {
-    const bridge = await openBridge()
+  it('rejects when there is no current session', async () => {
+    delete snapshot.current
+    await expect(bridge.requestPageKey()).rejects.toMatchObject({
+      code: 'SESSION_UNAVAILABLE',
+    })
+  })
 
-    bridge.dispose()
-
-    expect(bridge.channel.close).toHaveBeenCalledOnce()
-    bridge.channel.receive({ type: 'research_expansion', nonce: NONCE, prompt: PROMPT })
-    expect(bridge.setDraft).not.toHaveBeenCalled()
-    expect(bridge.submit).not.toHaveBeenCalled()
+  it('invalidates the key on release', async () => {
+    const key = await bridge.requestPageKey()
+    bridge.releasePageKey(key)
+    await expect(bridge.submitResearchExpansion(key, PROMPT)).rejects.toMatchObject({
+      code: 'RESEARCH_EXPANSION_REJECTED',
+    })
   })
 })
+
+describe('bridge expansion submit', () => {
+  let bridge: Bridge
+  let snapshot: SessionSnapshot
+  let scopes: Map<string, Context>
+  let inputs: Map<Context, SessionInputCapture>
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    scopes = new Map<string, Context>([['session-1', scopeContext('session-1')]])
+    snapshot = { current: 'session-1', byId: { 'session-1': { running: false } } }
+    inputs = new Map()
+    bridge = createBridge({
+      sessions: { list: { getSnapshot: () => snapshot }, scope: (id) => scopes.get(id) },
+      conversation: harnessConversation(inputs) as never,
+      sidebarRight: { openTab: vi.fn() },
+      fetchImpl: launchFetch(PAGE_KEY) as never,
+    })
+  })
+
+  afterEach(() => {
+    bridge.dispose()
+    vi.useRealTimers()
+  })
+
+  async function settledKey(): Promise<string> {
+    return bridge.requestPageKey()
+  }
+
+  it('submits through the scoped SessionInput and resolves after running goes idle', async () => {
+    const key = await settledKey()
+    snapshot.byId['session-1']!.running = true
+
+    const pending = bridge.submitResearchExpansion(key, PROMPT)
+    const input = inputs.get(scopes.get('session-1')!)!
+    expect(input.setDraft).toHaveBeenCalledWith(PROMPT)
+    expect(input.submit).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(250)
+    expect(input.submit).toHaveBeenCalledTimes(1)
+
+    snapshot.byId['session-1']!.running = false
+    await vi.advanceTimersByTimeAsync(250)
+    await expect(pending).resolves.toBeUndefined()
+  })
+
+  it('treats an idle session as running once submitted and resolves on the next idle', async () => {
+    const key = await settledKey()
+    const pending = bridge.submitResearchExpansion(key, PROMPT)
+    // The submit itself flips the session to running in this fake.
+    snapshot.byId['session-1']!.running = true
+    await vi.advanceTimersByTimeAsync(250)
+    snapshot.byId['session-1']!.running = false
+    await vi.advanceTimersByTimeAsync(250)
+    await expect(pending).resolves.toBeUndefined()
+  })
+
+  it('rejects with SESSION_UNAVAILABLE when the session disappears mid-watch', async () => {
+    const key = await settledKey()
+    snapshot.byId['session-1']!.running = true
+    const pending = bridge.submitResearchExpansion(key, PROMPT)
+    const outcome = pending.then(
+      () => 'resolved',
+      (error: { code: string }) => error.code,
+    )
+
+    delete snapshot.byId['session-1']
+    await vi.advanceTimersByTimeAsync(250)
+    await expect(pending).rejects.toMatchObject({ code: 'SESSION_UNAVAILABLE' })
+    await expect(outcome).resolves.toBe('SESSION_UNAVAILABLE')
+  })
+
+  it('rejects a second concurrent submit for the same session', async () => {
+    const key = await settledKey()
+    snapshot.byId['session-1']!.running = true
+    const first = bridge.submitResearchExpansion(key, PROMPT)
+    await expect(bridge.submitResearchExpansion(key, PROMPT)).rejects.toMatchObject({
+      code: 'RESEARCH_EXPANSION_REJECTED',
+    })
+    snapshot.byId['session-1']!.running = false
+    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(250)
+    await expect(first).resolves.toBeUndefined()
+  })
+
+  it('rejects oversized or empty prompts before submitting', async () => {
+    const key = await settledKey()
+    await expect(bridge.submitResearchExpansion(key, '')).rejects.toMatchObject({
+      code: 'RESEARCH_EXPANSION_REJECTED',
+    })
+    await expect(bridge.submitResearchExpansion(key, 'x'.repeat(17 * 1024))).rejects.toMatchObject({
+      code: 'RESEARCH_EXPANSION_REJECTED',
+    })
+    expect(inputs.size).toBe(0)
+  })
+
+  it('rejects pending submits on dispose', async () => {
+    const key = await settledKey()
+    snapshot.byId['session-1']!.running = true
+    const pending = bridge.submitResearchExpansion(key, PROMPT)
+    const outcome = pending.then(
+      () => 'resolved',
+      (error: { code: string }) => error.code,
+    )
+    bridge.dispose()
+    await expect(pending).rejects.toMatchObject({ code: 'RESEARCH_EXPANSION_REJECTED' })
+    await expect(outcome).resolves.toBe('RESEARCH_EXPANSION_REJECTED')
+  })
+})
+
+function harnessConversation(inputs: Map<Context, SessionInputCapture>): unknown {
+  return {
+    input: {
+      for(actx: Context): SessionInputCapture {
+        const existing = inputs.get(actx)
+        if (existing !== undefined) return existing
+        const capture: SessionInputCapture = { setDraft: vi.fn(), submit: vi.fn(), notify: vi.fn() }
+        inputs.set(actx, capture)
+        return capture
+      },
+    },
+  }
+}

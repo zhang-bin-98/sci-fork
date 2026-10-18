@@ -21,7 +21,6 @@ import type {
   SnapshotProject,
   SnapshotResponse,
 } from '../shared/companion-contract.js'
-import { COMPANION_URL } from '../shared/routes.js'
 import {
   loadProjectState,
   type ProjectContext,
@@ -384,7 +383,7 @@ export class CompanionService implements CompanionApiPort {
         ? { projectId: context.manifest.project_id }
         : {}),
     })
-    return { ok: true, url: `${COMPANION_URL}#key=${key}` }
+    return { ok: true, pageKey: key }
   }
 
   async snapshot(

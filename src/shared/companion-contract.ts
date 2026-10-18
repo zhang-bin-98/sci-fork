@@ -193,7 +193,7 @@ export interface FocusSuccess {
 
 export interface LaunchSuccess {
   ok: true
-  url: string
+  pageKey: string
 }
 
 export type LaunchResponse = LaunchSuccess | CompanionFailure
