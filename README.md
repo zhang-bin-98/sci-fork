@@ -10,7 +10,7 @@
 
 SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). DSH Chat stays your single conversation surface, while SciFork provides a visual Research Graph in the right sidebar to turn literature findings and discussions into structured, auditable research knowledge.
 
-> **Current release:** SciFork `0.0.5` targets DSH `0.2.1-rc.2` (desktop and same-version Web).
+> **Current release:** SciFork `0.0.6` targets DSH `0.2.1-rc.2` (desktop and same-version Web).
 
 ## What you can do
 
@@ -28,13 +28,9 @@ SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](h
 
 ## Install and literature retrieval
 
-**From npm (recommended, prebuilt — no build-script approval):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `dsh-scifork`, install, and click **Enable now**. (Available from the release after 0.0.5; until then use the tarball path below.)
+**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `dsh-scifork`, install, and click **Enable now**.
 
-**From the Plugins panel with a tarball:** select **Add plugin**, paste the release tarball URL (copy the `dsh-scifork-<version>.tgz` link from the [Releases page](https://github.com/zhang-bin-98/sci-fork/releases)), install, and click **Enable now**. The archive is prebuilt — no build-script approval is ever asked.
-
-**Tracking development (Git address):** entering `zhang-bin-98/sci-fork` installs from source and follows the default branch, but every install/update runs a local build that pnpm's supply-chain policy blocks first: when it fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, add the exact `allowBuilds` key printed in the error to the profile's `pnpm-workspace.yaml` and select **Retry** (the key changes with each commit).
-
-**From a chat:** ask the model — “install the DSH plugin `zhang-bin-98/sci-fork`”.
+**From a chat:** ask the model — "install the DSH plugin `dsh-scifork`".
 
 To uninstall, select **Remove** on the plugin's page; your local research project files remain intact and readable.
 
