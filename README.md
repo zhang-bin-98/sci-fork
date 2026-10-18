@@ -28,7 +28,9 @@ SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](h
 
 ## Install and literature retrieval
 
-**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `zhang-bin-98/sci-fork`, install (approve build scripts if prompted), and click **Enable now**. If the install fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, add the exact `allowBuilds` key printed in the error to the profile's `pnpm-workspace.yaml` and select **Retry**.
+**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, paste the release tarball URL (copy the `dsh-scifork-<version>.tgz` link from the [Releases page](https://github.com/zhang-bin-98/sci-fork/releases), e.g. `https://github.com/zhang-bin-98/sci-fork/releases/download/v0.0.5/dsh-scifork-0.0.5.tgz`), install, and click **Enable now**. The archive is prebuilt — no build-script approval is ever asked.
+
+**Tracking development (Git address):** entering `zhang-bin-98/sci-fork` installs from source and follows the default branch, but every install/update runs a local build that pnpm's supply-chain policy blocks first: when it fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, add the exact `allowBuilds` key printed in the error to the profile's `pnpm-workspace.yaml` and select **Retry** (the key changes with each commit).
 
 **From a chat:** ask the model — “install the DSH plugin `zhang-bin-98/sci-fork`”.
 
