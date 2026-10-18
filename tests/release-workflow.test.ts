@@ -40,7 +40,7 @@ describe('GitHub release workflow', () => {
   it('uses the protected tag trigger, least privilege, and immutable action pins', () => {
     expect(workflow.on?.push?.tags).toEqual(['v*'])
     expect(verify?.permissions).toEqual({ contents: 'read' })
-    expect(release?.permissions).toEqual({ actions: 'read', contents: 'write' })
+    expect(release?.permissions).toEqual({ actions: 'read', contents: 'write', 'id-token': 'write' })
     expect(release?.needs).toBe('verify')
     expect(release?.env?.GH_REPO).toBe('${{ github.repository }}')
     expect(verify?.outputs?.commit).toBe('${{ steps.source.outputs.commit }}')
@@ -60,6 +60,17 @@ describe('GitHub release workflow', () => {
       'Download verified release assets',
       'Create GitHub Release',
     ])
+  })
+
+  it('scopes the npm token to the publish step and skips it when unset', () => {
+    expect(release?.env?.NPM_TOKEN).toBe('${{ secrets.NPM_TOKEN }}')
+    expect(steps.filter((step) => (step.run ?? '').includes('NPM_TOKEN')).map((step) => step.name)).toEqual([
+      'Publish to npm',
+    ])
+    const publish = steps.find((step) => step.name === 'Publish to npm')
+    expect(publish?.if).toBe("env.NPM_TOKEN != ''")
+    expect(publish?.run).toContain('npm publish')
+    expect(publish?.run).toContain('--provenance')
   })
 
   it('checks for both published releases and drafts by tag', () => {
