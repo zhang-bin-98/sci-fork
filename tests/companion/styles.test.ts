@@ -32,4 +32,16 @@ describe('Companion style ownership', () => {
   it('marks the app root as the SciFork container', () => {
     expect(appSource).toContain('scifork-root companion-app')
   })
+
+  it('uses container-query variants at the Tailwind breakpoint values, not viewport variants', () => {
+    // v4's default @sm/@md/@xl container variants are 384/448/576px; the
+    // 640/768/1280 values must come from arbitrary @min-[...] variants.
+    expect(appSource).not.toMatch(/(sm|md|xl):/)
+    expect(appSource).toContain('@min-[640px]:')
+    expect(appSource).toContain('@min-[768px]:')
+    expect(appSource).toContain('@min-[1280px]:')
+    expect(appSource).not.toContain('@sm:')
+    expect(appSource).not.toContain('@md:')
+    expect(appSource).not.toContain('@xl:')
+  })
 })

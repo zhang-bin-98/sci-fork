@@ -64,9 +64,9 @@ const BUTTON_ICON =
   'inline-flex shrink-0 items-center justify-center rounded-md border border-sf-border-strong bg-sf-surface text-sf-muted transition-colors hover:border-sf-muted hover:bg-sf-surface-muted hover:text-sf-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sf-focus/45 disabled:pointer-events-none'
 const WORKSPACE_BASE = 'workspace grid min-h-0 flex-1 bg-sf-surface'
 const WORKSPACE_OPEN =
-  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,55fr)_minmax(200px,45fr)] sm:grid-rows-[minmax(0,3fr)_minmax(220px,2fr)] xl:grid-cols-[minmax(0,1fr)_minmax(320px,38vw)] xl:grid-rows-[minmax(0,1fr)]'
+  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,55fr)_minmax(200px,45fr)] @min-[640px]:grid-rows-[minmax(0,3fr)_minmax(220px,2fr)] @min-[1280px]:grid-cols-[minmax(0,1fr)_minmax(320px,38vw)] @min-[1280px]:grid-rows-[minmax(0,1fr)]'
 const WORKSPACE_CLOSED =
-  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_44px] xl:grid-cols-[minmax(0,1fr)_44px] xl:grid-rows-[minmax(0,1fr)]'
+  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_44px] @min-[1280px]:grid-cols-[minmax(0,1fr)_44px] @min-[1280px]:grid-rows-[minmax(0,1fr)]'
 
 type EntityVisualType = 'question' | 'finding' | 'hypothesis' | 'prediction' | 'evidence' | 'result' | 'framing_link' | 'edge'
 
@@ -164,14 +164,14 @@ export function HeaderIdentity(props: {
   head?: string
 }): React.ReactElement {
   return (
-    <div className="header-identity flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap sm:gap-3">
+    <div className="header-identity flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap @min-[640px]:gap-3">
       <h1 className="m-0 shrink-0 text-xl leading-none font-semibold tracking-tight">SciFork</h1>
-      <span className="hidden min-w-0 max-w-[24vw] truncate text-sm text-sf-header-muted md:block xl:max-w-[min(34vw,360px)]">
+      <span className="hidden min-w-0 max-w-[24vw] truncate text-sm text-sf-header-muted @min-[768px]:block @min-[1280px]:max-w-[min(34vw,360px)]">
         {props.projectName}
       </span>
       {props.branch === undefined ? null : (
         <span
-          className="hidden min-w-0 max-w-[30vw] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2 py-1 text-xs font-semibold text-sf-header-chip sm:inline-flex md:max-w-[28vw] md:px-2.5 xl:max-w-[min(32vw,280px)]"
+          className="hidden min-w-0 max-w-[30vw] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2 py-1 text-xs font-semibold text-sf-header-chip @min-[640px]:inline-flex @min-[768px]:max-w-[28vw] @min-[768px]:px-2.5 @min-[1280px]:max-w-[min(32vw,280px)]"
           aria-label="Current branch"
           title={props.head === undefined ? props.branch : props.branch + ' @ ' + props.head}
         >
@@ -196,7 +196,7 @@ export function ResearchExpansionRecoveryControls(props: {
   if (props.placement === 'header') {
     return (
       <div
-        className="hidden sm:contents"
+        className="hidden @min-[640px]:contents"
         data-research-expansion-recovery="header"
       >
         <button type="button" className={BUTTON_HEADER} onClick={props.onRetry}>
@@ -211,7 +211,7 @@ export function ResearchExpansionRecoveryControls(props: {
 
   return (
     <section
-      className="flex min-h-11 shrink-0 items-center gap-2 border-b border-sf-danger-border bg-sf-danger-soft px-2.5 py-1.5 text-xs text-sf-danger-foreground sm:hidden"
+      className="flex min-h-11 shrink-0 items-center gap-2 border-b border-sf-danger-border bg-sf-danger-soft px-2.5 py-1.5 text-xs text-sf-danger-foreground @min-[640px]:hidden"
       data-research-expansion-recovery="narrow"
       role="alert"
       aria-label="Research expansion failed"
@@ -298,7 +298,7 @@ export function GraphViewControl(props: {
   return (
     <button
       type="button"
-      className={BUTTON_HEADER + ' h-9 px-2 text-xs sm:px-2.5'}
+      className={BUTTON_HEADER + ' h-9 px-2 text-xs @min-[640px]:px-2.5'}
       aria-label={label}
       aria-busy={props.transitioning}
       title={title}
@@ -391,7 +391,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
   return (
     <section
       ref={paneRef}
-      className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted xl:border-r xl:border-b-0"
+      className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted @min-[1280px]:border-r @min-[1280px]:border-b-0"
       aria-label="Research Graph"
       aria-busy={props.interactionDisabled}
     >
@@ -432,7 +432,7 @@ function EdgeDetails(props: {
 }): React.ReactElement {
   const { entity } = props
   return (
-    <dl className="m-0 grid grid-cols-1 gap-x-3.5 gap-y-2.5 p-5 text-sm leading-6 text-sf-ink sm:grid-cols-[minmax(90px,0.32fr)_minmax(0,1fr)] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[11px] [&_dt]:font-bold [&_dt]:tracking-wide [&_dt]:text-sf-muted [&_dt]:uppercase">
+    <dl className="m-0 grid grid-cols-1 gap-x-3.5 gap-y-2.5 p-5 text-sm leading-6 text-sf-ink @min-[640px]:grid-cols-[minmax(90px,0.32fr)_minmax(0,1fr)] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[11px] [&_dt]:font-bold [&_dt]:tracking-wide [&_dt]:text-sf-muted [&_dt]:uppercase">
       <dt>Relation</dt>
       <dd>{humanize(entity.relation)}</dd>
       <dt>From</dt>
@@ -614,7 +614,7 @@ export interface DetailsPaneProps {
 function DrawerChevron(props: { action: 'open' | 'close' }): React.ReactElement {
   return (
     <svg
-      className="size-[18px] shrink-0 rotate-90 xl:rotate-0"
+      className="size-[18px] shrink-0 rotate-90 @min-[1280px]:rotate-0"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -734,12 +734,12 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
   if (!props.open) {
     return (
       <aside
-        className="details-pane details-pane-closed flex min-h-0 min-w-0 items-stretch justify-stretch border-t border-sf-border bg-sf-surface-muted xl:border-t-0 xl:border-l"
+        className="details-pane details-pane-closed flex min-h-0 min-w-0 items-stretch justify-stretch border-t border-sf-border bg-sf-surface-muted @min-[1280px]:border-t-0 @min-[1280px]:border-l"
         aria-label="Details"
       >
         <button
           type="button"
-          className="flex size-full min-h-0 items-center justify-center gap-2 border-0 bg-transparent px-3 py-0 text-sm font-semibold text-sf-accent hover:bg-sf-accent-soft focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-sf-focus/45 xl:px-0 xl:py-2 xl:[writing-mode:vertical-rl]"
+          className="flex size-full min-h-0 items-center justify-center gap-2 border-0 bg-transparent px-3 py-0 text-sm font-semibold text-sf-accent hover:bg-sf-accent-soft focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-sf-focus/45 @min-[1280px]:px-0 @min-[1280px]:py-2 @min-[1280px]:[writing-mode:vertical-rl]"
           aria-label="Open Details"
           aria-expanded={false}
           data-drawer-action="open"
@@ -857,7 +857,7 @@ export function ResearchExpansionAction(props: {
   return (
     <button
       type="button"
-      className={BUTTON_PRIMARY + ' size-9 px-0 sm:size-auto sm:px-3'}
+      className={BUTTON_PRIMARY + ' size-9 px-0 @min-[640px]:size-auto @min-[640px]:px-3'}
       disabled={props.disabled || running}
       aria-label={label}
       title={label}
@@ -878,7 +878,7 @@ export function ResearchExpansionAction(props: {
       ) : (
         <>
           <svg
-            className="size-4 sm:hidden"
+            className="size-4 @min-[640px]:hidden"
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
@@ -888,7 +888,7 @@ export function ResearchExpansionAction(props: {
             <circle cx="6.75" cy="6.75" r="3.75" />
             <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
           </svg>
-          <span className="hidden sm:inline">{RESEARCH_EXPANSION_ACTION_LABEL}</span>
+          <span className="hidden @min-[640px]:inline">{RESEARCH_EXPANSION_ACTION_LABEL}</span>
         </>
       )}
     </button>
@@ -1166,13 +1166,13 @@ export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.
   const focus = snapshot?.focus
   return (
     <main className="scifork-root companion-app flex min-h-0 w-full flex-1 flex-col bg-sf-canvas text-sf-ink">
-      <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground sm:gap-3 sm:px-4">
+      <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground @min-[640px]:gap-3 @min-[640px]:px-4">
         <HeaderIdentity
           projectName={project?.name ?? 'Research Graph'}
           {...(project?.branch === undefined ? {} : { branch: project.branch })}
           {...(project?.head === undefined ? {} : { head: project.head })}
         />
-        <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
+        <div className="ml-auto flex min-w-max items-center gap-1 @min-[640px]:gap-2">
           <GraphViewControl
             view={graphView.mode}
             canEnterEvidence={eligibleEvidenceAnchor !== undefined}
@@ -1208,7 +1208,7 @@ export function CompanionApp(props: { pageKey: string; bridge: Bridge }): React.
           aria-label="Read-only project"
         >
           <strong className="font-bold">Read-only</strong>
-          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-normal xl:whitespace-nowrap">
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-normal @min-[1280px]:whitespace-nowrap">
             {project.diagnosticCount === 0
               ? project.gitError?.message ?? 'Project writes are unavailable.'
               : project.diagnostics
