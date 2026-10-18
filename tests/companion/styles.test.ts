@@ -5,20 +5,43 @@ const styles = readFileSync(new URL('../../src/companion/styles.css', import.met
 const appSource = readFileSync(new URL('../../src/companion/app.tsx', import.meta.url), 'utf8')
 
 describe('Companion style ownership', () => {
-  it('keeps document and control normalization in the base layer so utilities win', () => {
+  it('anchors document and control normalization on the SciFork container root', () => {
     const baseLayer = styles.match(/@layer base \{([\s\S]*?)\n\}\n\n\.react-flow__node-entity/)
 
     expect(baseLayer).not.toBeNull()
-    expect(baseLayer?.[1]).toContain(':root {')
-    expect(baseLayer?.[1]).toContain('button {')
+    expect(baseLayer?.[1]).toContain('.scifork-root {')
+    expect(baseLayer?.[1]).toContain('.scifork-root button {')
     expect(baseLayer?.[1]).toContain('font: inherit')
+    // The injected stylesheet never restyles the DSH shell (the words may
+    // appear in comments; the selectors must not).
+    expect(baseLayer?.[1]).not.toContain(':root {')
+    expect(baseLayer?.[1]).not.toMatch(/(^|\s)html[,\s{]/)
+    expect(baseLayer?.[1]).not.toMatch(/(^|\s)body[,\s{]/)
+    expect(baseLayer?.[1]).not.toContain('#root')
+    // The container root carries the container-query context.
+    expect(baseLayer?.[1]).toContain('container-type: inline-size')
   })
 
-  it('uses Tailwind default viewport boundaries without arbitrary media variants', () => {
-    expect(appSource).not.toContain('[@media(')
-    expect(appSource).toContain("'(min-width: 48rem)'")
-    expect(appSource).toContain('sm:')
-    expect(appSource).toContain('md:')
-    expect(appSource).toContain('xl:')
+  it('drives the wide graph layout from the pane width, not the viewport', () => {
+    expect(appSource).not.toContain('matchMedia')
+    expect(appSource).toContain('ResizeObserver')
+    expect(appSource).toContain('width >= 768')
+    expect(appSource).not.toContain("'(min-width: 48rem)'")
+  })
+
+  it('marks the app root as the SciFork container', () => {
+    expect(appSource).toContain('scifork-root companion-app')
+  })
+
+  it('uses container-query variants at the Tailwind breakpoint values, not viewport variants', () => {
+    // v4's default @sm/@md/@xl container variants are 384/448/576px; the
+    // 640/768/1280 values must come from arbitrary @min-[...] variants.
+    expect(appSource).not.toMatch(/(sm|md|xl):/)
+    expect(appSource).toContain('@min-[640px]:')
+    expect(appSource).toContain('@min-[768px]:')
+    expect(appSource).toContain('@min-[1280px]:')
+    expect(appSource).not.toContain('@sm:')
+    expect(appSource).not.toContain('@md:')
+    expect(appSource).not.toContain('@xl:')
   })
 })

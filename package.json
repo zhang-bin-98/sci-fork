@@ -1,6 +1,6 @@
 {
   "name": "dsh-scifork",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A Git-native research graph for literature-grounded research expansion inside DeepSeek Harness.",
   "homepage": "https://github.com/zhang-bin-98/sci-fork#readme",
   "repository": {
@@ -31,6 +31,8 @@
     "docs/scifork-product-design.md",
     "docs/scifork-software-architecture.md",
     "docs/specs/m0-compatibility-spike.md",
+    "docs/specs/dsh-desktop-right-sidebar.md",
+    "docs/specs/external-retrieval-skills.md",
     "docs/specs/m1-core-git.md",
     "docs/specs/m2-companion.md",
     "docs/specs/m3-research.md",
@@ -63,7 +65,7 @@
   "packageManager": "pnpm@11.23.0",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
-    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && node scripts/build-companion.mjs && tailwindcss -i src/companion/styles.css -o dist/companion/styles.css --minify",
+    "build": "tsc -p tsconfig.build.json && tailwindcss -i src/companion/styles.css -o dist/client.css --minify && node scripts/build-client.mjs",
     "test": "vitest run",
     "prepare": "corepack pnpm build",
     "prepack": "corepack pnpm build",
@@ -81,9 +83,14 @@
       "inject": []
     }
   },
+  "dependencies": {
+    "gray-matter": "4.0.3",
+    "js-yaml": "4.1.0",
+    "zod": "4.4.3",
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
   "devDependencies": {
     "@dagrejs/dagre": "^3.1.1",
-    "@deepseek-ai/cordis": "4.0.1",
     "@tailwindcss/cli": "^4.3.3",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.0",
@@ -98,10 +105,5 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vitest": "^3.2.0"
-  },
-  "dependencies": {
-    "gray-matter": "4.0.3",
-    "js-yaml": "4.1.0",
-    "zod": "4.4.3"
   }
 }

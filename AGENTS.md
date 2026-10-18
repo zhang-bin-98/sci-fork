@@ -4,15 +4,17 @@
 
 SciFork is a Git-native biomedical Research Graph that works alongside DeepSeek
 Harness (DSH). DSH Chat remains the only conversation surface. SciFork provides
-a same-origin standalone Graph Companion, while ordinary Research Project files
+a right-sidebar Research Graph tab (desktop and same-version Web), while ordinary Research Project files
 remain the scientific source of truth and the graph remains a rebuildable
 projection.
 
 This repository contains the implemented M1 Core+Git, M2 Companion, and M3
-Research milestones plus the literature-grounded Research Expansion extension.
-The M0 compatibility spike pins the DSH preview contracts (see
-`docs/specs/m0-compatibility-spike.md`), and all implementation remains behind
-that pinned baseline. SciFork remains one package, one first-party bundle, and
+Research milestones, plus the M4 migration to the DSH 0.2.1-rc.2 baseline:
+the right-sidebar Research Graph tab, externalized literature retrieval, and
+the in-plugin Research Expansion submit. The compatibility baseline is pinned
+to DSH 0.2.1-rc.2 (see `docs/specs/dsh-desktop-right-sidebar.md` and
+`docs/specs/external-retrieval-skills.md`; M0's 0.1.1-rc.2 spike is the
+historical record). SciFork remains one package, one first-party bundle, and
 one release tarball.
 
 This file governs repository development. It does not change SciFork's runtime
@@ -249,9 +251,9 @@ Use `corepack pnpm` when pnpm is not installed globally.
 - Bundle metadata: run `pnpm pack --dry-run` and inspect the tarball file list.
 - Design documents: verify terminology, version references, README summaries,
   product design, and architecture remain consistent.
-- DSH smoke tests: run only against the pinned DSH version recorded in
-  `docs/specs/m0-compatibility-spike.md`, with user approval, in a disposable
-  profile.
+- DSH smoke tests: run only against the pinned DSH baseline recorded in
+  `docs/specs/dsh-desktop-right-sidebar.md` (0.2.1-rc.2; M0's spike is the
+  historical record), with user approval, in a disposable profile.
 
 Note: esbuild on Windows runs its native binary as a child process, so
 `pnpm test` and `pnpm build` need sandbox permissions that allow piped spawns;

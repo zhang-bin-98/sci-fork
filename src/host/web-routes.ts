@@ -3,7 +3,6 @@ import type { Readable } from 'node:stream'
 import type { CompanionFailure } from '../shared/companion-contract.js'
 import { isPageKey } from '../shared/page-key.js'
 import {
-  ROUTE_COMPANION,
   ROUTE_ENTITY,
   ROUTE_FOCUS,
   ROUTE_LAUNCH,
@@ -16,34 +15,8 @@ import type { WebRoute } from './contracts.js'
 export const JSON_BODY_LIMIT = 64 * 1024
 export const PAGE_KEY_HEADER = 'x-scifork-page-key'
 
-export const COMPANION_ASSET_MANIFEST = {
-  'index.html': 'text/html; charset=utf-8',
-  'app.js': 'text/javascript; charset=utf-8',
-  'styles.css': 'text/css; charset=utf-8',
-} as const
-
-export type CompanionAssetName = keyof typeof COMPANION_ASSET_MANIFEST
-
-export interface CompanionAssets {
-  read(name: CompanionAssetName): Uint8Array
-}
-
-export const STATIC_CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "connect-src 'self'",
-  "img-src 'none'",
-  "object-src 'none'",
-  "frame-src 'none'",
-  "frame-ancestors 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-].join('; ')
-
 export interface SciforkRouteDependencies {
   api: CompanionApiPort
-  assets: CompanionAssets
 }
 
 interface AdmittedJsonRequest {
@@ -64,14 +37,6 @@ interface EntityRequest {
 }
 
 type RouteApiResponse = { readonly ok: true } | CompanionFailure
-
-const STATIC_PATHS: Readonly<Record<string, CompanionAssetName>> = {
-  [ROUTE_COMPANION]: 'index.html',
-  [`${ROUTE_COMPANION}/`]: 'index.html',
-  [`${ROUTE_COMPANION}/index.html`]: 'index.html',
-  [`${ROUTE_COMPANION}/app.js`]: 'app.js',
-  [`${ROUTE_COMPANION}/styles.css`]: 'styles.css',
-}
 
 const PAGE_KEY_INVALID: CompanionFailure = {
   ok: false,
@@ -110,15 +75,25 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   )
 }
 
-/** Require a numeric loopback peer and an HTTP Origin exactly matching Host. */
+/**
+ * Require a numeric loopback peer and a same-origin HTTP Origin.
+ *
+ * A missing Origin header is the measured desktop-renderer shape (the
+ * dsh-app:// main frame sends no Origin on its loopback fetch; live-measured
+ * on 0.2.1-rc.2) and is admitted for loopback requests: browser POSTs always
+ * carry an Origin and must still match the Host exactly, so a missing Origin
+ * marks a non-browser loopback client while every other gate (loopback Host,
+ * numeric loopback socket, media type, body cap) keeps applying.
+ */
 export function isAllowedJsonRequest(
   origin: string | undefined,
   host: string | undefined,
   remoteAddress: string | undefined,
 ): boolean {
-  if (!origin || !host || !isLoopbackHost(host) || !isLoopbackAddress(remoteAddress)) {
+  if (!host || !isLoopbackHost(host) || !isLoopbackAddress(remoteAddress)) {
     return false
   }
+  if (origin === undefined) return true
   try {
     const parsed = new URL(origin)
     const expectedOrigin = new URL(`http://${host}`).origin
@@ -335,72 +310,9 @@ async function sendApiResult(
   }
 }
 
-function setStaticHeaders(res: ServerResponse): void {
-  res.setHeader('content-security-policy', STATIC_CONTENT_SECURITY_POLICY)
-  res.setHeader('x-content-type-options', 'nosniff')
-  res.setHeader('referrer-policy', 'no-referrer')
-  res.setHeader('x-frame-options', 'DENY')
-  res.setHeader('cache-control', 'no-store')
-}
-
-function sendStaticError(res: ServerResponse, status: number, message: string): void {
-  res.statusCode = status
-  res.setHeader('content-type', 'text/plain; charset=utf-8')
-  res.end(message)
-}
-
-function staticHandler(assets: CompanionAssets): WebRoute['handler'] {
-  return (req, res) => {
-    setStaticHeaders(res)
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.setHeader('allow', 'GET, HEAD')
-      sendStaticError(res, 405, 'Method not allowed.')
-      return
-    }
-    if (!isLoopbackHost(req.headers.host) || !isLoopbackAddress(req.socket.remoteAddress)) {
-      sendStaticError(res, 403, 'Loopback access is required.')
-      return
-    }
-
-    const target = req.url
-    if (target === `${ROUTE_COMPANION}/`) {
-      res.statusCode = 308
-      res.setHeader('location', ROUTE_COMPANION)
-      res.end()
-      return
-    }
-    if (target === undefined || target.includes('?') || target.includes('#') || target.includes('%')) {
-      sendStaticError(res, 404, 'Asset not found.')
-      return
-    }
-    const assetName = STATIC_PATHS[target]
-    if (assetName === undefined) {
-      sendStaticError(res, 404, 'Asset not found.')
-      return
-    }
-
-    let body: Uint8Array
-    try {
-      body = assets.read(assetName)
-    } catch {
-      sendStaticError(res, 503, 'Companion assets are unavailable.')
-      return
-    }
-    res.statusCode = 200
-    res.setHeader('content-type', COMPANION_ASSET_MANIFEST[assetName])
-    res.setHeader('content-length', body.byteLength)
-    res.end(req.method === 'HEAD' ? undefined : body)
-  }
-}
-
-/** M2 static shell and JSON API route table. */
-export function sciforkRoutes({ api, assets }: SciforkRouteDependencies): readonly WebRoute[] {
+/** JSON API route table (M4: the standalone SPA and static routes are gone). */
+export function sciforkRoutes({ api }: SciforkRouteDependencies): readonly WebRoute[] {
   return [
-    {
-      kind: 'prefix',
-      path: ROUTE_COMPANION,
-      handler: staticHandler(assets),
-    },
     {
       kind: 'exact',
       path: ROUTE_LAUNCH,

@@ -6,8 +6,9 @@ import {
 import type { CommandInvocation, CommandResult, CommandsPort } from './contracts.js'
 
 /**
- * Human slash commands (architecture §7.3): `/research init`, `/research
- * open`, `/research validate`. The project root always comes from the
+ * Human slash commands (architecture §7.3): `/research init` and
+ * `/research validate`. `/research open` was removed in M4: opening the
+ * graph is a client-side tab action. The project root always comes from the
  * invoking session's cwd; results never include local absolute paths.
  */
 
@@ -16,7 +17,7 @@ export interface ResearchCommandsDeps extends ResearchMutationDeps {
   mkdirs?(root: string): void
 }
 
-const USAGE = 'usage: /research init | open | validate'
+const USAGE = 'usage: /research init | validate'
 
 async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation): Promise<CommandResult> {
   const subcommand = invocation.rawInput.trim()
@@ -33,13 +34,6 @@ async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation)
       text:
         `SciFork research project "${result.name}" initialized (project_id ${result.projectId}).\n` +
         `Baseline checkpoint ${result.checkpointId.slice(0, 12)} created on the current branch.`,
-    }
-  }
-
-  if (subcommand === 'open') {
-    return {
-      kind: 'success',
-      text: 'Use the Open Research Graph action in DSH to launch the Companion.',
     }
   }
 
@@ -78,8 +72,8 @@ async function handle(deps: ResearchCommandsDeps, invocation: CommandInvocation)
 export function registerResearchCommands(deps: ResearchCommandsDeps): () => void {
   return deps.commands.register({
     name: 'research',
-    description: 'Manage the SciFork Research Graph: init, open, or validate the current project.',
-    input: { hint: 'init | open | validate' },
+    description: 'Manage the SciFork Research Graph: init or validate the current project.',
+    input: { hint: 'init | validate' },
     handler: (invocation) => handle(deps, invocation),
   })
 }

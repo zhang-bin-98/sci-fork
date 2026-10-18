@@ -28,12 +28,27 @@ afterEach(() => {
 })
 
 describe('visible-only snapshot polling', () => {
+  it('pauses for a hidden tab even in a visible document and refreshes when remounted visible', async () => {
+    vi.useFakeTimers()
+    const document = new VisibilityDocument('visible')
+    const readSnapshot = vi.fn(async () => undefined)
+    const stopHidden = startVisiblePolling({ document, readSnapshot, visible: false })
+    await vi.advanceTimersByTimeAsync(10_000)
+    document.setVisibility('hidden')
+    document.setVisibility('visible')
+    expect(readSnapshot).not.toHaveBeenCalled()
+    stopHidden()
+    const stopVisible = startVisiblePolling({ document, readSnapshot, visible: true })
+    expect(readSnapshot).toHaveBeenCalledOnce()
+    stopVisible()
+  })
+
   it('polls immediately while visible, pauses while hidden, and refreshes on return', async () => {
     vi.useFakeTimers()
     const document = new VisibilityDocument('visible')
     const readSnapshot = vi.fn(async () => undefined)
 
-    const stop = startVisiblePolling({ document, readSnapshot })
+    const stop = startVisiblePolling({ document, readSnapshot, visible: true })
     expect(readSnapshot).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(4_999)
     expect(readSnapshot).toHaveBeenCalledOnce()
@@ -62,7 +77,7 @@ describe('visible-only snapshot polling', () => {
     })
     const readSnapshot = vi.fn(() => pending)
 
-    const stop = startVisiblePolling({ document, readSnapshot })
+    const stop = startVisiblePolling({ document, readSnapshot, visible: true })
     expect(readSnapshot).not.toHaveBeenCalled()
 
     document.setVisibility('visible')

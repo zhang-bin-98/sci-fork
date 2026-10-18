@@ -1,250 +1,141 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
-  createResearchExpansionNonce,
   RESEARCH_EXPANSION_ACTION_LABEL,
-  ResearchExpansionChannel,
+  RESEARCH_EXPANSION_PROMPT_LIMIT,
+  ResearchExpansionSubmitter,
   buildResearchExpansionPrompt,
 } from '../../src/companion/research-expansion.js'
 import type { SnapshotGraph } from '../../src/shared/companion-contract.js'
 
-class FakeChannel {
-  readonly posted: unknown[] = []
-  readonly listeners = new Set<(event: { data: unknown }) => void>()
-
-  postMessage(message: unknown): void {
-    this.posted.push(message)
-  }
-
-  addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
-    if (type === 'message') this.listeners.add(listener)
-  }
-
-  removeEventListener(type: string, listener: (event: { data: unknown }) => void): void {
-    if (type === 'message') this.listeners.delete(listener)
-  }
-
-  emit(data: unknown): void {
-    for (const listener of this.listeners) listener({ data })
-  }
-}
-
-const promptInput = {
-  focusEntityId: 'node_focus',
+const graph: SnapshotGraph = {
   entities: [
     {
-      id: 'node_focus',
-      type: 'node' as const,
-      kind: 'hypothesis' as const,
-      confidence: 'low' as const,
-      publicationCount: 0,
-      machineReviewedEvidenceCount: 0,
+      id: 'node_x',
+      type: 'node',
+      kind: 'hypothesis',
+      confidence: 'low',
+      publicationCount: 1,
+      machineReviewedEvidenceCount: 1,
       humanReviewedEvidenceCount: 0,
-      label: 'Blocking IL-6 may reduce the inflammatory phenotype.',
+      label: 'Senescent osteocytes drive bone marrow adiposity',
     },
-    {
-      id: 'ev_support',
-      type: 'evidence' as const,
-      direction: 'supports' as const,
-      reviewStatus: 'reviewed' as const,
-      label: 'A reviewed cohort reported reduced inflammatory markers.',
-    },
-    {
-      id: 'res_against',
-      type: 'result' as const,
-      status: 'validated' as const,
-      observedAt: '2026-08-30',
-      label: 'The local assay showed no reduction after treatment.',
-    },
-  ] satisfies SnapshotGraph['entities'],
-  edges: [
-    {
-      id: 'edge_support',
-      from: 'ev_support',
-      to: 'node_focus',
-      relation: 'supports' as const,
-      source: 'edge' as const,
-      basis: 'literature' as const,
-      evidenceGap: 'No randomized intervention study is available.',
-    },
-    {
-      id: 'edge_against',
-      from: 'res_against',
-      to: 'node_focus',
-      relation: 'contradicts' as const,
-      source: 'edge' as const,
-      basis: 'experiment' as const,
-    },
-  ] satisfies SnapshotGraph['edges'],
+  ],
+  edges: [],
 }
 
-afterEach(() => {
-  vi.useRealTimers()
+describe('buildResearchExpansionPrompt', () => {
+  it('carries the focus summary and the full authorization boundary', () => {
+    const prompt = buildResearchExpansionPrompt({
+      focusEntityId: 'node_x',
+      entities: graph.entities,
+      edges: graph.edges,
+    })
+
+    expect(prompt).toContain('Focus')
+    expect(prompt).toContain('node_x')
+    expect(prompt).toContain('Senescent osteocytes drive bone marrow adiposity')
+    expect(prompt).toContain('zero to five direct branches at depth one')
+    expect(prompt).toContain('Focus remains unchanged. Do not recurse.')
+    expect(prompt).toContain('machine-reviewed Evidence')
+    expect(prompt).toContain('Never create or promote a Finding')
+    expect(prompt).toContain('dsh-pubmed')
+    expect(prompt).toContain('harness web search')
+    expect(prompt).toContain('scifork-research')
+  })
+
+  it('does not restate the skill workflow detail (single source of truth)', () => {
+    const prompt = buildResearchExpansionPrompt({
+      focusEntityId: 'node_x',
+      entities: graph.entities,
+      edges: graph.edges,
+    })
+
+    expect(prompt).not.toContain('bold summary sentence')
+    expect(prompt).not.toContain('create_evidence_assertion')
+    expect(prompt).not.toContain('create_node')
+    expect(prompt).not.toContain('publicationRefs')
+    expect(prompt).not.toContain('never reverse these endpoints')
+  })
+
+  it('stays within the byte limit and truncates only the focus context', () => {
+    const entities = [
+      {
+        ...graph.entities[0]!,
+        label: 'L'.repeat(8 * 1024),
+      },
+    ]
+    const prompt = buildResearchExpansionPrompt({
+      focusEntityId: 'node_x',
+      entities,
+      edges: graph.edges,
+    })
+    expect(new TextEncoder().encode(prompt).byteLength).toBeLessThanOrEqual(
+      RESEARCH_EXPANSION_PROMPT_LIMIT,
+    )
+    expect(prompt).toContain('[Visible context truncated]')
+    expect(prompt).toContain('zero to five direct branches')
+  })
 })
 
-describe('literature-grounded research expansion prompt', () => {
-  it('authorizes one objective-led retrieval and connected expansion step without preloading the neighborhood', () => {
-    const prompt = buildResearchExpansionPrompt(promptInput)
-    const normalized = prompt.toLowerCase()
+describe('ResearchExpansionSubmitter', () => {
+  it('resolves to idle on completion and reports failures with codes', async () => {
+    const states: string[] = []
+    const submit = vi.fn(async () => undefined)
+    const submitter = new ResearchExpansionSubmitter({
+      submit,
+      onStateChange: (state) => states.push(state.phase),
+    })
 
+    submitter.submit('bounded prompt')
+    expect(submitter.getState()).toEqual({ phase: 'pending', prompt: 'bounded prompt' })
+    expect(submit).toHaveBeenCalledWith('bounded prompt')
+    await vi.waitFor(() => expect(submitter.getState()).toEqual({ phase: 'idle' }))
+    expect(states).toEqual(['pending', 'idle'])
+  })
+
+  it('maps rejection messages to bounded failure codes', async () => {
+    const submit = vi.fn(async () => {
+      throw new Error('SESSION_UNAVAILABLE')
+    })
+    const submitter = new ResearchExpansionSubmitter({ submit })
+
+    submitter.submit('bounded prompt')
+    await vi.waitFor(() =>
+      expect(submitter.getState()).toEqual({
+        phase: 'failed',
+        prompt: 'bounded prompt',
+        reason: 'SESSION_UNAVAILABLE',
+      }),
+    )
+  })
+
+  it('rejects oversized prompts before submitting', () => {
+    const submit = vi.fn(async () => undefined)
+    const submitter = new ResearchExpansionSubmitter({ submit })
+
+    submitter.submit('x'.repeat(RESEARCH_EXPANSION_PROMPT_LIMIT + 1))
+    expect(submitter.getState()).toMatchObject({ phase: 'failed', reason: 'prompt_too_large' })
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('retries the stored failed prompt', async () => {
+    let calls = 0
+    const submit = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) throw new Error('RESEARCH_EXPANSION_REJECTED')
+    })
+    const submitter = new ResearchExpansionSubmitter({ submit })
+
+    submitter.submit('bounded prompt')
+    await vi.waitFor(() =>
+      expect(submitter.getState()).toMatchObject({ phase: 'failed' }),
+    )
+    submitter.retry()
+    expect(submit).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(submitter.getState()).toEqual({ phase: 'idle' }))
+  })
+
+  it('keeps the action label exported for UI labels', () => {
     expect(RESEARCH_EXPANSION_ACTION_LABEL).toBe('Research & Expand')
-    expect(prompt).toContain('node_focus')
-    expect(prompt).toContain('Blocking IL-6 may reduce the inflammatory phenotype.')
-    expect(prompt).not.toContain('Focus-neighborhood')
-    expect(prompt).not.toContain('A reviewed cohort reported reduced inflammatory markers.')
-    expect(prompt).not.toContain('The local assay showed no reduction after treatment.')
-    expect(prompt).not.toContain('No randomized intervention study is available.')
-    expect(normalized).not.toContain('simulation')
-    expect(normalized).toContain('research expansion step')
-    expect(normalized).toContain('current chat objective')
-    expect(normalized).toContain('pubmed-search')
-    expect(normalized).toContain('search')
-    expect(normalized).toContain('lookup')
-    expect(normalized).toContain('scifork-research')
-    expect(normalized).toContain('neighbors')
-    expect(normalized).toContain('incoming')
-    expect(normalized).toContain('outgoing')
-    expect(normalized).toContain('result')
-    expect(normalized).toContain('interpretation')
-    expect(normalized).toContain('ai_inference')
-    expect(normalized).toContain('finding')
-    expect(normalized).toContain('authorizes')
-    expect(normalized).toContain('zero to five')
-    expect(normalized).toContain('five')
-    expect(normalized).toContain('depth one')
-    expect(normalized).toContain('confidence: low')
-    expect(normalized).toContain('create_node')
-    expect(normalized).toContain('create_edge')
-    expect(normalized).toContain('from the existing anchor to the new node')
-    expect(normalized).toContain('create_evidence_assertion')
-    expect(normalized).toContain('machine_reviewed')
-    expect(normalized).toContain('create_framing_link')
-    expect(normalized).toContain('research question')
-    expect(normalized).toContain('actual retrieved abstract')
-    expect(normalized).toContain('title-only')
-    expect(normalized).toContain('machinereviewrationale')
-    expect(normalized).toContain('never write authors')
-    expect(normalized).toContain('pdf')
-    expect(normalized).toContain('raw provider output')
-    expect(normalized).toContain('first non-empty markdown paragraph')
-    expect(normalized).toContain('bold summary sentence')
-    expect(normalized).toContain('do not put evidence assertion')
-    expect(normalized).toContain('publicationrefs')
-    expect(normalized).toContain('focus remains unchanged')
-    expect(normalized).toContain('do not recurse')
-    expect(normalized).toContain('progressive research run')
-    expect(normalized).toContain('not authorized')
-  })
-
-  it('preserves the task and scientific guardrails within the 12 KiB UTF-8 cap', () => {
-    const huge = {
-      ...promptInput,
-      entities: promptInput.entities.map((entity) => ({
-        ...entity,
-        label: `${entity.label} ${'测'.repeat(20_000)}`,
-      })),
-      edges: promptInput.edges.map((edge) => ({
-        ...edge,
-        evidenceGap: `${edge.evidenceGap ?? ''} ${'缺'.repeat(20_000)}`,
-      })),
-    }
-
-    const prompt = buildResearchExpansionPrompt(huge)
-    const normalized = prompt.toLowerCase()
-
-    expect(new TextEncoder().encode(prompt).byteLength).toBeLessThanOrEqual(12 * 1024)
-    expect(normalized).toContain('research expansion step')
-    expect(normalized).toContain('current chat objective')
-    expect(normalized).toContain('pubmed-search')
-    expect(normalized).toContain('lookup')
-    expect(normalized).toContain('neighbors')
-    expect(normalized).toContain('result')
-    expect(normalized).toContain('interpretation')
-    expect(normalized).toContain('ai_inference')
-    expect(normalized).toContain('finding')
-    expect(normalized).toContain('zero to five')
-    expect(normalized).toContain('five')
-    expect(normalized).toContain('create_node')
-    expect(normalized).toContain('create_edge')
-    expect(normalized).toContain('from the existing anchor to the new node')
-    expect(normalized).toContain('create_evidence_assertion')
-    expect(normalized).toContain('machine_reviewed')
-    expect(normalized).toContain('create_framing_link')
-    expect(normalized).toContain('title-only')
-    expect(normalized).toContain('never write authors')
-    expect(normalized).toContain('publicationrefs')
-    expect(normalized).toContain('focus remains unchanged')
-    expect(normalized).toContain('do not recurse')
-  })
-})
-
-describe('research expansion acknowledgement channel', () => {
-  it('creates a 128-bit unpadded base64url nonce', () => {
-    expect(createResearchExpansionNonce()).toMatch(/^[A-Za-z0-9_-]{22}$/)
-  })
-
-  it('retains the prompt after timeout and retries only on demand with a new nonce', () => {
-    vi.useFakeTimers()
-    const channel = new FakeChannel()
-    const firstNonce = 'a'.repeat(22)
-    const secondNonce = 'b'.repeat(22)
-    const createNonce = vi
-      .fn<() => string>()
-      .mockReturnValueOnce(firstNonce)
-      .mockReturnValueOnce(secondNonce)
-    const researchExpansion = new ResearchExpansionChannel({ channel, createNonce })
-    const prompt = 'Bounded prompt retained exactly.'
-
-    researchExpansion.submit(prompt)
-    expect(channel.posted).toEqual([
-      { type: 'research_expansion', nonce: firstNonce, prompt },
-    ])
-    expect(researchExpansion.getState()).toMatchObject({
-      phase: 'pending',
-      nonce: firstNonce,
-      prompt,
-    })
-
-    vi.advanceTimersByTime(1_999)
-    expect(researchExpansion.getState()).toMatchObject({ phase: 'pending' })
-    vi.advanceTimersByTime(1)
-    expect(researchExpansion.getState()).toMatchObject({
-      phase: 'failed',
-      reason: 'timeout',
-      prompt,
-    })
-    expect(channel.posted).toHaveLength(1)
-
-    researchExpansion.retry()
-    expect(channel.posted).toEqual([
-      { type: 'research_expansion', nonce: firstNonce, prompt },
-      { type: 'research_expansion', nonce: secondNonce, prompt },
-    ])
-    expect(researchExpansion.getState()).toMatchObject({
-      phase: 'pending',
-      nonce: secondNonce,
-      prompt,
-    })
-
-    channel.emit({ type: 'ack', nonce: firstNonce, status: 'started' })
-    expect(researchExpansion.getState()).toMatchObject({
-      phase: 'pending',
-      nonce: secondNonce,
-    })
-
-    channel.emit({ type: 'ack', nonce: secondNonce, status: 'queued' })
-    expect(researchExpansion.getState()).toMatchObject({
-      phase: 'acknowledged',
-      acknowledgement: 'queued',
-      nonce: secondNonce,
-      prompt,
-    })
-    vi.advanceTimersByTime(2_000)
-    expect(researchExpansion.getState()).toMatchObject({ phase: 'acknowledged' })
-
-    channel.emit({ type: 'complete', nonce: secondNonce })
-    expect(researchExpansion.getState()).toEqual({ phase: 'idle' })
-
-    researchExpansion.dispose()
-    expect(channel.listeners.size).toBe(0)
   })
 })

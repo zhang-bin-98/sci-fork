@@ -1,6 +1,11 @@
 # SciFork M2 Companion
 
 > Status: Implemented; automated and default-breakpoint browser verification passed on 2026-09-01
+> Superseded（部分，2026-10-18）：独立窗口表面、`window.open` 启动、URL fragment
+> Page Key 交换与 BroadcastChannel 提交通道条款由
+> [DSH 桌面端右侧栏迁移](./dsh-desktop-right-sidebar.md) 取代；Main/Evidence 视图、
+> Focus、Details、轮询与安全渲染行为继续有效。基线 `0.1.1-rc.2` 为历史钉住，
+> 现行基线为 `0.2.1-rc.2`。
 > Date: 2026-09-03
 > Parent design: [product design v0.18](../scifork-product-design.md) sections 3, 6.3, and 14; [software architecture v0.19](../scifork-software-architecture.md) sections 8, 9, 12, 15.3, and 16
 > Compatibility baseline: DeepSeek Harness `0.1.1-rc.2`

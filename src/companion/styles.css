@@ -67,7 +67,19 @@
 }
 
 @layer base {
-  :root {
+  /*
+   * M4 embedding: the base rules anchor on the SciFork container root
+   * (.scifork-root), never on document-level selectors, so the injected
+   * stylesheet cannot restyle the DSH shell. The container root also
+   * carries the container-query context for pane-width layout.
+   */
+  .scifork-root {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
     color: var(--color-sf-ink);
     background: var(--color-sf-canvas);
     font-family:
@@ -75,26 +87,16 @@
       sans-serif;
     font-synthesis: none;
     letter-spacing: 0;
+    container-type: inline-size;
   }
 
-  * {
+  .scifork-root *,
+  .scifork-root *::before,
+  .scifork-root *::after {
     box-sizing: border-box;
   }
 
-  html,
-  body,
-  #root {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-  }
-
-  body {
-    min-width: 320px;
-    overflow: hidden;
-  }
-
-  button {
+  .scifork-root button {
     font: inherit;
     letter-spacing: 0;
     cursor: pointer;

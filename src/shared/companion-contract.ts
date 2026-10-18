@@ -193,36 +193,10 @@ export interface FocusSuccess {
 
 export interface LaunchSuccess {
   ok: true
-  url: string
+  pageKey: string
 }
 
 export type LaunchResponse = LaunchSuccess | CompanionFailure
 export type SnapshotResponse = SnapshotSuccess | CompanionFailure
 export type EntityResponse = EntitySuccess | CompanionFailure
 export type FocusResponse = FocusSuccess | CompanionFailure
-
-export const RESEARCH_EXPANSION_REQUEST_WIRE_TYPE = 'research_expansion' as const
-export const RESEARCH_EXPANSION_REJECTED_WIRE_CODE = 'RESEARCH_EXPANSION_REJECTED' as const
-
-export interface ResearchExpansionRequestMessage {
-  type: typeof RESEARCH_EXPANSION_REQUEST_WIRE_TYPE
-  nonce: string
-  prompt: string
-}
-
-export interface ResearchExpansionAckMessage {
-  type: 'ack'
-  nonce: string
-  status: 'started' | 'queued'
-}
-
-export interface ResearchExpansionCompleteMessage {
-  type: 'complete'
-  nonce: string
-}
-
-export interface ResearchExpansionErrorMessage {
-  type: 'error'
-  nonce: string
-  code: 'SESSION_UNAVAILABLE' | typeof RESEARCH_EXPANSION_REJECTED_WIRE_CODE
-}

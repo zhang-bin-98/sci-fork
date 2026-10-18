@@ -12,6 +12,7 @@ import {
   copyEntityId,
   restoreMainView,
   settleEntityIdCopyFeedback,
+  UnverifiedVersionBanner,
 } from '../../src/companion/app.js'
 import type { EntityDocument, ProjectionEntitySummary } from '../../src/shared/companion-contract.js'
 
@@ -86,6 +87,13 @@ const questionEntity = {
   humanReviewedEvidenceCount: 1,
 } satisfies EntityDocument
 
+const fakeBridge = (): unknown => ({
+  requestPageKey: async () => 'K'.repeat(43),
+  releasePageKey: () => undefined,
+  submitResearchExpansion: async () => undefined,
+  dispose: () => undefined,
+})
+
 describe('Companion graph UI', () => {
   it('keeps project and branch identity in one header row', () => {
     const html = renderToStaticMarkup(
@@ -118,10 +126,10 @@ describe('Companion graph UI', () => {
     )
 
     expect(header).toContain('data-research-expansion-recovery="header"')
-    expect(header).toContain('hidden sm:contents')
+    expect(header).toContain('hidden @min-[640px]:contents')
     expect(narrow).toContain('data-research-expansion-recovery="narrow"')
     expect(narrow).toContain('<section class="flex ')
-    expect(narrow).toContain(' sm:hidden"')
+    expect(narrow).toContain(' @min-[640px]:hidden"')
     expect(narrow).toContain('Research step failed')
     expect(narrow).toContain('Retry')
     expect(narrow).toContain('Copy')
@@ -244,16 +252,16 @@ describe('Companion graph UI', () => {
 
   it('uses a calm inverted treatment for the research action', () => {
     const html = renderToStaticMarkup(
-      createElement(CompanionApp, { pageKey: 'K'.repeat(43) }),
+      createElement(CompanionApp, { pageKey: 'K'.repeat(43), bridge: fakeBridge(), visible: true }),
     )
     const action = html.match(/<button[^>]*aria-label="Research &amp; Expand"[\s\S]*?<\/button>/)?.[0]
     const actionClasses = action?.match(/class="([^"]+)"/)?.[1]?.split(' ')
 
     expect(action).toBeDefined()
     expect(action).toContain('title="Research &amp; Expand"')
-    expect(action).toContain('size-9 px-0 sm:size-auto sm:px-3')
-    expect(action).toContain('class="size-4 sm:hidden"')
-    expect(action).toContain('class="hidden sm:inline"')
+    expect(action).toContain('size-9 px-0 @min-[640px]:size-auto @min-[640px]:px-3')
+    expect(action).toContain('class="size-4 @min-[640px]:hidden"')
+    expect(action).toContain('class="hidden @min-[640px]:inline"')
     expect(actionClasses).toContain('bg-sf-header-foreground')
     expect(actionClasses).toContain('text-sf-header')
     expect(actionClasses).not.toContain('bg-sf-accent')
@@ -265,12 +273,7 @@ describe('Companion graph UI', () => {
   it('shows only a disabled spinner while research is running', () => {
     const html = renderToStaticMarkup(
       createElement(ResearchExpansionAction, {
-        state: {
-          phase: 'acknowledged',
-          nonce: 'A'.repeat(22),
-          prompt: 'bounded prompt',
-          acknowledgement: 'queued',
-        },
+        state: { phase: 'pending', prompt: 'bounded prompt' },
         disabled: false,
         onClick: () => undefined,
       }),
@@ -490,5 +493,15 @@ describe('Companion graph UI', () => {
     )
 
     expect(html).toContain('data-drawer-action="close"')
+  })
+})
+
+
+describe('version guard', () => {
+  it('renders the unverified-version banner with the runtime version', () => {
+    const html = renderToStaticMarkup(createElement(UnverifiedVersionBanner, { actual: '0.3.0-nightly' }))
+    expect(html).toContain('Unverified DSH version')
+    expect(html).toContain('0.3.0-nightly')
+    expect(html).toContain('data-unverified-dsh-version="0.3.0-nightly"')
   })
 })

@@ -4,24 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const root = join(process.cwd(), 'skills')
 
-describe('packaged M3 Skills', () => {
-  it('publishes the PubMed helper protocol and failure boundary', () => {
-    const content = readFileSync(join(root, 'pubmed-search', 'SKILL.md'), 'utf8')
-    expect(content).not.toContain('M0 stub')
-    expect(content).toContain('retmax` to `20`')
-    expect(content).toContain('more than 200 PMIDs is sent by POST')
-    expect(content).toContain('Do not create a Research Import Draft')
-    expect(content).toContain('do not invent')
-    expect(content).toContain('relative resource `helper.mjs`')
-    expect(content).toContain('standard input')
-    expect(content).toContain('Do not search')
-    expect(content).toContain('optional abstract')
-    expect(content).toContain('DSH Chat may retain')
-    expect(content).toContain('SciFork cannot delete')
-    expect(content).not.toContain('<packaged-pubmed-skill>')
-    expect(content).not.toContain('request.json')
-  })
-
+describe('packaged Skills', () => {
   it('publishes the Draft, one-step expansion, progressive research, and critique boundaries', () => {
     const content = readFileSync(join(root, 'scifork-research', 'SKILL.md'), 'utf8')
     expect(content).not.toContain('M0 stub')
@@ -50,9 +33,11 @@ describe('packaged M3 Skills', () => {
     expect(content).toContain('explicit user request')
     expect(content).toContain('current continuation')
     expect(content).toContain('visited')
-    expect(content).toContain('pubmed-search')
-    expect(content).toContain('search')
-    expect(content).toContain('lookup')
+    expect(content).toContain('dsh-pubmed')
+    expect(content).toContain('dsh-web-search')
+    expect(content).toContain('user-provided')
+    expect(content).toContain('harness web')
+    expect(content).not.toContain('`pubmed-search`')
     expect(content).toContain('create_node')
     expect(content).toContain('create_edge')
     expect(content.toLowerCase()).toContain('from the existing anchor to the new node')

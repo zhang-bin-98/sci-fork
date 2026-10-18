@@ -8,173 +8,69 @@
 
 > 拆分假设，连接证据，推进研究。
 
-SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness)
-的本地、Git 原生生物医学研究图谱（Research Graph）插件。你仍然在 DSH Chat 中完成
-所有对话界面，SciFork 则打开一个与 DSH 同源的图谱 Companion，帮助组织研究问题
-（Research Question）、假设（Hypothesis）、证据（Evidence）、研究结果（Result）和
-研究发现（Finding）。
+SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 的生物医学**研究图谱**插件。DSH Chat 始终是唯一的对话界面，SciFork 则在右侧栏提供可视化的研究图谱，把对话与文献检索中获得的信息沉淀为结构化、可追溯的科研知识。
 
-研究项目（Research Project）始终是本地 Git 仓库中的普通 Markdown 和 JSON 文件。
-图谱只是这些文件可重建的视图，不是另一个数据库；SciFork 不会上传项目，也不提供
-云同步。
-
-> **早期版本：** SciFork `0.0.3` 锁定 DSH `0.1.1-rc.2` 的公开接口。
+> **当前版本：** SciFork `0.0.4` 适配 DSH `0.2.1-rc.2`（桌面端与同版本 Web）。
 
 ## 你可以做什么
 
-- 把一个开放式研究问题整理成相互连接、便于检查的研究图谱。
-- 导入以 PMID 或 DOI 标识的文献证据，也可以使用随插件提供的 Skill 检索 PubMed。
-- 将研究团队产生的结果、对结果的解释和未经验证的假设清楚地区分开。
-- 在 **Main** 视图查看整个项目，或在 **Evidence** 视图聚焦某个实体的直接证据断言。
-- 点击 **Research & Expand**，从当前焦点（Focus）执行一次文献驱动的扩展。每次点击只执行
-  一步，最多产生五条直接相连的低置信分支。
-- 每次成功修改研究内容后，尝试只为 SciFork 受管文件创建本地 Git 检查点。
+- **深度研究**——在对话中直接提出深度研究请求，SciFork 会围绕研究目标开展多轮递进探索：每一轮自动检索文献、提炼初审证据、保留所有合格的候选分支，并自动挑选最具潜力的一条假设继续向下深挖，直至覆盖你的研究范围。
+- **一键单步扩展**——在图谱中选中任意节点，点击 **Research & Expand**，即可基于当前节点向外有依据地推演一步（每次最多生成五条直接相连的候选分支）。
+- **严格的证据门槛**——每条文献证据都绑定 PMID 或 DOI、原文位置与审核说明。模型自动提炼的初审证据可用于启发探索，但只有经过你人工确认的文献证据（或团队已验证的实验结果），才能支撑一条假设晋升为确立的**研究发现（Finding）**。
+- **双视图浏览**——在 **Main** 视图全局把握研究脉络，或在 **Evidence** 视图聚焦单个节点的直接文献依据；通过 **Details** 面板阅读完整正文与分组引文。
+- **纯本地文件 + Git**——整个项目保存在本地普通的 Markdown 与 JSON 文件中，每次修改自动在当前分支生成 Git 记录，方便你随时关联 GitHub 等远端仓库进行备份与协作。
 
-## 安装
+## 视图与研究模型
 
-### 前置条件
+- **Main 视图（默认）**——展示完整的研究结构：以开放式的**研究问题（Question）**为起点，连接候选的**假设（Hypothesis）**、可检验的**预测（Prediction）**、团队记录的**研究结果（Result）**以及已确立的**研究发现（Finding）**，清晰呈现各项主张之间的支持、反驳、因果与预测关系。
+- **Evidence 视图**——当选中的节点包含直接文献依据时即可进入。该视图仅展示当前节点及其直接引用的**文献证据（Evidence）**，方便逐条核对原文依据；切回 **Main** 视图时会自动回到原节点。
+- **Details 面板**——展示所选节点的完整正文、关联文献与审核计数，并按“人工已审核”“机器初审”“已拒绝”及“仅检索参考”分组列出引文来源。点击面板顶部的节点 ID 即可一键复制，便于在对话中精准指定操作对象。
 
-- 使用 Web profile 的 DSH `0.1.1-rc.2`
-- Node.js `^22.19.0 || >=24.0.0`
-- pnpm `11.23.0`（Git 源码构建需要 Corepack 及其 pnpm shim）
-- 已配置 `user.name` 和 `user.email` 的 Git
-- 配置为本机回环访问（`127.0.0.1`）的 DSH Web
+## 安装与文献检索
 
-### 从 GitHub 源码安装
+**从插件面板安装（推荐）**：在 DSH 侧栏打开 **插件**，点击 **添加插件**，输入 `zhang-bin-98/sci-fork` 并安装（如提示构建脚本请选择允许），完成后点击 **立即启用**。
 
-安装前先启用 Corepack 的 pnpm 命令入口：
+**在会话中安装**：直接对模型说——“帮我安装 DSH 插件 `zhang-bin-98/sci-fork`”。
 
-```sh
-corepack enable pnpm
-```
+卸载时在插件页面选择 **移除** 即可，已创建的本地研究项目文件仍可正常阅读。
 
-如果没有 `corepack`（包括 Node.js 25+ 的安装环境），先运行
-`npm install --global corepack`，再启用入口。这能让内层
-`pnpm install` 使用 SciFork 固定的版本。
+### 搭配文献检索
 
-遇到 `ERR_PNPM_BAD_PM_VERSION` 时，可能是 Git 依赖准备阶段调用了另一个
-全局 pnpm，即使外层已使用 Corepack 也会失败。运行 `corepack enable pnpm`，
-然后在使用该入口的终端中重试。在 SciFork 源码目录执行
-`corepack pnpm exec pnpm --version` 应输出 `11.23.0`；
-`corepack pnpm verify:source` 会检查这一点并执行隔离源码安装验证。
+SciFork 自身不绑定特定文献库，会自动利用对话中的真实文献材料（按以下顺序适配）：
 
-从 `v0.0.2` 开始支持源码安装。SciFork 没有 npm 包时，DSH Plugin Hub 会使用
-该安装路径；安装过程会从 Git 源码在本地构建 `dist/`：
+1. **检索插件（推荐）**——推荐同时安装 [`dsh-pubmed`](https://github.com/aiyacharley/dsh-pubmed)（已测试 `0.4.4` 版本）或其他文献/PDF 插件，让模型自动完成论文检索与摘要读取。
+2. **联网搜索**——未安装检索插件或检索结果不足时，自动使用 DSH 内置的网页搜索获取文献信息。
+3. **手动提供原文**——你也可以直接在对话中粘贴论文摘要或 PDF 段落（需附带有效的 PMID 或 DOI）。
 
-```sh
-dsh plugin --profile web add git+https://github.com/zhang-bin-98/sci-fork.git
-```
+无论通过哪种方式，只有具备有效 PMID/DOI 且包含真实摘要或原文段落的内容才会被采纳；仅有标题的记录会被自动跳过，绝不凭空编造引文。
 
-如果 pnpm 阻止 Git 依赖的 `prepare` 脚本，请把 DSH 输出中给出的精确
-`allowBuilds` key 写入它提示的 profile `pnpm-workspace.yaml`，然后重新执行同一命令。
-不要猜测或扩大允许范围。
+## 快速开始
 
-安装完成后，如果 DSH 已经在运行，请重启 DSH。然后从希望作为 Research Project 的
-目录启动 DSH：
-
-```sh
-dsh --profile web
-```
-
-### 从 GitHub Releases 安装
-
-需要校验正式发布的 checksum，或不希望在本机构建源码时，请使用预构建安装包。
-
-1. 从 [GitHub Releases 页面](https://github.com/zhang-bin-98/sci-fork/releases)下载
-   `dsh-scifork-0.0.3.tgz` 和 `dsh-scifork-0.0.3.tgz.sha256`。
-2. 将两个文件放在同一目录，并校验安装包。
-
-Linux：
-
-```sh
-sha256sum -c dsh-scifork-0.0.3.tgz.sha256
-```
-
-macOS：
-
-```sh
-shasum -a 256 -c dsh-scifork-0.0.3.tgz.sha256
-```
-
-Windows PowerShell：
-
-```powershell
-$archive = 'dsh-scifork-0.0.3.tgz'
-$expected = (Get-Content "$archive.sha256").Split()[0].ToLowerInvariant()
-$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actual -ne $expected) { throw 'SHA-256 verification failed' }
-```
-
-3. 将已校验的安装包添加到 DSH Web profile。
-
-```sh
-dsh plugin --profile web add ./dsh-scifork-0.0.3.tgz
-```
-
-4. 从你希望作为 Research Project 的目录启动 DSH。
-
-```sh
-dsh --profile web
-```
-
-如果安装时 DSH 已经在运行，请重启 DSH。以后如需卸载，执行：
-
-```sh
-dsh plugin --profile web remove dsh-scifork
-```
-
-## 第一次使用
-
-请选择不位于其他 Git 仓库内的目录，或者使用本身就是 Git 仓库根目录的目录。在 DSH
-Chat 中对当前目录执行一次初始化：
+请选择一个空目录或独立的 Git 仓库根目录（不要放在其他 Git 仓库的子目录中，并确保本地 Git 已配置用户名和邮箱）。在 DSH Chat 中初始化当前目录：
 
 ```text
 /research init
 ```
 
-SciFork 会创建项目文件；如果当前目录还不是 Git 仓库，则初始化一个本地仓库；然后记录
-基线检查点。完成后，点击 DSH 侧栏中的 **Research Graph** 打开图谱 Companion。
+初始化完成后，从右侧栏引导卡片或左侧栏底部的 **Research Graph** 按钮打开图谱标签页，即可开始：
 
-一个典型的研究流程是：
-
-1. 在 DSH Chat 中描述开放式生物医学问题。SciFork 会把它记录为研究问题，而不是直接
-   当作已成立的主张。
-2. 请 DSH 检索相关文献，再将有依据的断言导入项目。随插件提供的 PubMed Skill 支持
-   PubMed 查询，也可以按 PMID 或 DOI 查找。
-3. 打开 **Research Graph**，检查问题、证据、假设、结果、发现及其关系。
-4. 选中一个实体，需要继续探索时点击 **Research & Expand**，执行一次有界扩展。
-   只有在当前 DSH Chat 中明确请求 Progressive Research Run，才会开始多层探索。
-5. 将机器审核证据（machine-reviewed Evidence）接受为人工审核证据前，请先人工核对。
-   只有人工审核证据或已验证的研究结果才能支持研究发现。
-6. 随时可以检查项目：
+1. **提出研究问题**——在对话中描述你想探索的生物医学问题，SciFork 会将其记录为研究起点并设为当前焦点。
+2. **检索与扩展**——让 DSH 检索相关文献并导入证据；选中图谱中的节点点击 **Research & Expand** 进行单步推演，或在对话中明确要求**深度研究**以开展多轮探索。
+3. **审核与沉淀**——在 **Main** 与 **Evidence** 视图间切换审阅证据，在对话中将核实无误的初审证据确认为人工已审核（或让模型修改、批判、删除不合理的分支），将达到证据门槛的假设晋升为研究发现。
+4. **检查项目状态**——随时可在对话中输入以下命令检查项目完整性：
 
 ```text
 /research validate
 ```
 
-图谱 Companion 用于浏览和检查。研究、纠正内容或修改图谱仍然通过 DSH Chat 提出。
+Research Graph 标签页专注于可视化浏览、切换焦点与一键单步扩展；日常提问、深度研究、修改内容、删除分支或回退 Git 历史，均直接在 DSH Chat 中通过对话完成。
 
 ## 数据与安全
 
-SciFork 设计为在 DSH 本地 loopback Web 服务中使用。文献、PDF、模型输出和项目
-Markdown 都会被视为不可信数据，Companion 不会自动加载远程内容。检索结果可能保留在
-当前 DSH Chat 中，但 SciFork 不会把完整摘要或 PDF 保存到 Research Project。
+SciFork 完全在本地运行，不会自动上传研究数据或开启云同步。项目文件中仅保存 PMID/DOI、论文标题、期刊、年份以及提炼出的证据断言与原文定位，不会将完整的论文摘要或 PDF 原文写入项目仓库。
 
-提交或分享 Research Project 前，请检查其中是否包含 PHI、PII 或受控访问数据。完整的
-数据和网络边界请参阅 [SECURITY.md](SECURITY.md)。
-
-## DSH 生态与分发
-
-SciFork 遵循 DSH 的公开 bundle 规范：包导出 `name` 和 `apply(ctx)`，在
-`package.json#dsh.bundle` 中声明 `cordis.patch.yml`，并可通过 DSH 插件命令安装。
-DSH 建议公开插件仓库添加官方推荐的
-[`dsh-plugin` 话题](https://github.com/topics/dsh-plugin)，以便在生态中被发现。
-
-独立社区目录 [DSH Plugin Hub](https://dsh-plugin.org) 会扫描该话题，并可能收录
-符合条件的仓库。它由社区维护，不是 DeepSeek AI 运营或背书的官方市场。已经发布的
-`v0.0.1` 仍然只支持 tarball；`v0.0.2` 及后续版本同时支持 GitHub 源码构建和带
-checksum 的 GitHub Release tarball。SciFork 不发布到 npm。
+在提交或公开分享研究项目前，请检查其中是否包含受保护的患者隐私（PHI/PII）或受控访问数据。完整的安全说明请参阅 [SECURITY.md](SECURITY.md)。
 
 ## 许可证
 
-SciFork 使用 [MIT License](LICENSE)。Research Project 数据可能有独立的所有权和分享条款。
+SciFork 采用 [MIT License](LICENSE) 开源许可证。你所创建的研究项目数据归你或所在团队所有，可独立设定分享与许可条款。

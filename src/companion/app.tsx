@@ -21,7 +21,7 @@ import type {
   LiteratureEvidenceItem,
   LiteratureProjection,
 } from '../shared/companion-contract.js'
-import { channelNameForPageKey } from '../shared/page-key.js'
+import type { Bridge } from '../bridge/client.js'
 import { CompanionApiClient, CompanionApiError } from './api.js'
 import { DetailsMarkdown } from './details.js'
 import { FocusSelectionQueue } from './focus-selection.js'
@@ -33,11 +33,11 @@ import {
   layoutGraph,
   selectGraphView,
 } from './graph.js'
-import { clearStoredPageKey } from './page-key.js'
 import { startVisiblePolling } from './polling.js'
+import { bootReleaseVersion, unverifiedDshVersion } from './version-guard.js'
 import {
   RESEARCH_EXPANSION_ACTION_LABEL,
-  ResearchExpansionChannel,
+  ResearchExpansionSubmitter,
   buildResearchExpansionPrompt,
   type ResearchExpansionState,
 } from './research-expansion.js'
@@ -65,9 +65,9 @@ const BUTTON_ICON =
   'inline-flex shrink-0 items-center justify-center rounded-md border border-sf-border-strong bg-sf-surface text-sf-muted transition-colors hover:border-sf-muted hover:bg-sf-surface-muted hover:text-sf-ink focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-sf-focus/45 disabled:pointer-events-none'
 const WORKSPACE_BASE = 'workspace grid min-h-0 flex-1 bg-sf-surface'
 const WORKSPACE_OPEN =
-  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,55fr)_minmax(200px,45fr)] sm:grid-rows-[minmax(0,3fr)_minmax(220px,2fr)] xl:grid-cols-[minmax(0,1fr)_minmax(320px,38vw)] xl:grid-rows-[minmax(0,1fr)]'
+  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,55fr)_minmax(200px,45fr)] @min-[640px]:grid-rows-[minmax(0,3fr)_minmax(220px,2fr)] @min-[1280px]:grid-cols-[minmax(0,1fr)_minmax(320px,38vw)] @min-[1280px]:grid-rows-[minmax(0,1fr)]'
 const WORKSPACE_CLOSED =
-  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_44px] xl:grid-cols-[minmax(0,1fr)_44px] xl:grid-rows-[minmax(0,1fr)]'
+  'grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_44px] @min-[1280px]:grid-cols-[minmax(0,1fr)_44px] @min-[1280px]:grid-rows-[minmax(0,1fr)]'
 
 type EntityVisualType = 'question' | 'finding' | 'hypothesis' | 'prediction' | 'evidence' | 'result' | 'framing_link' | 'edge'
 
@@ -165,14 +165,14 @@ export function HeaderIdentity(props: {
   head?: string
 }): React.ReactElement {
   return (
-    <div className="header-identity flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap sm:gap-3">
+    <div className="header-identity flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap @min-[640px]:gap-3">
       <h1 className="m-0 shrink-0 text-xl leading-none font-semibold tracking-tight">SciFork</h1>
-      <span className="hidden min-w-0 max-w-[24vw] truncate text-sm text-sf-header-muted md:block xl:max-w-[min(34vw,360px)]">
+      <span className="hidden min-w-0 max-w-[24vw] truncate text-sm text-sf-header-muted @min-[768px]:block @min-[1280px]:max-w-[min(34vw,360px)]">
         {props.projectName}
       </span>
       {props.branch === undefined ? null : (
         <span
-          className="hidden min-w-0 max-w-[30vw] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2 py-1 text-xs font-semibold text-sf-header-chip sm:inline-flex md:max-w-[28vw] md:px-2.5 xl:max-w-[min(32vw,280px)]"
+          className="hidden min-w-0 max-w-[30vw] items-center gap-1.5 truncate rounded-full border border-sf-header-control-border bg-white/[0.08] px-2 py-1 text-xs font-semibold text-sf-header-chip @min-[640px]:inline-flex @min-[768px]:max-w-[28vw] @min-[768px]:px-2.5 @min-[1280px]:max-w-[min(32vw,280px)]"
           aria-label="Current branch"
           title={props.head === undefined ? props.branch : props.branch + ' @ ' + props.head}
         >
@@ -197,7 +197,7 @@ export function ResearchExpansionRecoveryControls(props: {
   if (props.placement === 'header') {
     return (
       <div
-        className="hidden sm:contents"
+        className="hidden @min-[640px]:contents"
         data-research-expansion-recovery="header"
       >
         <button type="button" className={BUTTON_HEADER} onClick={props.onRetry}>
@@ -212,7 +212,7 @@ export function ResearchExpansionRecoveryControls(props: {
 
   return (
     <section
-      className="flex min-h-11 shrink-0 items-center gap-2 border-b border-sf-danger-border bg-sf-danger-soft px-2.5 py-1.5 text-xs text-sf-danger-foreground sm:hidden"
+      className="flex min-h-11 shrink-0 items-center gap-2 border-b border-sf-danger-border bg-sf-danger-soft px-2.5 py-1.5 text-xs text-sf-danger-foreground @min-[640px]:hidden"
       data-research-expansion-recovery="narrow"
       role="alert"
       aria-label="Research expansion failed"
@@ -259,18 +259,22 @@ interface GraphPaneProps {
   onSelect(entityId: string): void
 }
 
-const TAILWIND_MD_QUERY = '(min-width: 48rem)'
-
-function useWideGraphLayout(): boolean {
-  const [wide, setWide] = React.useState(
-    () => typeof window !== 'undefined' && window.matchMedia(TAILWIND_MD_QUERY).matches,
-  )
+/**
+ * Pane-width responsive switch (M4): the tab pane, not the viewport, is the
+ * layout context; 48rem matches the md breakpoint value. The observed
+ * element is the app root (the container-query context).
+ */
+function useWideGraphLayout(paneRef: React.RefObject<HTMLElement | null>): boolean {
+  const [wide, setWide] = React.useState(false)
   React.useEffect(() => {
-    const media = window.matchMedia(TAILWIND_MD_QUERY)
-    const update = (): void => setWide(media.matches)
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
+    const element = paneRef.current
+    if (element === null || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) setWide(entry.contentRect.width >= 768)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [paneRef])
   return wide
 }
 
@@ -295,7 +299,7 @@ export function GraphViewControl(props: {
   return (
     <button
       type="button"
-      className={BUTTON_HEADER + ' h-9 px-2 text-xs sm:px-2.5'}
+      className={BUTTON_HEADER + ' h-9 px-2 text-xs @min-[640px]:px-2.5'}
       aria-label={label}
       aria-busy={props.transitioning}
       title={title}
@@ -310,7 +314,8 @@ export function GraphViewControl(props: {
 }
 
 function GraphPane(props: GraphPaneProps): React.ReactElement {
-  const wide = useWideGraphLayout()
+  const rootRef = React.useRef<HTMLElement | null>(null)
+  const wide = useWideGraphLayout(rootRef)
   const direction = graphDirectionForViewport(wide)
   const paneRef = React.useRef<HTMLElement | null>(null)
   const [flow, setFlow] = React.useState<
@@ -387,7 +392,7 @@ function GraphPane(props: GraphPaneProps): React.ReactElement {
   return (
     <section
       ref={paneRef}
-      className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted xl:border-r xl:border-b-0"
+      className="graph-pane relative min-h-0 min-w-0 border-b border-sf-border bg-sf-surface-muted @min-[1280px]:border-r @min-[1280px]:border-b-0"
       aria-label="Research Graph"
       aria-busy={props.interactionDisabled}
     >
@@ -428,7 +433,7 @@ function EdgeDetails(props: {
 }): React.ReactElement {
   const { entity } = props
   return (
-    <dl className="m-0 grid grid-cols-1 gap-x-3.5 gap-y-2.5 p-5 text-sm leading-6 text-sf-ink sm:grid-cols-[minmax(90px,0.32fr)_minmax(0,1fr)] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[11px] [&_dt]:font-bold [&_dt]:tracking-wide [&_dt]:text-sf-muted [&_dt]:uppercase">
+    <dl className="m-0 grid grid-cols-1 gap-x-3.5 gap-y-2.5 p-5 text-sm leading-6 text-sf-ink @min-[640px]:grid-cols-[minmax(90px,0.32fr)_minmax(0,1fr)] [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt]:text-[11px] [&_dt]:font-bold [&_dt]:tracking-wide [&_dt]:text-sf-muted [&_dt]:uppercase">
       <dt>Relation</dt>
       <dd>{humanize(entity.relation)}</dd>
       <dt>From</dt>
@@ -610,7 +615,7 @@ export interface DetailsPaneProps {
 function DrawerChevron(props: { action: 'open' | 'close' }): React.ReactElement {
   return (
     <svg
-      className="size-[18px] shrink-0 rotate-90 xl:rotate-0"
+      className="size-[18px] shrink-0 rotate-90 @min-[1280px]:rotate-0"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -730,12 +735,12 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
   if (!props.open) {
     return (
       <aside
-        className="details-pane details-pane-closed flex min-h-0 min-w-0 items-stretch justify-stretch border-t border-sf-border bg-sf-surface-muted xl:border-t-0 xl:border-l"
+        className="details-pane details-pane-closed flex min-h-0 min-w-0 items-stretch justify-stretch border-t border-sf-border bg-sf-surface-muted @min-[1280px]:border-t-0 @min-[1280px]:border-l"
         aria-label="Details"
       >
         <button
           type="button"
-          className="flex size-full min-h-0 items-center justify-center gap-2 border-0 bg-transparent px-3 py-0 text-sm font-semibold text-sf-accent hover:bg-sf-accent-soft focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-sf-focus/45 xl:px-0 xl:py-2 xl:[writing-mode:vertical-rl]"
+          className="flex size-full min-h-0 items-center justify-center gap-2 border-0 bg-transparent px-3 py-0 text-sm font-semibold text-sf-accent hover:bg-sf-accent-soft focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-sf-focus/45 @min-[1280px]:px-0 @min-[1280px]:py-2 @min-[1280px]:[writing-mode:vertical-rl]"
           aria-label="Open Details"
           aria-expanded={false}
           data-drawer-action="open"
@@ -829,12 +834,23 @@ export function DetailsPane(props: DetailsPaneProps): React.ReactElement {
   )
 }
 
+export function UnverifiedVersionBanner(props: { readonly actual: string }): React.ReactElement {
+  return (
+    <section
+      aria-label="Unverified DSH version"
+      data-unverified-dsh-version={props.actual}
+      className="flex min-h-8 shrink-0 items-center gap-2 border-b border-sf-warning-border bg-sf-warning-soft px-4 py-1.5 text-xs text-sf-warning-foreground"
+    >
+      <strong className="font-bold">Unverified DSH version</strong>
+      <span className="min-w-0 truncate">{props.actual}</span>
+    </section>
+  )
+}
+
 export function InvalidKeyView(): React.ReactElement {
   return (
-    <main className="flex size-full min-h-0 items-center justify-center gap-3 bg-sf-surface-muted text-sf-muted">
-      <button type="button" className={BUTTON_NEUTRAL} onClick={() => window.close()}>
-        Reopen from DSH
-      </button>
+    <main className="flex size-full min-h-0 items-center justify-center gap-3 bg-sf-surface-muted p-6 text-center text-sf-muted">
+      <p>The Research Graph session key is no longer valid. Reopen the Research Graph tab from DSH.</p>
     </main>
   )
 }
@@ -850,12 +866,12 @@ export function ResearchExpansionAction(props: {
   disabled: boolean
   onClick(): void
 }): React.ReactElement {
-  const running = props.state.phase === 'pending' || props.state.phase === 'acknowledged'
+  const running = props.state.phase === 'pending'
   const label = running ? 'Research in progress' : RESEARCH_EXPANSION_ACTION_LABEL
   return (
     <button
       type="button"
-      className={BUTTON_PRIMARY + ' size-9 px-0 sm:size-auto sm:px-3'}
+      className={BUTTON_PRIMARY + ' size-9 px-0 @min-[640px]:size-auto @min-[640px]:px-3'}
       disabled={props.disabled || running}
       aria-label={label}
       title={label}
@@ -876,7 +892,7 @@ export function ResearchExpansionAction(props: {
       ) : (
         <>
           <svg
-            className="size-4 sm:hidden"
+            className="size-4 @min-[640px]:hidden"
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
@@ -886,7 +902,7 @@ export function ResearchExpansionAction(props: {
             <circle cx="6.75" cy="6.75" r="3.75" />
             <path d="m9.5 9.5 3.25 3.25M5.5 6.75h2.5M6.75 5.5v2.5" />
           </svg>
-          <span className="hidden sm:inline">{RESEARCH_EXPANSION_ACTION_LABEL}</span>
+          <span className="hidden @min-[640px]:inline">{RESEARCH_EXPANSION_ACTION_LABEL}</span>
         </>
       )}
     </button>
@@ -910,7 +926,7 @@ export async function restoreMainView(inputs: {
   return (await inputs.selectFocus(inputs.anchorId)) ? 'restored' : 'failed'
 }
 
-export function CompanionApp(props: { pageKey: string }): React.ReactElement {
+export function CompanionApp(props: { pageKey: string; bridge: Bridge; visible: boolean }): React.ReactElement {
   const [invalidKey, setInvalidKey] = React.useState(false)
   const [snapshot, setSnapshot] = React.useState<SnapshotSuccess>()
   const [graph, setGraph] = React.useState<SnapshotGraph>()
@@ -931,10 +947,10 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
   const mountedRef = React.useRef(true)
   const detailsRequestRef = React.useRef(0)
   const focusQueueRef = React.useRef<FocusSelectionQueue<FocusSuccess> | undefined>(undefined)
-  const snapshotInFlightRef = React.useRef(false)
+  const snapshotInFlightRef = React.useRef<{ signal?: AbortSignal } | undefined>(undefined)
   const viewTransitioningRef = React.useRef(false)
   const researchExpansionRef =
-    React.useRef<ResearchExpansionChannel | undefined>(undefined)
+    React.useRef<ResearchExpansionSubmitter | undefined>(undefined)
 
   React.useEffect(
     () => () => {
@@ -949,7 +965,6 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
       new CompanionApiClient({
         pageKey: props.pageKey,
         onPageKeyInvalid: () => {
-          clearStoredPageKey(window.sessionStorage)
           if (mountedRef.current) setInvalidKey(true)
         },
       }),
@@ -1041,17 +1056,19 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   const refresh = React.useCallback(
     async (signal?: AbortSignal): Promise<void> => {
-      if (snapshotInFlightRef.current) return
-      snapshotInFlightRef.current = true
+      const previous = snapshotInFlightRef.current
+      if (previous !== undefined && !previous.signal?.aborted) return
+      const request = signal === undefined ? {} : { signal }
+      snapshotInFlightRef.current = request
       try {
         const response = await api.snapshot(snapshotRef.current?.project.revision, signal)
-        if (mountedRef.current) applySnapshot(response)
+        if (mountedRef.current && !signal?.aborted) applySnapshot(response)
       } catch (caught) {
         if (!mountedRef.current || signal?.aborted) return
         if (caught instanceof CompanionApiError && caught.code === 'PAGE_KEY_INVALID') return
         setError(failureMessage(caught))
       } finally {
-        snapshotInFlightRef.current = false
+        if (snapshotInFlightRef.current === request) snapshotInFlightRef.current = undefined
       }
     },
     [api, applySnapshot],
@@ -1062,43 +1079,19 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
     const controller = new AbortController()
     const stop = startVisiblePolling({
       document,
+      visible: props.visible,
       readSnapshot: () => refresh(controller.signal),
     })
     return () => {
       stop()
       controller.abort()
     }
-  }, [invalidKey, refresh])
+  }, [invalidKey, refresh, props.visible])
 
   React.useEffect(() => {
     if (invalidKey) return undefined
-    let browserChannel: BroadcastChannel | undefined
-    try {
-      browserChannel =
-        typeof BroadcastChannel === 'function'
-          ? new BroadcastChannel(channelNameForPageKey(props.pageKey))
-          : undefined
-    } catch {
-      browserChannel = undefined
-    }
-    const channel =
-      browserChannel === undefined
-        ? undefined
-        : {
-            postMessage: (message: Parameters<BroadcastChannel['postMessage']>[0]) =>
-              browserChannel.postMessage(message),
-            addEventListener: (
-              _type: 'message',
-              listener: (event: { data: unknown }) => void,
-            ) => browserChannel.addEventListener('message', listener),
-            removeEventListener: (
-              _type: 'message',
-              listener: (event: { data: unknown }) => void,
-            ) => browserChannel.removeEventListener('message', listener),
-            close: () => browserChannel.close(),
-          }
-    const researchExpansion = new ResearchExpansionChannel({
-      ...(channel === undefined ? {} : { channel }),
+    const researchExpansion = new ResearchExpansionSubmitter({
+      submit: (prompt) => props.bridge.submitResearchExpansion(props.pageKey, prompt),
       onStateChange: (state) => {
         if (mountedRef.current) setResearchExpansionState(state)
       },
@@ -1109,7 +1102,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
       researchExpansionRef.current = undefined
       researchExpansion.dispose()
     }
-  }, [invalidKey, props.pageKey])
+  }, [invalidKey, props.pageKey, props.bridge])
 
   const selectEntity = React.useCallback((entityId: string): void => {
     if (viewTransitioningRef.current) return
@@ -1188,15 +1181,21 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
 
   const project = snapshot?.project
   const focus = snapshot?.focus
+  const unverifiedVersion = React.useMemo(
+    () => unverifiedDshVersion(bootReleaseVersion()),
+    [],
+  )
+
   return (
-    <main className="companion-app flex h-dvh min-h-0 w-full flex-col bg-sf-canvas text-sf-ink">
-      <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground sm:gap-3 sm:px-4">
+    <main className="scifork-root companion-app flex min-h-0 w-full flex-1 flex-col bg-sf-canvas text-sf-ink">
+      {unverifiedVersion !== null ? <UnverifiedVersionBanner actual={unverifiedVersion} /> : null}
+      <header className="app-header flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b border-sf-header-border bg-sf-header px-2.5 text-sf-header-foreground @min-[640px]:gap-3 @min-[640px]:px-4">
         <HeaderIdentity
           projectName={project?.name ?? 'Research Graph'}
           {...(project?.branch === undefined ? {} : { branch: project.branch })}
           {...(project?.head === undefined ? {} : { head: project.head })}
         />
-        <div className="ml-auto flex min-w-max items-center gap-1 sm:gap-2">
+        <div className="ml-auto flex min-w-max items-center gap-1 @min-[640px]:gap-2">
           <GraphViewControl
             view={graphView.mode}
             canEnterEvidence={eligibleEvidenceAnchor !== undefined}
@@ -1232,7 +1231,7 @@ export function CompanionApp(props: { pageKey: string }): React.ReactElement {
           aria-label="Read-only project"
         >
           <strong className="font-bold">Read-only</strong>
-          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-normal xl:whitespace-nowrap">
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-normal @min-[1280px]:whitespace-nowrap">
             {project.diagnosticCount === 0
               ? project.gitError?.message ?? 'Project writes are unavailable.'
               : project.diagnostics
