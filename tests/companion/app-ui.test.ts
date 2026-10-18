@@ -107,6 +107,10 @@ describe('Companion graph UI', () => {
     expect(html).toContain('STAT3 resistance study')
     expect(html).toContain('chore/v0.0.1-release')
     expect(html).toContain('aria-label="Current branch"')
+    const branchBadge = html.match(/<span[^>]*aria-label="Current branch"[^>]*>/)?.[0]
+    expect(branchBadge).toBeDefined()
+    expect(branchBadge).not.toMatch(/\bhidden\b/)
+    expect(branchBadge).toContain('title="chore/v0.0.1-release @ abcdef1234567890"')
   })
 
   it('moves failed research recovery controls out of the narrow header', () => {
@@ -259,9 +263,8 @@ describe('Companion graph UI', () => {
 
     expect(action).toBeDefined()
     expect(action).toContain('title="Research &amp; Expand"')
-    expect(action).toContain('size-9 px-0 @min-[640px]:size-auto @min-[640px]:px-3')
-    expect(action).toContain('class="size-4 @min-[640px]:hidden"')
-    expect(action).toContain('class="hidden @min-[640px]:inline"')
+    expect(action).toMatch(/>Research &amp; Expand<\/button>$/)
+    expect(action).not.toContain('<svg')
     expect(actionClasses).toContain('bg-sf-header-foreground')
     expect(actionClasses).toContain('text-sf-header')
     expect(actionClasses).not.toContain('bg-sf-accent')
