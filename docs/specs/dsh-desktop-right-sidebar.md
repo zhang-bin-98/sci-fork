@@ -132,13 +132,14 @@ tab body 挂载
   按架构 §8.4，无 `100dvh` 或视口级假设。
 - 样式交付：构建把 CSS 内联进 client bundle、挂载时注入 `<style>`
   （documentpreview 的 JS-only 发布形态），Host 不注册静态样式路由。
-- 样式隔离：不包含 Tailwind Preflight（当前源码本就未引入，仅分开导入
-  theme/utilities）；工具类经 v4 官方隔离手段限定在 SciFork 容器根（如
-  `.scifork-root`）内——整包 `@import 'tailwindcss' prefix(sf)` 或部分导入 +
-  `variant()` 作用域变体，二选一（已知坑：`prefix()` 对分开导入的
-  `utilities.css`/`theme.css` 不生效），以 spike 实测为准；手写 base 归一化
-  （原 `:root`/`html, body` 规则）改挂容器根选择器；React Flow、Markdown
-  pseudo-element、卡片展开的手写 CSS 同样以容器为作用域。
+- 样式隔离（已收口，0.0.5）：不包含 Tailwind Preflight；base 归一化与全部
+  React Flow / Markdown / 卡片手写 CSS 锚定容器根 `.scifork-root`。生成工具
+  类的隔离采用**构建期选择器作用域**：`scripts/scope-css.mjs` 在打包时把
+  `dist/client.css` 的每条选择器前缀为 `.scifork-root` 后代（`@keyframes`/
+  `@property` 等非选择器块与已作用域规则原样保留）。spike 结论：`prefix()`
+  对分开导入的 `utilities.css`/`theme.css` 不生效（v4 已知行为），整包导入会
+  带入 Preflight；`variant()` 重写需改动全部类名字符串——构建期方案零源码改动、
+  覆盖完备，故按此收口。
 
 ### 6. 版本守卫
 
@@ -185,6 +186,9 @@ tab body 挂载
   launch 响应体与 client 插件内存出现、Host 无静态路由。
 - 不新增生产依赖；`@xyflow/react`、`react-markdown`、`@dagrejs/dagre` 必须与
   shell 播种的 React 版本兼容（spike 钉住；不满足即停下与用户重评）。
+- 市场兼容性声明：`package.json#engines.dsh` 为 `>=0.2.1-rc.2`——开放上限与
+  未验证警告条策略一致（旧于基线显示不兼容，新于基线显示兼容但 Companion 内
+  提示未验证），不用精确钉住制造假"不兼容"。
 
 ## Spike plan（M4 前置；一次性 profile 冒烟需用户批准）
 
