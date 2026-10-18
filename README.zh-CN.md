@@ -10,7 +10,7 @@
 
 SciFork 是面向 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 的生物医学**研究图谱**插件。DSH Chat 始终是唯一的对话界面，SciFork 则在右侧栏提供可视化的研究图谱，把对话与文献检索中获得的信息沉淀为结构化、可追溯的科研知识。
 
-> **当前版本：** SciFork `0.0.7` 适配 DSH `0.2.1-rc.2`（桌面端与同版本 Web）。
+> **当前版本：** SciFork `0.0.8` 适配 DSH `0.2.1-rc.2`（桌面端与同版本 Web）。
 
 ## 你可以做什么
 
