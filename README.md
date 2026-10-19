@@ -28,9 +28,9 @@ SciFork is a biomedical **Research Graph** plugin for [DeepSeek Harness (DSH)](h
 
 ## Install and literature retrieval
 
-**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `dsh-scifork`, install, and click **Enable now**.
+**From the Plugins panel (recommended):** open **Plugins** in the DSH sidebar, select **Add plugin**, enter `dsh-scifork@0.0.8`, install, and click **Enable now**. Pin the version explicitly: a bare name installs the newest version that has passed DSH's supply-chain observation window, which can lag a fresh release.
 
-**From a chat:** ask the model — "install the DSH plugin `dsh-scifork`".
+**From a chat:** ask the model — "install the DSH plugin `dsh-scifork@0.0.8`".
 
 To uninstall, select **Remove** on the plugin's page; your local research project files remain intact and readable.
 
